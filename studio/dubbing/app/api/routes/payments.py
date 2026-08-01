@@ -109,68 +109,11 @@ async def test_suby_webhook(request: Request):
         logger.exception("Test webhook failed")
         raise HTTPException(status_code=400, detail=str(e))
 
-from fastapi import BackgroundTasks
-
-async def _process_webhook_event(event: Dict[str, Any]):
-    """Asynchronous background worker to process webhook payload without blocking HTTP response."""
-    try:
-        event_type = str(event.get("type", "")).upper()
-        event_data = event.get("data", {})
-        
-        if event_type in ("PAYMENT_SUCCESS", "PAYMENT.SUCCESS"):
-            payment = event_data.get("payment", {}) if "payment" in event_data else event_data
-            context = event_data.get("context", {})
-            metadata = context.get("metadata", {}) if isinstance(context, dict) else {}
-            
-            user_id = event_data.get("user_id") or metadata.get("user_id") or payment.get("customerEmail") or "unknown"
-            workspace_id = event_data.get("workspace_id") or metadata.get("workspace_id") or context.get("externalRef")
-            tier_id = event_data.get("tier_id") or metadata.get("tier_id") or "pro"
-            transaction_id = event_data.get("transaction_id") or payment.get("id") or f"tx_{uuid.uuid4().hex[:8]}"
-            
-            if not workspace_id:
-                logger.error("[WEBHOOK] Async processing error: missing workspace_id")
-                return
-                
-            if tier_id in TIERS:
-                minutes = TIERS[tier_id]["minutes"]
-                price = TIERS[tier_id]["price_usd"]
-                
-                from app.core import db as database
-                from app.core.db import _get_service_role_client
-                client = _get_service_role_client()
-                
-                # Atomic deduplication and minute increment
-                res = await database.process_payment_success_atomic(
-                    client,
-                    transaction_id=transaction_id,
-                    workspace_id=workspace_id,
-                    tier=tier_id,
-                    amount_usd=price,
-                    minutes_added=minutes
-                )
-                logger.info(f"[WEBHOOK_ASYNC] Atomic processing result for {transaction_id}: {res}")
-                
-        elif event_type in ("PAYMENT_REFUNDED", "PAYMENT.REFUNDED"):
-            workspace_id = event_data.get("workspace_id") or event_data.get("context", {}).get("metadata", {}).get("workspace_id")
-            tier_id = event_data.get("tier_id") or event_data.get("context", {}).get("metadata", {}).get("tier_id", "pro")
-            if workspace_id and tier_id in TIERS:
-                minutes = TIERS[tier_id]["minutes"]
-                from app.core import db as database
-                from app.core.db import _get_service_role_client
-                client = _get_service_role_client()
-                result = await database.handle_refund_kill_switch(client, workspace_id=workspace_id, amount_deducted=minutes)
-                logger.warning(f"[WEBHOOK_KILL_SWITCH] Refund active kill-switch executed for {safe_ws(workspace_id)}: {result}")
-                
-        elif event_type in ("PAYMENT_FAILED", "PAYMENT.FAILED"):
-            logger.warning(f"[WEBHOOK_ASYNC] Payment failed event logged: {event_data.get('id', 'unknown')}")
-    except Exception as e:
-        logger.exception("[WEBHOOK_ASYNC] Processing background task error: %s", e)
-
 @router.post("/webhook")
-async def suby_webhook(request: Request, background_tasks: BackgroundTasks):
-    """Receive payment webhook from Suby. Verifies signature synchronously, then queues event handling."""
+async def suby_webhook(request: Request):
+    """Receive payment webhook from Suby. Verifies signature & persists directly to Convex DB before returning 200 OK."""
     payload = await request.body()
-    signature = request.headers.get("x-suby-signature")
+    signature = request.headers.get("x-suby-signature") or request.headers.get("x-webhook-signature")
     
     suby = SubyClient()
     if not suby.verify_signature(payload, signature):
@@ -179,8 +122,22 @@ async def suby_webhook(request: Request, background_tasks: BackgroundTasks):
         
     try:
         event = await request.json()
-        background_tasks.add_task(_process_webhook_event, event)
-        return {"status": "accepted"}
+        event_id = event.get("id") or f"evt_{uuid.uuid4().hex[:12]}"
+        event_type = event.get("type") or request.headers.get("x-webhook-event", "PAYMENT_SUCCESS")
+        
+        from app.core import db as database
+        from app.core.db import _get_service_role_client
+        client = _get_service_role_client()
+        
+        # DURABLE INGESTION: Writes raw webhook to webhookEvents table in Convex before returning 200 OK
+        res = await database.record_and_process_webhook_durable(
+            client,
+            event_id=event_id,
+            event_type=event_type,
+            payload=event
+        )
+        logger.info(f"[DURABLE_WEBHOOK] Persisted and processed event {event_id}: {res}")
+        return {"status": "ok", "persisted": True, "result": res}
     except Exception as e:
-        logger.exception("Webhook payload parsing failed")
-        raise HTTPException(status_code=400, detail="Invalid webhook payload")
+        logger.exception("Webhook durable processing failed")
+        raise HTTPException(status_code=400, detail=f"Webhook error: {str(e)}")

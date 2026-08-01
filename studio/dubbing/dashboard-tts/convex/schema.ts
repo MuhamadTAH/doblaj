@@ -287,4 +287,12 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_workspace", ["workspaceId"])
     .index("by_user_type", ["userId", "consentType"]),
+
+  webhookEvents: defineTable({
+    eventId: v.string(),
+    eventType: v.string(),
+    payload: v.any(),
+    status: v.string(), // PENDING, PROCESSED, FAILED
+    createdAt: v.string(),
+  }).index("by_event_id", ["eventId"]),
 });

@@ -221,13 +221,28 @@ export const deductMinutesInternal = mutation({
       throw new ConvexError("WORKSPACE_ACCOUNT_LOCKED_REFUND_FRAUD");
     }
     
-    // Velocity limit check: unverified new accounts (< 48h settlement window) capped at max 30 mins
+    // Cumulative Velocity Limit Enforcement: Calculate usage over the last 48 hours
     const createdAtMs = ws.createdAt ? new Date(ws.createdAt).getTime() : Date.now();
     const ageHours = (Date.now() - createdAtMs) / (1000 * 3600);
     const totalPurchased = ws.totalPurchasedMinutes ?? 0;
     
-    if (ageHours < 48 && totalPurchased === 0 && args.amount > 30) {
-      throw new ConvexError("VELOCITY_LIMIT_EXCEEDED_UNVERIFIED_ACCOUNT");
+    if (ageHours < 48 && totalPurchased === 0) {
+      const fortyEightHoursAgoIso = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+      const recentJobs = await ctx.db
+        .query("dubbingJobs")
+        .withIndex("by_workspace_id", (q: any) => q.eq("workspaceId", ws._id))
+        .collect();
+
+      let totalConsumedLast48h = 0;
+      for (const j of recentJobs) {
+        if (j.createdAt && j.createdAt >= fortyEightHoursAgoIso && j.total_duration_sec) {
+          totalConsumedLast48h += j.total_duration_sec / 60;
+        }
+      }
+
+      if (totalConsumedLast48h + args.amount > 30) {
+        throw new ConvexError("VELOCITY_LIMIT_EXCEEDED");
+      }
     }
     
     const current = ws.dubbingMinutes ?? 0;

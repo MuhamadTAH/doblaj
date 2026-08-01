@@ -15,8 +15,8 @@ class SubyClient:
         # webhook signed with the default would be accepted.
         import re
         if os.getenv("PIRD_ENV", "").lower() == "prod":
-            # Strict regex validation for Suby keys (must match format sk_live_[a-zA-Z0-9]{24,64} or sk_test_[a-zA-Z0-9]{24,64})
-            API_KEY_REGEX = r"^(sk_live_|sk_test_)[a-zA-Z0-9_-]{24,64}$"
+            # Strict production regex validation for Suby keys (MUST be sk_live_, excluding sk_test_)
+            API_KEY_REGEX = r"^sk_live_[a-zA-Z0-9_-]{24,64}$"
             WEBHOOK_SECRET_REGEX = r"^[a-zA-Z0-9_-]{32,128}$"
 
             if not re.match(API_KEY_REGEX, self.api_key):

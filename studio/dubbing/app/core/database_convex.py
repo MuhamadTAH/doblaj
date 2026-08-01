@@ -469,6 +469,18 @@ async def handle_refund_kill_switch(client: Any = None, *, workspace_id: str = "
     return await asyncio.to_thread(_do)
 
 
+async def record_and_process_webhook_durable(client: Any = None, *, event_id: str = "", event_type: str = "", payload: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Synchronously record raw webhook to Convex webhookEvents table & process in single durable mutation."""
+    c = client or _get_client()
+    def _do():
+        return c.mutation("webhooks:recordAndProcessWebhookInternal", _internal_args({
+            "eventId": event_id,
+            "eventType": event_type,
+            "payload": payload or {}
+        }))
+    return await asyncio.to_thread(_do)
+
+
 async def add_transaction(client: Any = None, *, transaction_id: str = "", workspace_id: str = "", tier: str = "", amount_usd: int = 0, minutes_added: int = 0) -> None:
     try:
         c = client or _get_client()
