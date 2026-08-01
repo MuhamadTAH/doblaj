@@ -5,12 +5,15 @@ import path from "node:path";
 // Pird: build of the merged TTS dashboard. Output goes to
 // `dist/` so Cloudflare Pages can deploy it as a static site.
 //
-// base: "/tts/" makes Vite emit /tts/assets/* paths in index.html
-// (instead of /assets/*). Required because the bundle is mounted
-// at /tts/, not at the domain root. Without this the browser sees
-// 404s for the JS/CSS chunks.
+// base: "/" (the default) makes Vite emit /assets/* paths in
+// index.html, matching the build output structure on Cloudflare
+// Pages. Previously used "/tts/" when the bundle was served by
+// FastAPI's /tts/* static mount, but that path prefix is no
+// longer in the deployed filesystem -- CF Pages serves dist/
+// files at their literal paths, so /tts/assets/* 404s and the
+// SPA returns the HTML 404 page.
 export default defineConfig({
-  base: "/tts/",
+  base: "/",
   plugins: [react()],
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
