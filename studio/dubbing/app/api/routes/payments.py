@@ -122,32 +122,35 @@ async def suby_webhook(request: Request):
         
     try:
         event = await request.json()
-        if event.get("type") == "payment.success":
-            user_id = event["data"]["user_id"]
-            workspace_id = event["data"].get("workspace_id")
-            tier_id = event["data"]["tier_id"]
-            transaction_id = event["data"]["transaction_id"]
+        event_type = str(event.get("type", "")).upper()
+        event_data = event.get("data", {})
+        
+        if event_type in ("PAYMENT_SUCCESS", "PAYMENT.SUCCESS"):
+            payment = event_data.get("payment", {}) if "payment" in event_data else event_data
+            context = event_data.get("context", {})
+            metadata = context.get("metadata", {}) if isinstance(context, dict) else {}
+            
+            user_id = event_data.get("user_id") or metadata.get("user_id") or payment.get("customerEmail") or "unknown"
+            workspace_id = event_data.get("workspace_id") or metadata.get("workspace_id") or context.get("externalRef")
+            tier_id = event_data.get("tier_id") or metadata.get("tier_id") or "pro"
+            transaction_id = event_data.get("transaction_id") or payment.get("id") or f"tx_{uuid.uuid4().hex[:8]}"
             
             if not workspace_id:
-                logger.error("Webhook payload missing workspace_id")
+                logger.error("[WEBHOOK] Payload missing workspace_id")
                 raise HTTPException(status_code=400, detail="Missing workspace_id")
                 
             if tier_id in TIERS:
                 minutes = TIERS[tier_id]["minutes"]
                 price = TIERS[tier_id]["price_usd"]
-                logger.info(f"Adding {minutes} minutes to workspace {safe_ws(workspace_id)} (user {user_id})")
                 
                 from app.core import db as database
                 from app.core.db import _get_service_role_client
-                
                 client = _get_service_role_client()
                 
-                # Check if transaction was already processed
                 if await database.transaction_exists(client, transaction_id):
-                    logger.info(f"Transaction {transaction_id} already processed. Skipping.")
+                    logger.info(f"[WEBHOOK] Transaction {transaction_id} already processed. Skipping.")
                     return {"status": "ok", "message": "Already processed"}
                 
-                # 1. Log transaction
                 await database.add_transaction(
                     client,
                     transaction_id=transaction_id,
@@ -156,11 +159,23 @@ async def suby_webhook(request: Request):
                     amount_usd=price,
                     minutes_added=minutes
                 )
-                
-                # 2. Add minutes to workspace
                 new_balance = await database.add_workspace_minutes(client, workspace_id, minutes)
-                logger.info(f"Workspace {safe_ws(workspace_id)} balance updated. New balance: {new_balance} minutes.")
+                logger.info(f"[WEBHOOK] Added {minutes} mins to workspace {safe_ws(workspace_id)}. New balance: {new_balance}")
                 
+        elif event_type in ("PAYMENT_REFUNDED", "PAYMENT.REFUNDED"):
+            workspace_id = event_data.get("workspace_id") or event_data.get("context", {}).get("metadata", {}).get("workspace_id")
+            tier_id = event_data.get("tier_id") or event_data.get("context", {}).get("metadata", {}).get("tier_id", "pro")
+            if workspace_id and tier_id in TIERS:
+                minutes = TIERS[tier_id]["minutes"]
+                from app.core import db as database
+                from app.core.db import _get_service_role_client
+                client = _get_service_role_client()
+                await database.deduct_workspace_minutes(client, workspace_id=workspace_id, minutes=minutes)
+                logger.warning(f"[WEBHOOK] Refund processed: Deducted {minutes} mins from workspace {safe_ws(workspace_id)}")
+                
+        elif event_type in ("PAYMENT_FAILED", "PAYMENT.FAILED"):
+            logger.warning(f"[WEBHOOK] Payment failed event received: {event_data.get('id', 'unknown')}")
+            
         return {"status": "ok"}
     except Exception as e:
         logger.exception("Webhook processing failed")
