@@ -2,13 +2,16 @@ import React, { useState } from "react";
 import { motion } from "framer-motion";
 import PricingCard from "@/components/PricingCard";
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+
+
 export default function PricingPage() {
   const [loadingTier, setLoadingTier] = useState<string | null>(null);
 
   const handleCheckout = async (tierId: string) => {
     setLoadingTier(tierId);
     try {
-      const res = await fetch('/api/payments/checkout', {
+      const res = await fetch(`${API_BASE}/api/payments/checkout`, {
         method: 'POST',
         credentials: 'include',
         headers: {

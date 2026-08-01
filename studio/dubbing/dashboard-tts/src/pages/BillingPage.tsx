@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+
+
 interface Transaction {
   legacyId: string;
   createdAt: string;
@@ -19,7 +22,7 @@ export default function BillingPage() {
   const [userData, setUserData] = useState<UserData | null>(null);
 
   useEffect(() => {
-    fetch('/api/auth/me')
+    fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
       .then(res => res.json())
       .then(data => {
         if (data.id) {

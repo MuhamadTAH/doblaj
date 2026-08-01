@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+
+
 interface HybridComboboxProps {
   value: string;
   onChange: (val: string) => void;
@@ -17,7 +20,7 @@ export function HybridCombobox({ value, onChange, placeholder = "Select or type 
       try {
         // Pird: include cookie so the auth-gated endpoint accepts the request.
         // See handoffs/dubbing-security-pass2-fixes.md Fix 6.
-        const res = await fetch('/video/manual/entities', { credentials: 'include' });
+        const res = await fetch(`${API_BASE}/video/manual/entities`, { credentials: 'include' });
         if (res.ok) {
           const data = await res.json();
           setEntities(data.entities || []);

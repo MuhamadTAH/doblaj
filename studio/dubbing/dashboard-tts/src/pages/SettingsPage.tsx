@@ -1,5 +1,8 @@
 import React, { useState } from "react";
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+
+
 export default function SettingsPage() {
   const [password, setPassword] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
@@ -15,7 +18,7 @@ export default function SettingsPage() {
       // credentials: "include". Do NOT read the cookie from JavaScript
       // — HttpOnly cookies are invisible to document.cookie, and exposing
       // a non-HttpOnly token to JS would let any XSS steal the session.
-      const res = await fetch("/api/user/delete", {
+      const res = await fetch(`${API_BASE}/api/user/delete`, {
         method: "POST",
         credentials: "include",
         headers: {

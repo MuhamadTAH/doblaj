@@ -29,6 +29,7 @@ import type * as usageLogs from "../usageLogs.js";
 import type * as users from "../users.js";
 import type * as verify from "../verify.js";
 import type * as voices from "../voices.js";
+import type * as webhooks from "../webhooks.js";
 import type * as workspaces from "../workspaces.js";
 
 import type {
@@ -59,6 +60,7 @@ declare const fullApi: ApiFromModules<{
   users: typeof users;
   verify: typeof verify;
   voices: typeof voices;
+  webhooks: typeof webhooks;
   workspaces: typeof workspaces;
 }>;
 

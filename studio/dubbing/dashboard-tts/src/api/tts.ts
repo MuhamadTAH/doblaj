@@ -85,7 +85,7 @@ export type Voice = {
  */
 export async function fetchVoices(): Promise<Voice[]> {
   try {
-    const res = await fetch(`${API_BASE}/api/tts-dashboard/voices`);
+    const res = await fetch(`${API_BASE}/api/tts-dashboard/voices`, { credentials: "include" });
     if (!res.ok) throw new Error(`voices: ${res.status}`);
     const data: Voice[] = await res.json();
     if (!Array.isArray(data)) return [];
@@ -123,6 +123,7 @@ export async function generateTts(req: TtsRequest): Promise<Blob> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req),
+      credentials: "include",
     });
     if (!res.ok) throw new Error(`TTS backend returned ${res.status}`);
     return await res.blob();
@@ -146,7 +147,7 @@ export async function previewVoice(voiceId: string): Promise<{ blob: Blob; url: 
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/tts-dashboard/voices/${encodeURIComponent(voiceId)}/preview`);
+    const res = await fetch(`${API_BASE}/api/tts-dashboard/voices/${encodeURIComponent(voiceId)}/preview`, { credentials: "include" });
     if (!res.ok) throw new Error(`preview: ${res.status}`);
     const blob = await res.blob();
     const result = { blob, url: URL.createObjectURL(blob), isMock: false };
