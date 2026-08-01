@@ -174,7 +174,7 @@ class AuthBounceMiddleware(BaseHTTPMiddleware):
             path_target = request.url.path
             import re
             if not re.fullmatch(r"^/[a-zA-Z0-9_/.-]+", path_target) or "//" in path_target or "\\" in path_target or "/.." in path_target:
-                safe_target = "/video/dubbing"
+                safe_target = "/tts/dubbing"
             else:
                 safe_target = path_target
             shell = f"{SHELL_ORIGIN}/?next={safe_target}"
@@ -454,6 +454,7 @@ try:
     try:
         from app.api.routes import payments
         app.include_router(payments.router, prefix="/api/payments", tags=["payments"])
+        app.include_router(payments.router, prefix="/payments", tags=["payments"])
         logger.info("[STARTUP] Payments router loaded OK")
     except Exception as e:
         logger.exception("[STARTUP] Payments router failed to load: %s", e)
