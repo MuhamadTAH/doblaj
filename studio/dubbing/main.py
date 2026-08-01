@@ -177,7 +177,7 @@ class AuthBounceMiddleware(BaseHTTPMiddleware):
                 safe_target = "/tts/dubbing"
             else:
                 safe_target = path_target
-            shell = f"{SHELL_ORIGIN}/?next={safe_target}"
+            shell = f"/?next={safe_target}"
             return RedirectResponse(url=shell, status_code=302)
         return response
 
