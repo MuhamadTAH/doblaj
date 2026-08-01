@@ -353,13 +353,18 @@ async def _serve_tts_shell(request: Request) -> HTMLResponse:
         # Pird: Privacy policy and terms of service pages must be public!
         is_public = request.url.path in ["/tts/privacy-policy", "/tts/terms-of-service"]
         if not is_public:
-            # Force AuthBounceMiddleware to redirect browser nav to the shell.
-            # Plain 401 (not 302) — middleware does the redirect for Accept: text/html.
-            raise HTTPException(
-                status_code=401,
-                detail="Sign in required",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+            # Direct redirect — do NOT rely on AuthBounceMiddleware intercepting
+            # a 401. BaseHTTPMiddleware.call_next() wraps the handler in a
+            # background task; if the Accept header or status-code propagation
+            # misfires the 401 is never seen by the middleware and the React
+            # shell loads unauthenticated. A 302 here is guaranteed to work.
+            import re as _re
+            path_target = request.url.path
+            if not _re.fullmatch(r"^/[a-zA-Z0-9_/.-]+", path_target) or "//" in path_target or "\\" in path_target or "/.." in path_target:
+                safe_target = "/tts/dubbing"
+            else:
+                safe_target = path_target
+            return RedirectResponse(url=f"/?next={safe_target}", status_code=302)
 
     locale = resolve_locale(request)
     dir_attr = "rtl" if is_rtl(locale) else "ltr"
