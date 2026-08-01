@@ -3,10 +3,7 @@ import react from "@vitejs/plugin-react";
 import path from "node:path";
 
 // Pird: build of the merged TTS dashboard. Output goes to
-// dubbing/app/static/tts-dashboard/ so FastAPI can serve it as
-// StaticFiles(html=True) at /tts/*. dev-mode proxy points at
-// the merged dubbing service on :8002 (was :8000 in standalone
-// tts-service_old).
+// `dist/` so Cloudflare Pages can deploy it as a static site.
 //
 // base: "/tts/" makes Vite emit /tts/assets/* paths in index.html
 // (instead of /assets/*). Required because the bundle is mounted
@@ -19,7 +16,7 @@ export default defineConfig({
     alias: { "@": path.resolve(__dirname, "./src") },
   },
   build: {
-    outDir: path.resolve(__dirname, "../app/static/tts-dashboard"),
+    outDir: "dist",
     emptyOutDir: true,
   },
   server: {

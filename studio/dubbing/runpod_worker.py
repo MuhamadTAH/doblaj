@@ -10,16 +10,18 @@ from app.core import database_convex as database
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("runpod_worker")
 
-def handler(event):
+async def handler(event):
     """
     RunPod Serverless Handler.
     Receives input payload, downloads video from R2, runs the GPU phase (Stages 1-3),
     uploads intermediate zip to R2, and updates the database to gpu_finished.
-    """
-    # Run the async main wrapper
-    return asyncio.run(async_handler(event))
 
-async def async_handler(event):
+    Declared async so the RunPod SDK awaits the coroutine directly
+    (see runpod/serverless/modules/rp_job.py: it inspects the return
+    with inspect.isawaitable and awaits if so). The previous version
+    used `def handler(...): return asyncio.run(async_handler(event))`
+    which crashed inside the SDK's already-running event loop.
+    """
     input_data = event.get("input", {})
     job_id = input_data.get("job_id")
     workspace_id = input_data.get("workspace_id")
@@ -106,4 +108,4 @@ async def async_handler(event):
         return {"status": "failed", "error": str(e)}
 
 # Start the RunPod Serverless worker
-runpod.start({"handler": handler})
+runpod.serverless.start({"handler": handler})
