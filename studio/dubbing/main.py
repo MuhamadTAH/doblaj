@@ -199,6 +199,9 @@ else:
         "http://127.0.0.1:8000",
         "http://127.0.0.1:8002",
         "http://127.0.0.1:8081",
+        "https://doblaj.com",
+        "https://www.doblaj.com",
+        "https://checkout.suby.fi",
         SHELL_ORIGIN,
     ]
 

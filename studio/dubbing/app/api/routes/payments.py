@@ -21,7 +21,13 @@ TIERS = {
 class CheckoutRequest(BaseModel):
     tier: str
 
+@router.options("/checkout")
+@router.options("/checkout/")
+async def options_checkout_session():
+    return {}
+
 @router.post("/checkout")
+@router.post("/checkout/")
 async def create_checkout_session(req: CheckoutRequest, user: AuthenticatedUser = Depends(require_user)):
     """Generate a Suby checkout URL for the requested tier."""
     if req.tier not in TIERS:
