@@ -4,15 +4,15 @@ import { t } from "@/lib/i18n";
 import { useUiStore } from "@/store/ui";
 
 const items = [
-  { to: "/", labelKey: "nav_text_to_speech", icon: "wand" },
-  { to: "/dubbing", labelKey: "nav_video_dubbing", icon: "video" },
-  { to: "/voices", labelKey: "nav_voice_library", icon: "voices" },
-  { to: "/history", labelKey: "nav_history", icon: "history" },
+  { to: "/", labelKey: "nav_text_to_speech", defaultLabel: "Text to Speech", icon: "wand" },
+  { to: "/dubbing", labelKey: "nav_video_dubbing", defaultLabel: "Video Dubbing", icon: "video" },
+  { to: "/voices", labelKey: "nav_voice_library", defaultLabel: "Voice Library", icon: "voices" },
+  { to: "/history", labelKey: "nav_history", defaultLabel: "History", icon: "history" },
 ];
 
 const platform = [
-  { to: "/billing", labelKey: "nav_billing", icon: "card" },
-  { to: "/pricing", labelKey: "nav_pricing", icon: "grad" },
+  { to: "/billing", labelKey: "nav_billing", defaultLabel: "Billing", icon: "card" },
+  { to: "/pricing", labelKey: "nav_pricing", defaultLabel: "Pricing", icon: "grad" },
 ];
 
 function Icon({ name }: { name: string }) {
@@ -133,7 +133,7 @@ export default function Sidebar() {
                   transition={{ duration: 0.15 }}
                   className="overflow-hidden whitespace-nowrap"
                 >
-                  {t(it.labelKey, it.labelKey)}
+                  {t(it.labelKey, it.defaultLabel)}
                 </motion.span>
               </NavLink>
             );
@@ -171,7 +171,7 @@ export default function Sidebar() {
                   transition={{ duration: 0.15 }}
                   className="overflow-hidden whitespace-nowrap"
                 >
-                  {t(it.labelKey, it.labelKey)}
+                  {t(it.labelKey, it.defaultLabel)}
                 </motion.span>
               </NavLink>
             );
