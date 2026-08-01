@@ -462,6 +462,13 @@ async def deduct_workspace_minutes(client: Any = None, *, workspace_id: str = ""
     return int(res)
 
 
+async def handle_refund_kill_switch(client: Any = None, *, workspace_id: str = "", amount_deducted: int = 0) -> Dict[str, Any]:
+    c = client or _get_client()
+    def _do():
+        return c.mutation("workspaces:handleRefundKillSwitchInternal", _internal_args({"legacyId": workspace_id, "amountDeducted": amount_deducted}))
+    return await asyncio.to_thread(_do)
+
+
 async def add_transaction(client: Any = None, *, transaction_id: str = "", workspace_id: str = "", tier: str = "", amount_usd: int = 0, minutes_added: int = 0) -> None:
     try:
         c = client or _get_client()

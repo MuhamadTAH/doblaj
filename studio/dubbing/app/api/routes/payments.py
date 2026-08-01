@@ -158,8 +158,8 @@ async def _process_webhook_event(event: Dict[str, Any]):
                 from app.core import db as database
                 from app.core.db import _get_service_role_client
                 client = _get_service_role_client()
-                new_bal = await database.deduct_workspace_minutes(client, workspace_id=workspace_id, minutes=minutes)
-                logger.warning(f"[WEBHOOK_ASYNC] Refund processed for {safe_ws(workspace_id)}. New balance: {new_bal}")
+                result = await database.handle_refund_kill_switch(client, workspace_id=workspace_id, amount_deducted=minutes)
+                logger.warning(f"[WEBHOOK_KILL_SWITCH] Refund active kill-switch executed for {safe_ws(workspace_id)}: {result}")
                 
         elif event_type in ("PAYMENT_FAILED", "PAYMENT.FAILED"):
             logger.warning(f"[WEBHOOK_ASYNC] Payment failed event logged: {event_data.get('id', 'unknown')}")

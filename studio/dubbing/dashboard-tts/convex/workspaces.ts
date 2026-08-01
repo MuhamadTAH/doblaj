@@ -209,18 +209,83 @@ export const deductMinutesInternal = mutation({
   handler: async (ctx, args) => {
     requireInternalApiKey(args.__internalApiKey);
     if (args.amount <= 0) throw new ConvexError("AMOUNT_MUST_BE_POSITIVE");
-    // Pird PIRD-017: workspace is looked up by legacyId; no caller-supplied
-    // workspaceId.
+    
     const ws = await ctx.db
       .query("workspaces")
       .withIndex("by_legacy_id", (q: any) => q.eq("legacyId", args.legacyId))
       .first();
     if (!ws) throw new ConvexError("WORKSPACE_NOT_FOUND");
+    
+    // Active Kill-Switch & Fraud Lockdown Enforcement
+    if (ws.isLocked || ws.status === "LOCKED_REFUND") {
+      throw new ConvexError("WORKSPACE_ACCOUNT_LOCKED_REFUND_FRAUD");
+    }
+    
+    // Velocity limit check: unverified new accounts (< 48h settlement window) capped at max 30 mins
+    const createdAtMs = ws.createdAt ? new Date(ws.createdAt).getTime() : Date.now();
+    const ageHours = (Date.now() - createdAtMs) / (1000 * 3600);
+    const totalPurchased = ws.totalPurchasedMinutes ?? 0;
+    
+    if (ageHours < 48 && totalPurchased === 0 && args.amount > 30) {
+      throw new ConvexError("VELOCITY_LIMIT_EXCEEDED_UNVERIFIED_ACCOUNT");
+    }
+    
     const current = ws.dubbingMinutes ?? 0;
     if (current < args.amount) throw new ConvexError("INSUFFICIENT_MINUTES");
     const next = current - args.amount;
     await ctx.db.patch(ws._id, { dubbingMinutes: next });
     return next;
+  },
+});
+
+export const handleRefundKillSwitchInternal = mutation({
+  args: {
+    legacyId: v.string(),
+    amountDeducted: v.number(),
+    __internalApiKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireInternalApiKey(args.__internalApiKey);
+    const ws = await ctx.db
+      .query("workspaces")
+      .withIndex("by_legacy_id", (q: any) => q.eq("legacyId", args.legacyId))
+      .first();
+    if (!ws) throw new ConvexError("WORKSPACE_NOT_FOUND");
+    
+    const current = ws.dubbingMinutes ?? 0;
+    const next = current - args.amountDeducted;
+    
+    // Active Kill-Switch: if refund pushes balance negative or zeroes account, lock immediately
+    const shouldLock = next <= 0;
+    await ctx.db.patch(ws._id, {
+      dubbingMinutes: next,
+      isLocked: shouldLock,
+      status: shouldLock ? "LOCKED_REFUND" : ws.status,
+      updatedAt: new Date().toISOString(),
+    });
+    
+    // Cancel any active running jobs for this workspace
+    if (shouldLock) {
+      const activeJobs = await ctx.db
+        .query("dubbingJobs")
+        .withIndex("by_workspace_id", (q: any) => q.eq("workspaceId", ws._id))
+        .filter((q: any) => q.or(
+          q.eq(q.field("status"), "pending"),
+          q.eq(q.field("status"), "processing"),
+          q.eq(q.field("status"), "separating")
+        ))
+        .collect();
+        
+      for (const job of activeJobs) {
+        await ctx.db.patch(job._id, {
+          status: "failed",
+          error: "WORKSPACE_LOCKED_REFUND_KILL_SWITCH",
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    }
+    
+    return { newBalance: next, locked: shouldLock };
   },
 });
 export const getAllForDebug = query({ handler: async (ctx) => { return await ctx.db.query("workspaces").collect(); } });

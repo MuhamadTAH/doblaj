@@ -13,17 +13,19 @@ class SubyClient:
         # PIRD-029: fail-closed in production. The default
         # "sandbox_secret" placeholder must NEVER be used in prod — a
         # webhook signed with the default would be accepted.
-        INVALID_PLACEHOLDERS = {"sandbox_key", "sandbox_secret", "test_key", "your_api_key_here", "your_webhook_secret_here", "placeholder", ""}
+        import re
         if os.getenv("PIRD_ENV", "").lower() == "prod":
-            if not self.webhook_secret or self.webhook_secret.lower() in INVALID_PLACEHOLDERS:
+            # Strict regex validation for Suby keys (must match format sk_live_[a-zA-Z0-9]{24,64} or sk_test_[a-zA-Z0-9]{24,64})
+            API_KEY_REGEX = r"^(sk_live_|sk_test_)[a-zA-Z0-9_-]{24,64}$"
+            WEBHOOK_SECRET_REGEX = r"^[a-zA-Z0-9_-]{32,128}$"
+
+            if not re.match(API_KEY_REGEX, self.api_key):
                 raise RuntimeError(
-                    "SUBY_WEBHOOK_SECRET is not configured or is set to a placeholder. "
-                    "In production, a valid secret is required."
+                    f"SUBY_API_KEY failed cryptographic format validation. Must match pattern '{API_KEY_REGEX}'."
                 )
-            if not self.api_key or self.api_key.lower() in INVALID_PLACEHOLDERS:
+            if not re.match(WEBHOOK_SECRET_REGEX, self.webhook_secret):
                 raise RuntimeError(
-                    "SUBY_API_KEY is not configured or is set to a placeholder. "
-                    "In production, a valid sk_live_ or sk_test_ key is required."
+                    f"SUBY_WEBHOOK_SECRET failed cryptographic format validation. Must match pattern '{WEBHOOK_SECRET_REGEX}'."
                 )
 
     async def create_checkout(self, user_id: str, workspace_id: str, tier_id: str, amount_usd: int) -> str:

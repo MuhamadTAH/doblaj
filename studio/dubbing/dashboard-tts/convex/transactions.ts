@@ -103,10 +103,12 @@ export const processPaymentSuccessInternal = mutation({
   },
   handler: async (ctx, args) => {
     const workspaceId = await resolveWorkspaceId(ctx, args.workspaceId);
+    
+    // Strict schema-level deduplication using dedicated by_suby_transaction_id index
     const existing = await ctx.db
       .query("transactions")
-      .withIndex("by_legacy_id", (q) => q.eq("legacyId", args.transactionId))
-      .unique();
+      .withIndex("by_suby_transaction_id", (q) => q.eq("subyTransactionId", args.transactionId))
+      .first();
       
     if (existing) {
       return { status: "already_processed", transactionId: existing._id };
@@ -114,6 +116,7 @@ export const processPaymentSuccessInternal = mutation({
     
     const txId = await ctx.db.insert("transactions", {
       legacyId: args.transactionId,
+      subyTransactionId: args.transactionId,
       workspaceId,
       tier: args.tier,
       amountUsd: args.amountUsd,

@@ -8,6 +8,9 @@ export default defineSchema({
     ownerUserId: v.optional(v.string()),
     plan: v.optional(v.string()),
     dubbingMinutes: v.optional(v.number()),
+    status: v.optional(v.string()), // ACTIVE, LOCKED_REFUND, RESTRICTED_VELOCITY
+    isLocked: v.optional(v.boolean()),
+    totalPurchasedMinutes: v.optional(v.number()),
     createdAt: v.optional(v.string()),
     updatedAt: v.optional(v.string()),
   }).index("by_legacy_id", ["legacyId"])
@@ -257,6 +260,7 @@ export default defineSchema({
 
   transactions: defineTable({
     legacyId: v.string(),
+    subyTransactionId: v.optional(v.string()),
     workspaceId: v.id("workspaces"),
     tier: v.optional(v.string()),
     amountUsd: v.optional(v.number()),
@@ -264,6 +268,7 @@ export default defineSchema({
     createdAt: v.optional(v.string()),
   })
     .index("by_legacy_id", ["legacyId"])
+    .index("by_suby_transaction_id", ["subyTransactionId"])
     .index("by_workspace_id", ["workspaceId"]),
 
   // PIRD-013: GDPR consent ledger. Recorded on voice upload, voice clone,
