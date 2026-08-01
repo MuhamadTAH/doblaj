@@ -605,14 +605,18 @@ async def clerk_login(request: Request, next: str = "/tts/dubbing"):
             status_code=401,
         )
     response = RedirectResponse(url=safe_next)
-    response.set_cookie(
-        key="dubbing_access_token",
-        value=token,
-        httponly=True,
-        samesite="lax",
-        secure=os.getenv("PIRD_ENV", "").lower() == "prod",
-        path="/",
-    )
+    cookie_kwargs = {
+        "key": "dubbing_access_token",
+        "value": token,
+        "httponly": True,
+        "samesite": "lax",
+        "secure": os.getenv("PIRD_ENV", "").lower() == "prod",
+        "path": "/",
+    }
+    cookie_domain = os.getenv("COOKIE_DOMAIN")
+    if cookie_domain:
+        cookie_kwargs["domain"] = cookie_domain
+    response.set_cookie(**cookie_kwargs)
     return response
 
 
