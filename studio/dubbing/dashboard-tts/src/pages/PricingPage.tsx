@@ -18,11 +18,19 @@ export default function PricingPage() {
       });
 
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.detail || "Failed to create checkout session");
+        let errorMsg = "Failed to create checkout session";
+        try {
+          const errorData = await res.json();
+          errorMsg = errorData.detail || errorMsg;
+        } catch {
+          errorMsg = `Server error (${res.status}). Please check backend logs and environment variables.`;
+        }
+        throw new Error(errorMsg);
       }
 
-      const data = await res.json();
+      const data = await res.json().catch(() => {
+        throw new Error("Invalid response format from server");
+      });
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl;
       } else {
