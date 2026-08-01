@@ -30,7 +30,7 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
         options = {"require": ["exp", "sub"]}
         if not CLERK_AUDIENCE_REQUIRED:
             options["verify_aud"] = False
-        return jwt.decode(
+        claims = jwt.decode(
             token,
             signing_key.key,
             algorithms=["RS256"],
@@ -39,20 +39,41 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
             options=options,
             leeway=5,
         )
+        
+        # PIRD: azp validation to prevent token leakage
+        azp = claims.get("azp")
+        if azp not in ["https://doblaj.com", "http://localhost:3000", "http://localhost:8081", "https://api.doblaj.com"]:
+            raise HTTPException(
+                401, 
+                "Invalid azp claim", 
+                headers={"WWW-Authenticate": 'Bearer error="invalid_token", error_description="Invalid azp claim"'}
+            )
+            
+        return claims
     except jwt.ExpiredSignatureError as exc:
-        raise HTTPException(401, "Token expired", headers={"WWW-Authenticate": "Bearer"}) from exc
+        raise HTTPException(
+            401, 
+            "Token expired", 
+            headers={"WWW-Authenticate": 'Bearer error="invalid_token", error_description="Token expired"'}
+        ) from exc
     except jwt.PyJWTError as exc:
-        raise HTTPException(401, "Invalid token", headers={"WWW-Authenticate": "Bearer"}) from exc
+        raise HTTPException(
+            401, 
+            "Invalid token", 
+            headers={"WWW-Authenticate": 'Bearer error="invalid_token", error_description="Invalid token signature"'}
+        ) from exc
 
 
-def _bearer_token(authorization: Optional[str], cookie: Optional[str]) -> str:
+def _bearer_token(authorization: Optional[str]) -> str:
     if authorization:
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() == "bearer" and token:
             return token
-    if cookie:
-        return cookie
-    raise HTTPException(401, "Authentication required", headers={"WWW-Authenticate": "Bearer"})
+    raise HTTPException(
+        401, 
+        "Authentication required", 
+        headers={"WWW-Authenticate": 'Bearer error="invalid_request", error_description="Missing or invalid Authorization header"'}
+    )
 
 
 async def _resolve_legacy_workspace_id(org_or_workspace_id: str, user_id: str) -> str:
@@ -142,11 +163,9 @@ async def _resolve_legacy_workspace_id(org_or_workspace_id: str, user_id: str) -
     return ""
 
 async def require_user(
-    authorization: Optional[str] = Header(None), 
-    dubbing_access_token: Optional[str] = Cookie(None),
-    clerk_session: Optional[str] = Cookie(None, alias="__session")
+    authorization: Optional[str] = Header(None)
 ) -> AuthenticatedUser:
-    token = _bearer_token(authorization, dubbing_access_token or clerk_session)
+    token = _bearer_token(authorization)
     claims = _decode_clerk_jwt(token)
     workspace_id = claims.get("workspace_id")
     if not workspace_id:
@@ -162,10 +181,8 @@ async def require_user(
 
 
 async def require_user_optional(
-    authorization: Optional[str] = Header(None), 
-    dubbing_access_token: Optional[str] = Cookie(None),
-    clerk_session: Optional[str] = Cookie(None, alias="__session")
+    authorization: Optional[str] = Header(None)
 ) -> Optional[AuthenticatedUser]:
-    if not authorization and not dubbing_access_token and not clerk_session:
+    if not authorization:
         return None
-    return await require_user(authorization, dubbing_access_token, clerk_session)
+    return await require_user(authorization)

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { getClerkToken } from "@/api/dubbing";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
@@ -14,15 +15,12 @@ export default function SettingsPage() {
     setMessage("");
 
     try {
-      // Pird: rely on the HttpOnly dubbing_access_token cookie via
-      // credentials: "include". Do NOT read the cookie from JavaScript
-      // — HttpOnly cookies are invisible to document.cookie, and exposing
-      // a non-HttpOnly token to JS would let any XSS steal the session.
+      const token = await getClerkToken();
       const res = await fetch(`${API_BASE}/api/user/delete`, {
         method: "POST",
-        credentials: "include",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({ password }),
       });

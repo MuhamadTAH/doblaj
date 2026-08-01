@@ -156,33 +156,7 @@ logger.info("[STARTUP] Dubbing data backend: Convex")
 # ?next=<current-url>. Only fires for browser navigations (Accept: text/html
 # + GET) returning 401 from a require_user-gated route. API/JSON callers
 # still get the raw 401 so curl/scripts aren't redirected.
-SHELL_ORIGIN = os.getenv("PIRD_SHELL_ORIGIN", "http://localhost:8081")
-
-
-class AuthBounceMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        accept = request.headers.get("accept", "")
-        is_browser_nav = (
-            request.method == "GET"
-            and "text/html" in accept
-            and not request.url.path.startswith("/api/")
-            and not request.url.path.startswith("/pird/")
-        )
-        response = await call_next(request)
-        if is_browser_nav and response.status_code == 401:
-            # PIRD-022: sanitize next target URL path to prevent open-redirect abuse.
-            path_target = request.url.path
-            import re
-            if not re.fullmatch(r"^/[a-zA-Z0-9_/.-]+", path_target) or "//" in path_target or "\\" in path_target or "/.." in path_target:
-                safe_target = "/tts/dubbing"
-            else:
-                safe_target = path_target
-            shell = f"/?next={safe_target}"
-            return RedirectResponse(url=shell, status_code=302)
-        return response
-
-
-app.add_middleware(AuthBounceMiddleware)
+# (AuthBounceMiddleware removed in favor of React ClerkProvider)
 
 # PIRD-019: CORS configuration — explicit origin allowlist per RFC 6454.
 # Never combine allow_origins=["*"] with allow_credentials=True.
@@ -208,7 +182,7 @@ else:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -304,29 +278,17 @@ def _inject_pird_config(index_html: str, locale: str, dir_attr: str) -> str:
 
 
 async def _resolve_user_from_request(request: Request) -> Optional["AuthenticatedUser"]:
-    """Decode the Clerk JWT from the cookie or Authorization header.
-
-    Pird (security review L1): this used to be a hand-rolled duplicate
-    of `app.auth.clerk_auth.require_user`. The duplicated path skipped
-    the workspace resolution via `workspaces:findByOwnerInternal` and
-    could miss future auth hardening. It now delegates to the canonical
-    dependency, so the two paths can't drift apart.
-    """
+    """Decode the Clerk JWT from the Authorization header."""
     from app.auth.clerk_auth import require_user, AuthenticatedUser
-    from fastapi import Header, Cookie, HTTPException
+    from fastapi import HTTPException
 
     auth = request.headers.get("authorization")
-    cookie = request.cookies.get("dubbing_access_token")
 
-    if not auth and not cookie:
+    if not auth:
         return None
 
-    # Pird: require_user is `async` and accepts the same Header/Cookie
-    # signatures FastAPI would inject, so we pass them through directly.
-    # It raises HTTPException on failure — catch and translate to None
-    # because this helper is a "best effort" probe for the shell route.
     try:
-        return await require_user(authorization=auth, dubbing_access_token=cookie)
+        return await require_user(authorization=auth)
     except HTTPException:
         return None
 
@@ -334,46 +296,19 @@ async def _resolve_user_from_request(request: Request) -> Optional["Authenticate
 async def _serve_tts_shell(request: Request) -> HTMLResponse:
     """Serve the React shell for /tts and /tts/{anything}.
 
-    Auth: requires a valid Supabase user (cookie or Authorization header).
-    Cross-service internal callers don't hit this — they hit the JSON API
-    directly with x-internal-key, which is a different auth path.
+    Auth: Handled entirely by the React app (ClerkProvider).
     """
     index_html = _read_tts_index_html()
     if index_html is None:
-        # No build present — return a clear 503 rather than 404. The shell
-        # tile stays usable, just says "rebuild needed."
         return HTMLResponse(
             "<h1>TTS dashboard build missing</h1>"
             "<p>Run <code>npm run build</code> in <code>studio/dubbing/dashboard-tts/</code>.</p>",
             status_code=503,
         )
 
-    user = await _resolve_user_from_request(request)
-    if user is None:
-        # Pird: Privacy policy and terms of service pages must be public!
-        is_public = request.url.path in ["/tts/privacy-policy", "/tts/terms-of-service"]
-        if not is_public:
-            # Direct redirect — do NOT rely on AuthBounceMiddleware intercepting
-            # a 401. BaseHTTPMiddleware.call_next() wraps the handler in a
-            # background task; if the Accept header or status-code propagation
-            # misfires the 401 is never seen by the middleware and the React
-            # shell loads unauthenticated. A 302 here is guaranteed to work.
-            import re as _re
-            path_target = request.url.path
-            if not _re.fullmatch(r"^/[a-zA-Z0-9_/.-]+", path_target) or "//" in path_target or "\\" in path_target or "/.." in path_target:
-                safe_target = "/tts/dubbing"
-            else:
-                safe_target = path_target
-            return RedirectResponse(url=f"/?next={safe_target}", status_code=302)
-
     locale = resolve_locale(request)
     dir_attr = "rtl" if is_rtl(locale) else "ltr"
     rendered = _inject_pird_config(index_html, locale, dir_attr)
-    # Pird: no-store so the browser never caches the shell HTML.
-    # The Vite build changes the JS/CSS asset filename on every rebuild
-    # (content hash). If the browser caches old HTML it requests the old
-    # asset filename → 404 → black screen. Static assets (/tts/assets/*)
-    # are still cached normally by the browser (they're content-addressed).
     return HTMLResponse(
         rendered,
         headers={"Cache-Control": "no-store"},
@@ -541,89 +476,9 @@ async def on_shutdown():
         logger.info("[SHUTDOWN] Azure CPU polling worker cancelled")
 
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    # Pird: serve the dubbing-only sign-in shell at /. Clerk keys come
-    # from env so dev (deciding-quagga-70.clerk.accounts.dev) and prod
-    # (clerk.doblaj.com or similar) work without code changes.
-    clerk_publishable_key = os.getenv(
-        "CLERK_PUBLISHABLE_KEY",
-        "pk_test_ZGVjaWRpbmctcXVhZ2dhLTcwLmNsZXJrLmFjY291bnRzLmRldiQ",
-    )
-    clerk_frontend_api = os.getenv(
-        "CLERK_FRONTEND_API",
-        "deciding-quagga-70.clerk.accounts.dev",
-    )
-    return templates.TemplateResponse(
-        request,
-        "login.html",
-        {
-            "clerk_publishable_key": clerk_publishable_key,
-            "clerk_frontend_api": clerk_frontend_api,
-        },
-    )
-
-
-@app.get("/pird/clerk_login")
-async def clerk_login(request: Request, next: str = "/tts/dubbing"):
-    # The Clerk shell sends the JWT via `?token=` in the redirect URL. We
-    # accept it here for the one-shot same-origin redirect, verify it
-    # immediately, set an httponly cookie, and 302 to the next page. The
-    # browser replaces the URL bar so the token only exists in history
-    # briefly and never leaks to a different origin via Referer.
-    from fastapi.responses import HTMLResponse, RedirectResponse
-    from app.auth.clerk_auth import _decode_clerk_jwt, _bearer_token
-
-    token = request.query_params.get("token")
-    if not token:
-        token = _bearer_token(
-            request.headers.get("authorization"),
-            request.cookies.get("dubbing_access_token"),
-        )
-
-    # PIRD-023: strict open-redirect check with path traversal and scheme prevention.
-    import re
-    if (
-        not next
-        or not re.fullmatch(r"^/[a-zA-Z0-9_/.-]+", next)
-        or "//" in next
-        or "\\" in next
-        or "/.." in next
-        or next.startswith("/http:")
-        or next.startswith("/https:")
-    ):
-        safe_next = "/tts/dubbing"
-    else:
-        safe_next = next
-
-    try:
-        _decode_clerk_jwt(token)
-    except Exception as e:
-        logging.getLogger(__name__).error("Clerk JWT verification failed: %s", e)
-        return HTMLResponse(
-            "<html><body style='font-family:sans-serif;background:#0b1220;color:#e2e8f0;display:flex;align-items:center;justify-content:center;height:100vh;'><div><h3>Session expired or invalid.</h3><p>Please return to the shell and sign in again.</p></div></body></html>",
-            status_code=401,
-        )
-    response = RedirectResponse(url=safe_next)
-    cookie_kwargs = {
-        "key": "dubbing_access_token",
-        "value": token,
-        "httponly": True,
-        "samesite": "lax",
-        "secure": os.getenv("PIRD_ENV", "").lower() == "prod",
-        "path": "/",
-    }
-    cookie_domain = os.getenv("COOKIE_DOMAIN")
-    if cookie_domain:
-        cookie_kwargs["domain"] = cookie_domain
-    response.set_cookie(**cookie_kwargs)
-    return response
-
-
-# Temporary compatibility alias during the Clerk cutover.
-@app.get("/pird/supabase_login")
-async def supabase_login(request: Request, next: str = "/video/dubbing"):
-    return await clerk_login(request, next=next)
+@app.get("/")
+async def index():
+    return RedirectResponse(url="/tts/dubbing", status_code=302)
 
 
 @app.get("/api/auth/me")

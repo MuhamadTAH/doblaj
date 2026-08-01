@@ -17,20 +17,35 @@ export type DubJob = {
   updated_at?: string | null;
 };
 
+export async function getClerkToken(): Promise<string> {
+  // @ts-ignore
+  if (window.Clerk?.session) {
+    // @ts-ignore
+    const token = await window.Clerk.session.getToken({ template: 'pird-dubbing' });
+    if (token) return token;
+  }
+  window.location.href = '/';
+  throw new Error("Not authenticated");
+}
+
 export async function submitDubJob(
   file: File,
   meta?: { category?: string; entity?: string },
 ): Promise<{ id: string; status: DubJobStatus }> {
   const form = new FormData();
   form.append("file", file);
-  // Pird: optional category + entity so the downstream pipeline can
+  // Pird: Optional category + entity so the downstream pipeline can
   // tailor translation (e.g. preserve "Ford F-150" as a brand). Both
   // are optional — backend falls back to "general" when missing.
   if (meta?.category) form.append("category", meta.category);
   if (meta?.entity) form.append("entity", meta.entity);
-  // Pird: include dubbing_access_token cookie so the request isn't 401'd.
-  // See handoffs/dubbing-security-pass2-fixes.md Fix 6.
-  const r = await fetch(`${API_BASE}/video/jobs`, { method: "POST", body: form, credentials: "include" });
+  
+  const token = await getClerkToken();
+  const r = await fetch(`${API_BASE}/video/jobs`, { 
+    method: "POST", 
+    body: form, 
+    headers: { "Authorization": `Bearer ${token}` }
+  });
   if (!r.ok) {
     const t = await r.text();
     throw new Error(`dubbing submit -> ${r.status}: ${t.slice(0, 200)}`);
@@ -39,13 +54,19 @@ export async function submitDubJob(
 }
 
 export async function getDubStatus(jobId: string): Promise<DubJob> {
-  const r = await fetch(`${API_BASE}/video/jobs/${jobId}`, { credentials: "include" });
+  const token = await getClerkToken();
+  const r = await fetch(`${API_BASE}/video/jobs/${jobId}`, { 
+    headers: { "Authorization": `Bearer ${token}` }
+  });
   if (!r.ok) throw new Error(`dubbing status -> ${r.status}`);
   return r.json();
 }
 
 export async function getDubJobs(): Promise<DubJob[]> {
-  const r = await fetch(`${API_BASE}/video/jobs`, { credentials: "include" });
+  const token = await getClerkToken();
+  const r = await fetch(`${API_BASE}/video/jobs`, { 
+    headers: { "Authorization": `Bearer ${token}` }
+  });
   if (!r.ok) throw new Error(`dubbing list -> ${r.status}`);
   return r.json();
 }
