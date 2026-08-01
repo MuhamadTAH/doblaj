@@ -1,0 +1,9 @@
+__pycache__
+*.pyc
+.env
+data/
+static/outputs/
+scratch/
+.git
+.vscode
+.agents

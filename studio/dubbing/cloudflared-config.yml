@@ -1,0 +1,29 @@
+# Cloudflare Tunnel config for Pird Dubbing production.
+#
+# Setup:
+#   1. cloudflared tunnel login            # browser auth
+#   2. cloudflared tunnel create pird-doblaj
+#   3. Replace <TUNNEL_UUID> below with the UUID from step 2.
+#   4. cloudflared tunnel route dns pird-doblaj doblaj.com
+#      (or add CNAME manually in CF dashboard pointing to <UUID>.cfargotunnel.com)
+#   5. cloudflared service install
+#   6. net start cloudflared
+#
+# The tunnel forwards all traffic for doblaj.com to FastAPI on localhost:8002.
+# FastAPI serves the sign-in shell at / and dubbing pages/API everywhere else.
+# No wildcard subdomain needed — doblaj.com is the only public surface.
+
+tunnel: <TUNNEL_UUID>
+credentials-file: C:\Users\tarqm\.cloudflared\<TUNNEL_UUID>.json
+
+ingress:
+  # Single public hostname: doblaj.com → FastAPI
+  - hostname: doblaj.com
+    service: http://localhost:8002
+    originRequest:
+      noTLSVerify: false
+      connectTimeout: 30s
+      keepAliveConnections: 8
+      keepAliveTimeout: 90s
+  # Catch-all 404 for anything not matched (defensive — should never hit)
+  - service: http_status:404

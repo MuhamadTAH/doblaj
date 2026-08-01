@@ -1,0 +1,66 @@
+# Env files
+.env
+.env.*
+!.env.example
+
+# Node dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python virtual envs and caches
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# IDE / System files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# OAuth / GCP service-account credentials — never commit
+client_secret*.json
+*gcp-credentials*.json
+*service-account*.json
+*-credentials.json
+
+# Convex migration data (Supabase exports)
+convex-data/
+
+# Temporary dubbing backend data (logs, uploads, intermediate job files)
+studio/dubbing/data/
+
+# Media files (user uploads, TTS output, dubbed videos)
+*.mp4
+*.mov
+*.webm
+*.mp3
+*.wav
+*.flac
+# App static assets (intentional, not user data)
+!studio/dubbing/app/static/tts-dashboard/logo.mp4
+!studio/dubbing/dashboard-tts/public/logo.mp4
+
+# Logs
+*.log
+
+# Audit scratch dirs
+_audit_tmp/
+_skill_extract/
+.backup-scratch-*/
+
+# Agent state (Claude Code, custom subagents)
+.claude/
+.agents/

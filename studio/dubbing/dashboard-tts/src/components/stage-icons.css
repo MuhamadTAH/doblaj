@@ -1,0 +1,275 @@
+/*
+ * Pird: six-stage process icons.
+ * Source: process-icons.html by the user (six self-contained SVG + CSS
+ * animations). Extracted here so the dubbing page can render them
+ * inline with React.
+ *
+ * Each icon has two layers:
+ *   - A base SVG element (always visible)
+ *   - Animations that run while the parent has the `stage-active` class
+ *
+ * Mapping (display tag → stage):
+ *   ingest      → UPLOAD     (animated icon 1)
+ *   isolate     → SEPARATE   (animated icon 2)
+ *   extract     → TRANSCRIBE (animated icon 3)
+ *   localize    → TRANSLATE  (animated icon 4)
+ *   synthesize  → RE-VOICE   (animated icon 5)
+ *   master      → ASSEMBLE   (animated icon 6)
+ */
+
+/* shared animation gate — animations only run when .stage-active */
+.stage-icon .anim {
+  animation-play-state: paused;
+  transform-box: fill-box;
+}
+.stage-icon.stage-active .anim {
+  animation-play-state: running;
+}
+
+/* shared gradient stops for icons 1 + 5 */
+.grad-amber { stop-color: #f2b84c; }
+.grad-teal  { stop-color: #37d6c2; }
+
+/* ============== ICON 1 — INGEST (UPLOAD) ============== */
+.icon-ingest .ic1-path {
+  fill: none; stroke: #4a4238; stroke-width: 2; stroke-dasharray: 4 6;
+  stroke-linecap: round; animation: ic1Flow .8s linear infinite;
+}
+@keyframes ic1Flow { to { stroke-dashoffset: -20; } }
+.icon-ingest .ic1-vault rect { fill: none; stroke: #4a4238; stroke-width: 2.5; }
+.icon-ingest .ic1-vault line { stroke: #4a4238; stroke-width: 2; }
+.icon-ingest .ic1-led {
+  fill: #37d6c2; opacity: .3;
+  animation: ic1Led 3.2s ease-in-out infinite;
+}
+@keyframes ic1Led {
+  0%, 54% { opacity: .3; }
+  66%, 80% { opacity: 1; }
+  100% { opacity: .3; }
+}
+.icon-ingest .ic1-ping {
+  fill: none; stroke: #37d6c2; stroke-width: 2; opacity: 0;
+  transform-origin: 50% 50%;
+  animation: ic1Ping 3.2s ease-out infinite;
+}
+@keyframes ic1Ping {
+  0%, 58% { opacity: 0; transform: scale(.5); }
+  66% { opacity: .9; transform: scale(.7); }
+  96%, 100% { opacity: 0; transform: scale(2.3); }
+}
+.icon-ingest .ic1-file {
+  opacity: 1; transform-origin: 50% 100%;
+  animation: ic1File 3.2s cubic-bezier(.5,0,.2,1) infinite;
+}
+@keyframes ic1File {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  54% { transform: translateY(-56px) scale(.95); opacity: 1; }
+  70%, 100% { transform: translateY(-72px) scale(.72); opacity: 0; }
+}
+.icon-ingest .ic1-file-body { fill: url(#ic1grad); }
+.icon-ingest .ic1-file-fold { fill: #14110f; opacity: .35; }
+.icon-ingest .ic1-file-line { stroke: #14110f; stroke-width: 1.6; opacity: .5; }
+
+/* ============== ICON 2 — ISOLATE (SEPARATE) ============== */
+.icon-isolate .ic2-combined {
+  fill: #f3efe6; opacity: .85;
+  animation: ic2Combined 3.4s ease-in-out infinite;
+}
+@keyframes ic2Combined {
+  0%, 36% { opacity: .85; }
+  54%, 100% { opacity: 0; }
+}
+.icon-isolate .ic2-voice {
+  fill: #f2b84c; opacity: 0; transform: translateY(30px);
+  animation: ic2Voice 3.4s ease-in-out infinite;
+}
+@keyframes ic2Voice {
+  0%, 40% { transform: translateY(30px); opacity: 0; }
+  60%, 100% { transform: translateY(0); opacity: 1; }
+}
+.icon-isolate .ic2-music {
+  fill: #37d6c2; opacity: 0; transform: scale(.85);
+  animation: ic2Music 3.4s ease-in-out infinite;
+}
+@keyframes ic2Music {
+  0%, 40% { transform: scale(.85); opacity: 0; }
+  60%, 100% { transform: scale(1); opacity: 1; }
+}
+.icon-isolate .ic2-noise {
+  fill: #9b9384; opacity: 0; transform: translateY(-30px);
+  animation: ic2Noise 3.4s ease-in-out infinite;
+}
+@keyframes ic2Noise {
+  0%, 40% { transform: translateY(-30px); opacity: 0; }
+  60%, 100% { transform: translateY(0); opacity: 1; }
+}
+.icon-isolate .ic2-flash {
+  fill: #f2b84c; opacity: 0;
+  animation: ic2Flash 3.4s ease-in-out infinite;
+}
+@keyframes ic2Flash {
+  0%, 44% { opacity: 0; }
+  49% { opacity: .8; }
+  54%, 100% { opacity: 0; }
+}
+
+/* ============== ICON 3 — EXTRACT (TRANSCRIBE) ============== */
+.icon-extract .ic3-bar {
+  fill: #37d6c2; transform-origin: 50% 100%; transform: scaleY(.25);
+  animation: ic3Bar 3.4s ease-in-out infinite;
+}
+@keyframes ic3Bar {
+  0% { transform: scaleY(.25); }
+  9% { transform: scaleY(.75); }
+  18% { transform: scaleY(.4); }
+  27% { transform: scaleY(.9); }
+  36% { transform: scaleY(.5); }
+  45% { transform: scaleY(.7); }
+  58%, 78% { transform: scaleY(.08); }
+  100% { transform: scaleY(.25); }
+}
+.icon-extract .ic3-line {
+  fill: #f3efe6; opacity: 0; transform: translateY(6px);
+  animation: ic3Line 3.4s ease-out infinite;
+}
+@keyframes ic3Line {
+  0%, 54% { opacity: 0; transform: translateY(6px); }
+  70%, 90% { opacity: .9; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(6px); }
+}
+
+/* ============== ICON 4 — LOCALIZE (TRANSLATE) ============== */
+.icon-localize .ic4-tile {
+  transform-origin: 50% 50%;
+  animation: ic4Tile 3.6s ease-in-out infinite;
+}
+@keyframes ic4Tile {
+  0%, 20% { transform: scaleY(1); }
+  27% { transform: scaleY(.05); }
+  34%, 78% { transform: scaleY(1); }
+  85% { transform: scaleY(.05); }
+  92%, 100% { transform: scaleY(1); }
+}
+.icon-localize .ic4-a {
+  fill: #37d6c2; opacity: 1;
+  animation: ic4A 3.6s linear infinite;
+}
+@keyframes ic4A {
+  0%, 25% { opacity: 1; }
+  27%, 86% { opacity: 0; }
+  88%, 100% { opacity: 1; }
+}
+.icon-localize .ic4-b {
+  fill: #f2b84c; opacity: 0;
+  animation: ic4B 3.6s linear infinite;
+}
+@keyframes ic4B {
+  0%, 25% { opacity: 0; }
+  27%, 86% { opacity: 1; }
+  88%, 100% { opacity: 0; }
+}
+
+/* ============== ICON 5 — SYNTHESIZE (RE-VOICE) ============== */
+.icon-synthesize .ic5-bar {
+  fill: url(#ic5grad); transform-origin: 50% 100%; transform: scaleY(0);
+  animation: ic5Bar 3.2s ease-out infinite;
+}
+@keyframes ic5Bar {
+  0%, 8% { transform: scaleY(0); }
+  26% { transform: scaleY(1); }
+  42% { transform: scaleY(.82); }
+  58% { transform: scaleY(1); }
+  74% { transform: scaleY(.86); }
+  88% { transform: scaleY(1); }
+  96% { transform: scaleY(.3); }
+  100% { transform: scaleY(0); }
+}
+.icon-synthesize .ic5-line { fill: #9b9384; }
+
+/* ============== ICON 6 — MASTER (ASSEMBLE) ============== */
+.icon-master .ic6-video {
+  fill: #9b9384; translate: 0 -46px; opacity: 0;
+  transform-origin: 50% 50%;
+  animation: ic6VideoPos 3.6s ease-out infinite, ic6Bounce 3.6s ease-out infinite;
+}
+@keyframes ic6VideoPos {
+  0% { translate: 0 -46px; opacity: 0; }
+  6% { opacity: 1; }
+  32%, 85% { translate: 0 0; opacity: 1; }
+  95% { opacity: 0; }
+  100% { translate: 0 -46px; opacity: 0; }
+}
+.icon-master .ic6-audio {
+  fill: #37d6c2; translate: 0 -30px; opacity: 0;
+  transform-origin: 50% 50%;
+  animation: ic6AudioPos 3.6s ease-out infinite, ic6Bounce 3.6s ease-out infinite;
+}
+@keyframes ic6AudioPos {
+  0% { translate: 0 -30px; opacity: 0; }
+  12% { opacity: 1; }
+  40%, 85% { translate: 0 0; opacity: 1; }
+  95% { opacity: 0; }
+  100% { translate: 0 -30px; opacity: 0; }
+}
+.icon-master .ic6-voice {
+  fill: #f2b84c; translate: 0 -16px; opacity: 0;
+  transform-origin: 50% 50%;
+  animation: ic6VoicePos 3.6s ease-out infinite, ic6Bounce 3.6s ease-out infinite;
+}
+@keyframes ic6VoicePos {
+  0% { translate: 0 -16px; opacity: 0; }
+  18% { opacity: 1; }
+  46%, 85% { translate: 0 0; opacity: 1; }
+  95% { opacity: 0; }
+  100% { translate: 0 -16px; opacity: 0; }
+}
+@keyframes ic6Bounce {
+  0%, 47% { scale: 1; }
+  50% { scale: 1.05; }
+  55% { scale: .98; }
+  60%, 100% { scale: 1; }
+}
+.icon-master .ic6-ring {
+  fill: none; stroke: #f2b84c; stroke-width: 2; opacity: 0;
+  animation: ic6Ring 3.6s ease-out infinite;
+}
+@keyframes ic6Ring {
+  0%, 45% { opacity: 0; }
+  50% { opacity: .9; }
+  60%, 100% { opacity: 0; }
+}
+.icon-master .ic6-check {
+  fill: none; stroke: #37d6c2; stroke-width: 4; stroke-linecap: round;
+  stroke-linejoin: round; stroke-dasharray: 27; stroke-dashoffset: 27; opacity: 0;
+  animation: ic6Check 3.6s ease-out infinite;
+}
+@keyframes ic6Check {
+  0%, 47% { opacity: 0; stroke-dashoffset: 27; }
+  50% { opacity: 1; }
+  62%, 85% { stroke-dashoffset: 0; opacity: 1; }
+  95%, 100% { opacity: 0; stroke-dashoffset: 27; }
+}
+
+/* ---------- accessibility: respect reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .stage-icon .anim { animation: none !important; }
+  .icon-ingest .ic1-file { transform: translateY(-70px) scale(.8); opacity: .9; }
+  .icon-ingest .ic1-ping { opacity: 0; }
+  .icon-ingest .ic1-led { opacity: 1; }
+  .icon-isolate .ic2-combined { opacity: 0; }
+  .icon-isolate .ic2-voice,
+  .icon-isolate .ic2-music,
+  .icon-isolate .ic2-noise { opacity: 1; transform: translateY(0) scale(1); }
+  .icon-isolate .ic2-flash { opacity: 0; }
+  .icon-extract .ic3-bar { transform: scaleY(.1); }
+  .icon-extract .ic3-line { opacity: .9; transform: translateY(0); }
+  .icon-localize .ic4-tile { transform: scaleY(1); }
+  .icon-localize .ic4-a { opacity: 0; }
+  .icon-localize .ic4-b { opacity: 1; }
+  .icon-synthesize .ic5-bar { transform: scaleY(.85); }
+  .icon-master .ic6-video,
+  .icon-master .ic6-audio,
+  .icon-master .ic6-voice { translate: 0 0; scale: 1; opacity: 1; }
+  .icon-master .ic6-ring { opacity: 0; }
+  .icon-master .ic6-check { opacity: 1; stroke-dashoffset: 0; }
+}

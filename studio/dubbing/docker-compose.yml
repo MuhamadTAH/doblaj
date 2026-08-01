@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  dubbing-pipeline:
+    build: .
+    container_name: dubbing_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    volumes:
+      # Mount the data directory for persistent SQLite ledger (dubbing.db)
+      - ./data:/app/data
+      # Mount the outputs directory for final videos
+      - ./static/outputs:/app/static/outputs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

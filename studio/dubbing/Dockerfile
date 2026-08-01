@@ -1,0 +1,40 @@
+FROM pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
+
+# Prevent interactive prompts during apt-get
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Install system dependencies
+# ffmpeg is strictly required for Pyannote, audio separation, and our custom slicing
+# libsndfile1 is required for soundfile/scipy audio processing
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libsndfile1 \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the requirements file into the container
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/ -r requirements.txt \
+    && pip install --no-cache-dir --no-deps resemble-enhance>=0.0.1
+
+# Accept HF_TOKEN as a build argument to download Pyannote weights
+ARG HF_TOKEN
+ENV HF_TOKEN=${HF_TOKEN}
+
+# Copy the rest of the application code
+COPY . .
+
+# Cache the AI models into the image to prevent slow cold starts
+RUN python scripts/cache_models.py
+
+# Expose the port the app runs on (not strictly needed for RunPod, but good to keep)
+EXPOSE 8000
+
+# Command to run the RunPod Serverless worker
+CMD ["python", "-u", "runpod_worker.py"]

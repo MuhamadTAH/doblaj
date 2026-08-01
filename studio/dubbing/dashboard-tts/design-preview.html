@@ -1,0 +1,255 @@
+<!doctype html>
+<!-- @dsCard group="dashboard" -->
+<html lang="en" dir="ltr" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1200, initial-scale=1" />
+  <title>Pird TTS — Voice Library Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --surface-0: #0a0a0b; --surface-1: #111114; --surface-2: #15151a; --surface-3: #1c1c22;
+      --border-subtle: rgba(255,255,255,0.06); --border-strong: rgba(255,255,255,0.10);
+      --text-primary: #fafafa; --text-secondary: #cfcfd3; --text-muted: #7e7e8b; --text-disabled: #5a5a68;
+      --accent-primary: #38bdf8; --accent-primary-deep: #0284c7; --accent-secondary: #a855f7;
+      --accent-success: #34d399; --accent-warning: #fbbf24; --accent-danger: #f87171;
+      --radius-pill: 9999px; --radius-sm: 6px; --radius-md: 10px; --radius-lg: 16px; --radius-xl: 20px;
+      --shadow-sm: 0 1px 0 0 rgba(255,255,255,0.04) inset;
+      --shadow-md: 0 8px 32px -8px rgba(0,0,0,0.6);
+      --shadow-lg: 0 0 0 1px rgba(56,189,248,0.25), 0 0 24px -4px rgba(56,189,248,0.4);
+      --t-micro: 100ms; --t-hover: 200ms; --t-enter: 300ms;
+      --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    }
+    html.light {
+      --surface-0: #fafafa; --surface-1: #f4f4f5; --surface-2: #e4e4e7; --surface-3: #d4d4d8;
+      --border-subtle: rgba(0,0,0,0.08); --border-strong: rgba(0,0,0,0.14);
+      --text-primary: #0a0a0b; --text-secondary: #3a3a47; --text-muted: #5a5a68; --text-disabled: #a3a3af;
+      --accent-primary: #0284c7; --accent-primary-deep: #075985; --accent-secondary: #7e22ce;
+      --shadow-sm: 0 1px 0 0 rgba(255,255,255,0.6) inset;
+      --shadow-md: 0 8px 32px -8px rgba(0,0,0,0.10);
+      --shadow-lg: 0 0 0 1px rgba(2,132,199,0.30), 0 0 24px -4px rgba(2,132,199,0.45);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 1200px; height: 900px; overflow: hidden; }
+    body {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px; line-height: 20px; color: var(--text-secondary);
+      background: radial-gradient(1200px 600px at 80% -10%, rgba(56,189,248,0.08), transparent 60%), radial-gradient(900px 500px at 0% 100%, rgba(168,85,247,0.07), transparent 60%), var(--surface-0);
+      -webkit-font-smoothing: antialiased;
+    }
+    [dir="rtl"] .arrow-flip { transform: scaleX(-1); }
+    .app { display: grid; grid-template-columns: 240px 1fr; grid-template-rows: 64px 1fr 100px; height: 100%; }
+    .topnav { grid-column: 1 / 3; grid-row: 1; }
+    .sidebar { grid-column: 1; grid-row: 2 / 4; }
+    .main { grid-column: 2; grid-row: 2; overflow: hidden; }
+    .player { grid-column: 2; grid-row: 3; }
+    .topnav { display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid var(--border-subtle); background: rgba(10,10,11,0.7); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 40; }
+    .topnav-left { display: flex; align-items: center; gap: 12px; }
+    .icon-btn { width: 36px; height: 36px; border-radius: var(--radius-md); background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); color: var(--text-secondary); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: all var(--t-hover) var(--ease-standard); }
+    .icon-btn:hover { color: var(--text-primary); background: rgba(255,255,255,0.07); }
+    .icon-btn.active { background: rgba(56,189,248,0.20); color: #7dd3fc; border-color: rgba(56,189,248,0.30); }
+    .page-title { color: var(--text-primary); font-size: 14px; font-weight: 600; line-height: 1; }
+    .page-sub { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+    .topnav-right { display: flex; align-items: center; gap: 8px; }
+    .team-chip { display: inline-flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border-radius: var(--radius-pill); background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); cursor: pointer; transition: background var(--t-hover) var(--ease-standard); }
+    .team-chip:hover { background: rgba(255,255,255,0.06); }
+    .team-chip span { color: var(--text-primary); font-size: 12px; font-weight: 500; }
+    .plan-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-pill); background: rgba(255,255,255,0.06); color: #a3a3af; }
+    .avatar-mini { width: 28px; height: 28px; border-radius: var(--radius-pill); background: linear-gradient(135deg, #38bdf8, #a855f7); color: white; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+    .sidebar { background: rgba(17,17,20,0.4); backdrop-filter: blur(12px); border-right: 1px solid var(--border-subtle); display: flex; flex-direction: column; padding: 0; }
+    .sidebar-logo { height: 64px; display: flex; align-items: center; gap: 10px; padding: 0 20px; border-bottom: 1px solid var(--border-subtle); }
+    .logo-mark { width: 32px; height: 32px; border-radius: var(--radius-md); background: linear-gradient(135deg, #38bdf8, #a855f7); display: inline-flex; align-items: center; justify-content: center; box-shadow: var(--shadow-lg); }
+    .logo-mark svg { width: 16px; height: 16px; color: white; }
+    .logo-text { color: var(--text-primary); font-size: 15px; font-weight: 600; }
+    .sidebar-section { padding: 16px 24px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-disabled); }
+    .nav { padding: 0 12px; display: flex; flex-direction: column; gap: 4px; }
+    .nav-item { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: var(--radius-md); color: var(--text-secondary); font-size: 13px; text-decoration: none; transition: all var(--t-hover) var(--ease-standard); position: relative; cursor: pointer; }
+    .nav-item:hover { background: rgba(255,255,255,0.04); color: var(--text-primary); }
+    .nav-item.active { background: rgba(255,255,255,0.06); color: var(--text-primary); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06); }
+    .nav-item.active::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px; background: linear-gradient(180deg, var(--accent-primary), var(--accent-secondary)); border-radius: 0 2px 2px 0; }
+    [dir="rtl"] .nav-item.active::before { left: auto; right: 0; border-radius: 2px 0 0 2px; }
+    .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .nav-item.muted { opacity: 0.7; }
+    .nav-item.muted:hover { opacity: 1; }
+    .sidebar-upgrade { margin: auto 12px 16px; padding: 12px 0 0; border-top: 1px solid var(--border-subtle); }
+    .btn-upgrade { width: 100%; padding: 8px; border-radius: var(--radius-md); border: none; cursor: pointer; background: linear-gradient(180deg, #fde68a, #fcd34d); color: #78350f; font-size: 13px; font-weight: 600; transition: all var(--t-hover) var(--ease-standard); }
+    .btn-upgrade:hover { background: linear-gradient(180deg, #fef3c7, #fde68a); }
+    .main { padding: 24px 24px 0; overflow: hidden; }
+    .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+    .page-header h1 { color: var(--text-primary); font-size: 24px; font-weight: 600; line-height: 32px; }
+    .page-header .meta { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+    .filters { display: flex; align-items: center; gap: 8px; }
+    .search-wrap { position: relative; }
+    .search-wrap svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text-disabled); }
+    [dir="rtl"] .search-wrap svg { left: auto; right: 12px; }
+    [dir="rtl"] .search-wrap input { padding-left: 12px; padding-right: 36px; }
+    .input { width: 256px; height: 36px; padding: 0 12px 0 36px; border-radius: var(--radius-md); background: rgba(17,17,20,0.8); border: 1px solid var(--border-subtle); color: var(--text-primary); font-size: 13px; outline: none; transition: all var(--t-hover) var(--ease-standard); font-family: inherit; }
+    .input::placeholder { color: var(--text-disabled); }
+    .input:focus { border-color: rgba(56,189,248,0.50); box-shadow: 0 0 0 1px rgba(56,189,248,0.30); }
+    .select { width: 128px; height: 36px; padding: 0 12px; border-radius: var(--radius-md); background: rgba(17,17,20,0.8); border: 1px solid var(--border-subtle); color: var(--text-primary); font-size: 13px; cursor: pointer; outline: none; font-family: inherit; transition: all var(--t-hover) var(--ease-standard); }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .card { background: var(--surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow-sm), var(--shadow-md); transition: all var(--t-hover) var(--ease-standard); }
+    .card:hover { border-color: var(--border-strong); }
+    .card-head { display: flex; align-items: flex-start; gap: 12px; }
+    .avatar { width: 48px; height: 48px; border-radius: var(--radius-pill); flex-shrink: 0; background: linear-gradient(135deg, rgba(56,189,248,0.30), rgba(168,85,247,0.30)); border: 1px solid rgba(255,255,255,0.08); color: var(--text-primary); font-size: 18px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+    .card-info { flex: 1; min-width: 0; }
+    .card-name { color: var(--text-primary); font-size: 16px; font-weight: 500; line-height: 24px; display: flex; align-items: center; gap: 8px; }
+    .card-name .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--radius-pill); font-size: 10px; font-weight: 600; border: 1px solid transparent; }
+    .chip-your { background: rgba(52,211,153,0.15); color: #6ee7b7; }
+    .chip-lang-ariq { background: rgba(56,189,248,0.15); color: #7dd3fc; }
+    .chip-lang-ckb { background: rgba(168,85,247,0.15); color: #c084fc; }
+    .card-meta { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+    .card-hash { font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 10px; color: var(--text-disabled); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .btn-play { width: 36px; height: 36px; border-radius: var(--radius-pill); flex-shrink: 0; background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); color: var(--text-secondary); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: all var(--t-hover) var(--ease-standard); }
+    .btn-play:hover { color: var(--text-primary); background: rgba(255,255,255,0.07); }
+    .btn-play.playing { background: linear-gradient(180deg, var(--accent-primary), var(--accent-primary-deep)); color: white; border-color: transparent; box-shadow: var(--shadow-lg); }
+    .btn-play svg { width: 14px; height: 14px; }
+    .card-desc { color: var(--text-secondary); font-size: 12px; line-height: 18px; margin-top: 12px; }
+    .card-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .chip-tag { background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); color: var(--text-secondary); padding: 2px 8px; border-radius: var(--radius-pill); font-size: 10px; font-weight: 600; }
+    .player { display: flex; align-items: center; justify-content: center; padding: 0 24px 24px; }
+    .player-bar { width: 720px; max-width: 100%; padding: 12px 16px; background: var(--surface-2); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-xl); backdrop-filter: blur(12px); box-shadow: var(--shadow-sm), var(--shadow-md); display: flex; align-items: center; gap: 12px; }
+    .btn-play-lg { width: 40px; height: 40px; border-radius: var(--radius-pill); flex-shrink: 0; background: linear-gradient(180deg, var(--accent-primary), var(--accent-primary-deep)); color: white; cursor: pointer; border: none; box-shadow: var(--shadow-lg); display: inline-flex; align-items: center; justify-content: center; }
+    .btn-play-lg svg { width: 16px; height: 16px; }
+    .player-mid { flex: 1; min-width: 0; }
+    .player-waveform { display: flex; align-items: flex-end; gap: 2px; height: 12px; margin-bottom: 6px; }
+    .player-waveform span { width: 2px; border-radius: 1px; background: linear-gradient(180deg, var(--accent-secondary), var(--accent-primary)); }
+    .player-progress { height: 6px; border-radius: var(--radius-pill); background: rgba(255,255,255,0.06); overflow: hidden; cursor: pointer; }
+    .player-progress-fill { height: 100%; width: 35%; border-radius: var(--radius-pill); background: linear-gradient(90deg, rgba(56,189,248,0.70), rgba(168,85,247,0.70)); transition: width var(--t-micro) linear; }
+    .player-time { font-family: ui-monospace, monospace; font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .btn-mini { width: 36px; height: 36px; border-radius: var(--radius-pill); background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); color: var(--text-secondary); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: all var(--t-hover) var(--ease-standard); }
+    .btn-mini:hover { color: var(--text-primary); background: rgba(255,255,255,0.07); }
+    .btn-mini svg { width: 16px; height: 16px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topnav">
+      <div class="topnav-left">
+        <button class="icon-btn" title="Toggle sidebar" aria-label="Toggle sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4 L4 12 L11 20"/><path d="M20 4 L13 12 L20 20"/></svg>
+        </button>
+        <div>
+          <div class="page-title">Voice Library</div>
+          <div class="page-sub">Browse and preview all available voices</div>
+        </div>
+      </div>
+      <div class="topnav-right">
+        <button class="icon-btn" id="theme-btn" title="Toggle theme" aria-label="Toggle theme">
+          <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+        <button class="icon-btn" id="dir-btn" title="Toggle LTR/RTL" aria-label="Toggle direction" style="font-size:11px;font-weight:600">EN</button>
+        <button class="icon-btn" title="Docs" aria-label="Docs">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        </button>
+        <div class="team-chip">
+          <span>Pird Team</span>
+          <span class="plan-badge">Free</span>
+          <span class="avatar-mini">P</span>
+        </div>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <span class="logo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 12 Q6 8 9 12 T15 12 T21 12"/></svg></span>
+        <span class="logo-text">Pird TTS</span>
+      </div>
+      <div class="sidebar-section">Studio</div>
+      <nav class="nav">
+        <a class="nav-item" href="#">TTS</a>
+        <a class="nav-item" href="#">Video Dubbing</a>
+        <a class="nav-item active" href="#">Voice Library</a>
+        <a class="nav-item" href="#">History</a>
+      </nav>
+      <div class="sidebar-section">Platform</div>
+      <nav class="nav">
+        <a class="nav-item muted" href="#">Billing</a>
+        <a class="nav-item muted" href="#">Team Settings</a>
+      </nav>
+      <div class="sidebar-upgrade">
+        <button class="btn-upgrade">Upgrade Pro</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="page-header">
+        <div>
+          <h1>Voice Library</h1>
+          <div class="meta">12 voices available</div>
+        </div>
+        <div class="filters">
+          <div class="search-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input class="input" type="text" placeholder="Search voices..." aria-label="Search voices" />
+          </div>
+          <select class="select" aria-label="Filter by language">
+            <option>All languages</option>
+            <option>ar-IQ</option>
+            <option>ckb</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card"><div class="card-head"><div class="avatar">A</div><div class="card-info"><div class="card-name"><span class="truncate">Anwar</span><span class="chip chip-your">your</span></div><div class="card-meta"><span class="chip chip-lang-ariq">ar-IQ</span> · male</div><div class="card-hash" title="295e8c434c03469198a02ed8650ed9c6">295e8c434c03...</div></div><button class="btn-play" title="Preview Anwar" aria-label="Preview Anwar" aria-pressed="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div><p class="card-desc">Warm Iraqi Arabic male narrator</p><div class="card-tags"><span class="chip-tag">#arabic</span><span class="chip-tag">#iq</span><span class="chip-tag">#narrator</span></div></div>
+        <div class="card"><div class="card-head"><div class="avatar">L</div><div class="card-info"><div class="card-name"><span class="truncate">Layla</span></div><div class="card-meta"><span class="chip chip-lang-ariq">ar-IQ</span> · female</div><div class="card-hash" title="564ff4b232d6427f91513321de5fb651">564ff4b232d6...</div></div><button class="btn-play playing" title="Pause Layla" aria-label="Pause Layla" aria-pressed="true"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button></div><p class="card-desc">Soft Iraqi Arabic female voice</p><div class="card-tags"><span class="chip-tag">#arabic</span><span class="chip-tag">#iq</span><span class="chip-tag">#narrator</span></div></div>
+        <div class="card"><div class="card-head"><div class="avatar">K</div><div class="card-info"><div class="card-name"><span class="truncate">Karwan</span></div><div class="card-meta"><span class="chip chip-lang-ckb">ckb</span> · male</div><div class="card-hash" title="93edb401ddf94e9a836a74f141be5258">93edb401ddf9...</div></div><button class="btn-play" title="Preview Karwan" aria-label="Preview Karwan" aria-pressed="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div><p class="card-desc">Kurdish Sorani male narrator</p><div class="card-tags"><span class="chip-tag">#kurdish</span><span class="chip-tag">#sorani</span><span class="chip-tag">#narrator</span></div></div>
+        <div class="card"><div class="card-head"><div class="avatar">N</div><div class="card-info"><div class="card-name"><span class="truncate">Najla</span></div><div class="card-meta"><span class="chip chip-lang-ariq">ar-IQ</span> · female</div><div class="card-hash" title="183721675c2045499e8de847f4488b32">183721675c20...</div></div><button class="btn-play" title="Preview Najla" aria-label="Preview Najla" aria-pressed="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div><p class="card-desc">Friendly Iraqi Arabic female</p><div class="card-tags"><span class="chip-tag">#arabic</span><span class="chip-tag">#iq</span><span class="chip-tag">#friendly</span></div></div>
+        <div class="card"><div class="card-head"><div class="avatar">H</div><div class="card-info"><div class="card-name"><span class="truncate">Hassan</span></div><div class="card-meta"><span class="chip chip-lang-ariq">ar-IQ</span> · male</div><div class="card-hash" title="ca39ec4818f94e979bacb8dfb9c73a33">ca39ec4818f9...</div></div><button class="btn-play" title="Preview Hassan" aria-label="Preview Hassan" aria-pressed="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div><p class="card-desc">Deep Iraqi Arabic male</p><div class="card-tags"><span class="chip-tag">#arabic</span><span class="chip-tag">#iq</span><span class="chip-tag">#deep</span></div></div>
+        <div class="card"><div class="card-head"><div class="avatar">H</div><div class="card-info"><div class="card-name"><span class="truncate">Huda</span></div><div class="card-meta"><span class="chip chip-lang-ariq">ar-IQ</span> · female</div><div class="card-hash" title="a381d0da904d402d82d457788d1b90fe">a381d0da904d...</div></div><button class="btn-play" title="Preview Huda" aria-label="Preview Huda" aria-pressed="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div><p class="card-desc">Calm Iraqi Arabic female</p><div class="card-tags"><span class="chip-tag">#arabic</span><span class="chip-tag">#iq</span><span class="chip-tag">#calm</span></div></div>
+        <div class="card"><div class="card-head"><div class="avatar">S</div><div class="card-info"><div class="card-name"><span class="truncate">Shawkat</span></div><div class="card-meta"><span class="chip chip-lang-ariq">ar-IQ</span> · male</div><div class="card-hash" title="535fff20b534436ba242e6b2a5a7588d">535fff20b534...</div></div><button class="btn-play" title="Preview Shawkat" aria-label="Preview Shawkat" aria-pressed="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div><p class="card-desc">Energetic Iraqi Arabic male</p><div class="card-tags"><span class="chip-tag">#arabic</span><span class="chip-tag">#iq</span><span class="chip-tag">#energetic</span></div></div>
+        <div class="card"><div class="card-head"><div class="avatar">M</div><div class="card-info"><div class="card-name"><span class="truncate">Maryam</span></div><div class="card-meta"><span class="chip chip-lang-ariq">ar-IQ</span> · female</div><div class="card-hash" title="47aedfd446b54e69ab3b8de1f228a454">47aedfd446b5...</div></div><button class="btn-play" title="Preview Maryam" aria-label="Preview Maryam" aria-pressed="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div><p class="card-desc">Professional Iraqi Arabic female</p><div class="card-tags"><span class="chip-tag">#arabic</span><span class="chip-tag">#iq</span><span class="chip-tag">#professional</span></div></div>
+        <div class="card"><div class="card-head"><div class="avatar">A</div><div class="card-info"><div class="card-name"><span class="truncate">Aram</span></div><div class="card-meta"><span class="chip chip-lang-ckb">ckb</span> · male</div><div class="card-hash" title="97de37d35791427b859be305d9138c51">97de37d35791...</div></div><button class="btn-play" title="Preview Aram" aria-label="Preview Aram" aria-pressed="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div><p class="card-desc">Kurdish Sorani male voice</p><div class="card-tags"><span class="chip-tag">#kurdish</span><span class="chip-tag">#sorani</span></div></div>
+        <div class="card"><div class="card-head"><div class="avatar">B</div><div class="card-info"><div class="card-name"><span class="truncate">Bana</span></div><div class="card-meta"><span class="chip chip-lang-ckb">ckb</span> · female</div><div class="card-hash" title="b9884d77122d40688628d2ae22b6c44c">b9884d77122d...</div></div><button class="btn-play" title="Preview Bana" aria-label="Preview Bana" aria-pressed="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div><p class="card-desc">Kurdish Sorani female voice</p><div class="card-tags"><span class="chip-tag">#kurdish</span><span class="chip-tag">#sorani</span></div></div>
+        <div class="card"><div class="card-head"><div class="avatar">C</div><div class="card-info"><div class="card-name"><span class="truncate">Chra</span></div><div class="card-meta"><span class="chip chip-lang-ariq">ar-IQ</span> · female</div><div class="card-hash" title="df6b40b9b06345b9af70b4ffd9aac98d">df6b40b9b063...</div></div><button class="btn-play" title="Preview Chra" aria-label="Preview Chra" aria-pressed="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div><p class="card-desc">Young Iraqi Arabic female</p><div class="card-tags"><span class="chip-tag">#arabic</span><span class="chip-tag">#iq</span><span class="chip-tag">#young</span></div></div>
+        <div class="card"><div class="card-head"><div class="avatar">A</div><div class="card-info"><div class="card-name"><span class="truncate">Avin</span></div><div class="card-meta"><span class="chip chip-lang-ckb">ckb</span> · female</div><div class="card-hash" title="8a8880cf09d74f56beb05ae98f01f504">8a8880cf09d7...</div></div><button class="btn-play" title="Preview Avin" aria-label="Preview Avin" aria-pressed="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button></div><p class="card-desc">Soft Kurdish Sorani female</p><div class="card-tags"><span class="chip-tag">#kurdish</span><span class="chip-tag">#sorani</span><span class="chip-tag">#soft</span></div></div>
+      </div>
+    </main>
+
+    <div class="player">
+      <div class="player-bar">
+        <button class="btn-play-lg" title="Play/Pause" aria-label="Play/Pause"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
+        <div class="player-mid">
+          <div class="player-waveform">
+            <span style="height:30%"></span><span style="height:67%"></span><span style="height:41%"></span><span style="height:78%"></span>
+            <span style="height:52%"></span><span style="height:89%"></span><span style="height:63%"></span><span style="height:36%"></span>
+            <span style="height:73%"></span><span style="height:47%"></span><span style="height:84%"></span><span style="height:58%"></span>
+            <span style="height:31%"></span><span style="height:68%"></span><span style="height:42%"></span><span style="height:79%"></span>
+            <span style="height:53%"></span><span style="height:90%"></span><span style="height:64%"></span><span style="height:37%"></span>
+            <span style="height:74%"></span><span style="height:48%"></span><span style="height:85%"></span><span style="height:59%"></span>
+          </div>
+          <div class="player-progress"><div class="player-progress-fill"></div></div>
+        </div>
+        <span class="player-time">0:08 / 0:24</span>
+        <button class="btn-mini arrow-flip" title="Download" aria-label="Download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+        <button class="btn-mini" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    var themeBtn = document.getElementById('theme-btn');
+    var html = document.documentElement;
+    themeBtn.addEventListener('click', function() {
+      html.classList.toggle('light');
+      html.classList.toggle('dark');
+      var icon = document.getElementById('theme-icon');
+      icon.innerHTML = html.classList.contains('light')
+        ? '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M4.93 19.07l1.41-1.41"/><path d="M17.66 6.34l1.41-1.41"/>'
+        : '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+    });
+    var dirBtn = document.getElementById('dir-btn');
+    dirBtn.addEventListener('click', function() {
+      var cur = html.getAttribute('dir') || 'ltr';
+      var next = cur === 'ltr' ? 'rtl' : 'ltr';
+      html.setAttribute('dir', next);
+      html.setAttribute('lang', next === 'rtl' ? 'ar' : 'en');
+      dirBtn.textContent = next === 'rtl' ? 'AR' : 'EN';
+    });
+  </script>
+</body>
+</html>

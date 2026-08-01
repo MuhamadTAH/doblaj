@@ -1,0 +1,27 @@
+# Pird reverse proxy — drop-in Caddy for local dev.
+# Run alongside Medusa + Chatwoot + dubbing (already running on host).
+#
+# Bring up:
+#   docker compose -f docker-compose.caddy.yml up -d
+# Open:
+#   http://localhost:8080
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '8081:8081'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Static assets served from Caddy (the Supabase login form lives here)
+      - ./:/srv/pird:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    extra_hosts:
+      # Connect to services running on the host (Docker Desktop / Windows / Mac).
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  caddy_data:
+  caddy_config:

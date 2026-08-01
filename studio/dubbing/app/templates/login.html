@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Pird</title>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta name="clerk-publishable-key" content="{{ clerk_publishable_key }}">
+<script>const PUBLISHABLE_KEY = {{ clerk_publishable_key | tojson }};</script>
+<script defer crossorigin="anonymous" src="https://{{ clerk_frontend_api }}/npm/@clerk/ui@1/dist/ui.browser.js" data-clerk-publishable-key="{{ clerk_publishable_key }}"></script>
+<script defer crossorigin="anonymous" src="https://{{ clerk_frontend_api }}/npm/@clerk/clerk-js@6/dist/clerk.browser.js" data-clerk-publishable-key="{{ clerk_publishable_key }}"></script>
+<style>
+:root{color-scheme:dark}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0b1220;color:#e2e8f0;min-height:100vh;margin:0;display:flex;align-items:center;justify-content:center}.card{background:#111827;border:1px solid #1f2937;border-radius:16px;padding:40px 36px;width:420px;box-shadow:0 8px 30px #0007}h1{font-size:24px;margin:0 0 4px}p,.hint{color:#94a3b8;font-size:14px}.hidden{display:none}.user-line{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}.signout{background:transparent;color:#94a3b8;border:0;cursor:pointer}.row{display:grid;gap:10px}.tile{display:flex;align-items:center;gap:14px;width:100%;padding:14px 16px;background:#0b1220;border:1px solid #334155;border-radius:10px;cursor:pointer;text-align:left;color:#e2e8f0;font:inherit}.tile:hover:not(:disabled){border-color:#60a5fa}.tile:disabled{opacity:.5}.icon{width:38px;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700}.meta{flex:1}.meta strong{display:block}.meta span{color:#94a3b8;font-size:12px}.err{color:#f87171;font-size:13px;margin-top:12px}.hint{font-size:12px;margin-top:8px}#dubbing-img{background:#ea580c}
+</style>
+</head>
+<body>
+<div class="card">
+  <div id="step-signin"><h1>Pird</h1><p>Sign in with Clerk.</p><div id="clerk-sign-in"></div><div id="msg" class="err"></div></div>
+  <div id="step-choose" class="hidden">
+    <div class="user-line"><div><strong>Signed in</strong><div class="hint" id="who-email"></div></div><button class="signout" id="signout">Sign out</button></div>
+    <div class="row">
+      <button class="tile" id="go-dubbing"><div class="icon" id="dubbing-img">D</div><div class="meta"><strong>Dubbing Studio</strong><span>Video translation and audio dubbing</span></div></button>
+    </div><div class="hint" id="status"></div>
+  </div>
+</div>
+<script>
+const DUBBING_URL=location.origin;
+const show=id=>{document.getElementById('step-signin').classList.toggle('hidden',id!=='step-signin');document.getElementById('step-choose').classList.toggle('hidden',id!=='step-choose')};
+const status=text=>document.getElementById('status').textContent=text;
+function bridgeNext(){const value=new URLSearchParams(location.search).get('next');if(!value)return '';try{const u=new URL(value,location.origin);if(u.origin===DUBBING_URL)return '&next='+encodeURIComponent(u.pathname+u.search+u.hash)}catch{}return ''}
+async function openDubbing(){status('Opening Dubbing Studio…');const token=await Clerk.session?.getToken({template:'pird-dubbing'});if(!token){show('step-signin');return}location.href=`/pird/clerk_login?token=${encodeURIComponent(token)}${bridgeNext()}`}
+window.addEventListener('load',async()=>{try{await Clerk.load({ui:{ClerkUI:window.__internal_ClerkUICtor},publishableKey:PUBLISHABLE_KEY});if(Clerk.isSignedIn){document.getElementById('who-email').textContent=Clerk.user?.primaryEmailAddress?.emailAddress||'';await openDubbing()}else{Clerk.mountSignIn(document.getElementById('clerk-sign-in'),{fallbackRedirectUrl:location.href})}}catch(e){document.getElementById('msg').textContent='Clerk failed to load: '+e.message}});
+document.getElementById('signout').onclick=async()=>{await Clerk.signOut();location.reload()};
+document.getElementById('go-dubbing').onclick=openDubbing;
+</script>
+</body>
+</html>

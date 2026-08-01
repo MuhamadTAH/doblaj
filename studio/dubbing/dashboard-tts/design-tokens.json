@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pird.local/design-tokens.schema.json",
+  "version": "1.0.0",
+  "name": "pird-tts-design-tokens",
+  "color": {
+    "dark": {
+      "semantic": {
+        "surface-0": { "value": "#0a0a0b", "description": "App background (near-black ink)" },
+        "surface-1": { "value": "#111114", "description": "Card / panel base" },
+        "surface-2": { "value": "#15151a", "description": "Elevated card (global player)" },
+        "surface-3": { "value": "#1c1c22", "description": "Hover / pressed surfaces" },
+        "border-subtle": { "value": "rgba(255,255,255,0.06)", "description": "Hairline borders" },
+        "border-strong": { "value": "rgba(255,255,255,0.10)", "description": "Focused / hovered outlines" },
+        "text-primary": { "value": "#fafafa", "description": "Display + headings" },
+        "text-secondary": { "value": "#cfcfd3", "description": "Body, descriptions" },
+        "text-muted": { "value": "#7e7e8b", "description": "Captions, meta, hashes" },
+        "text-disabled": { "value": "#5a5a68", "description": "Disabled controls" },
+        "accent-primary": { "value": "#38bdf8", "description": "Sky-400 brand; audio/play/CTA" },
+        "accent-primary-deep": { "value": "#0284c7", "description": "Pressed accent-primary" },
+        "accent-secondary": { "value": "#a855f7", "description": "Purple; gradients + waveform end-stop only" },
+        "accent-success": { "value": "#34d399", "description": "Active / your-voice tag" },
+        "accent-warning": { "value": "#fbbf24", "description": "Amber banner / destructive confirm" },
+        "accent-danger": { "value": "#f87171", "description": "Real errors only" }
+      },
+      "absolute": {
+        "ink-50": "#fafafa", "ink-100": "#ededee", "ink-200": "#cfcfd3", "ink-250": "#bcbcc2",
+        "ink-300": "#a3a3af", "ink-400": "#7e7e8b", "ink-500": "#5a5a68", "ink-600": "#3a3a47",
+        "ink-700": "#262630", "ink-800": "#1c1c22", "ink-850": "#15151a", "ink-900": "#111114",
+        "ink-950": "#0a0a0b",
+        "brand-50": "#f0f9ff", "brand-100": "#e0f2fe", "brand-300": "#7dd3fc",
+        "brand-400": "#38bdf8", "brand-500": "#0ea5e9", "brand-600": "#0284c7",
+        "accent-400": "#c084fc", "accent-500": "#a855f7", "accent-600": "#9333ea",
+        "emerald-300": "#6ee7b7", "emerald-500": "#10b981",
+        "amber-200": "#fde68a", "amber-300": "#fcd34d", "amber-400": "#fbbf24", "amber-900": "#78350f",
+        "red-400": "#f87171"
+      }
+    },
+    "light": {
+      "semantic": {
+        "surface-0": { "value": "#fafafa", "description": "App background (off-white)" },
+        "surface-1": { "value": "#f4f4f5", "description": "Card / panel base" },
+        "surface-2": { "value": "#e4e4e7", "description": "Elevated card" },
+        "surface-3": { "value": "#d4d4d8", "description": "Hover / pressed surfaces" },
+        "border-subtle": { "value": "rgba(0,0,0,0.08)", "description": "Hairline borders" },
+        "border-strong": { "value": "rgba(0,0,0,0.14)", "description": "Focused / hovered outlines" },
+        "text-primary": { "value": "#0a0a0b", "description": "Display + headings" },
+        "text-secondary": { "value": "#3a3a47", "description": "Body, descriptions" },
+        "text-muted": { "value": "#5a5a68", "description": "Captions, meta" },
+        "text-disabled": { "value": "#a3a3af", "description": "Disabled controls" },
+        "accent-primary": { "value": "#0284c7", "description": "Sky-600 in light (deeper for contrast)" },
+        "accent-primary-deep": { "value": "#075985", "description": "Pressed accent-primary" },
+        "accent-secondary": { "value": "#7e22ce", "description": "Purple-700 in light" },
+        "accent-success": { "value": "#047857", "description": "Active / your-voice tag" },
+        "accent-warning": { "value": "#b45309", "description": "Amber banner" },
+        "accent-danger": { "value": "#b91c1c", "description": "Real errors" }
+      },
+      "absolute": {
+        "ink-50": "#0a0a0b", "ink-100": "#3a3a47", "ink-200": "#5a5a68", "ink-300": "#7e7e8b",
+        "ink-400": "#a3a3af", "ink-500": "#cfcfd3", "ink-600": "#d4d4d8", "ink-700": "#e4e4e7",
+        "ink-800": "#ededee", "ink-900": "#f4f4f5", "ink-950": "#fafafa",
+        "brand-300": "#0284c7", "brand-400": "#0ea5e9", "brand-500": "#38bdf8", "brand-600": "#7dd3fc",
+        "accent-400": "#9333ea", "accent-500": "#a855f7", "accent-600": "#c084fc"
+      }
+    },
+    "high-contrast": {
+      "semantic": {
+        "surface-0": { "value": "#000000", "description": "Pure black background" },
+        "surface-1": { "value": "#0a0a0a", "description": "Card base" },
+        "surface-2": { "value": "#141414", "description": "Elevated card" },
+        "surface-3": { "value": "#1f1f1f", "description": "Hover / pressed" },
+        "border-subtle": { "value": "rgba(255,255,255,0.24)", "description": "High-visibility hairline" },
+        "border-strong": { "value": "rgba(255,255,255,0.50)", "description": "Focused outline" },
+        "text-primary": { "value": "#ffffff", "description": "Pure white headings" },
+        "text-secondary": { "value": "#ededee", "description": "Body" },
+        "text-muted": { "value": "#cfcfd3", "description": "Captions (12:1+ on black)" },
+        "text-disabled": { "value": "#a3a3af", "description": "Disabled (4.5:1+ on black)" },
+        "accent-primary": { "value": "#7dd3fc", "description": "Sky-300 (lighter for AAA on black)" },
+        "accent-primary-deep": { "value": "#38bdf8", "description": "Pressed" },
+        "accent-secondary": { "value": "#d8b4fe", "description": "Purple-300" },
+        "accent-success": { "value": "#6ee7b7", "description": "Emerald-300" },
+        "accent-warning": { "value": "#fcd34d", "description": "Amber-300" },
+        "accent-danger": { "value": "#fca5a5", "description": "Red-300" }
+      },
+      "absolute": {
+        "ink-0": "#000000", "ink-50": "#ffffff", "ink-100": "#ededee",
+        "ink-200": "#cfcfd3", "ink-300": "#a3a3af", "ink-400": "#7e7e8b",
+        "ink-700": "#1f1f1f", "ink-850": "#141414", "ink-900": "#0a0a0a", "ink-950": "#000000",
+        "brand-300": "#7dd3fc", "brand-400": "#38bdf8", "brand-500": "#0ea5e9",
+        "accent-400": "#d8b4fe", "accent-500": "#a855f7",
+        "emerald-300": "#6ee7b7",
+        "amber-300": "#fcd34d",
+        "red-300": "#fca5a5"
+      }
+    }
+  },
+  "typography": {
+    "font-family": {
+      "sans": "Inter, ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
+      "mono": "ui-monospace, \"JetBrains Mono\", \"Fira Code\", Menlo, Consolas, monospace"
+    },
+    "display": { "font": "Inter", "size": "30px", "line-height": "36px", "weight": 600, "letter-spacing": "0" },
+    "heading": { "font": "Inter", "size": "24px", "line-height": "32px", "weight": 600, "letter-spacing": "0" },
+    "subheading": { "font": "Inter", "size": "16px", "line-height": "24px", "weight": 500, "letter-spacing": "0" },
+    "body": { "font": "Inter", "size": "14px", "line-height": "20px", "weight": 400, "letter-spacing": "0" },
+    "caption": { "font": "Inter", "size": "12px", "line-height": "16px", "weight": 500, "letter-spacing": "0" },
+    "micro": { "font": "Inter (mono fallback)", "size": "10px", "line-height": "14px", "weight": 500, "letter-spacing": "0" }
+  },
+  "spacing": {
+    "scale": [4, 8, 12, 16, 20, 24, 32, 40, 48, 64],
+    "tokens": {
+      "space-1":  { "value": "4px",  "use": "tight inline gap" },
+      "space-2":  { "value": "8px",  "use": "atomic step; icon-to-label" },
+      "space-3":  { "value": "12px", "use": "card inner padding-top, chip stack" },
+      "space-4":  { "value": "16px", "use": "chip gap, card section gap" },
+      "space-5":  { "value": "20px", "use": "card padding" },
+      "space-6":  { "value": "24px", "use": "header margin-bottom" },
+      "space-8":  { "value": "32px", "use": "grid gap, page section" },
+      "space-10": { "value": "40px", "use": "vertical rhythm" },
+      "space-12": { "value": "48px", "use": "hero block (rare)" },
+      "space-16": { "value": "64px", "use": "top-of-page gutter" }
+    }
+  },
+  "radius": {
+    "pill": { "value": "9999px", "purpose": "Chips, tag pills, language badge" },
+    "sm":   { "value": "6px",    "purpose": "Inputs, small buttons" },
+    "md":   { "value": "10px",   "purpose": "Buttons, dropdowns" },
+    "lg":   { "value": "16px",   "purpose": "Voice cards" },
+    "xl":   { "value": "20px",   "purpose": "Global player, modal sheets" }
+  },
+  "shadow": {
+    "sm":    { "value": "0 1px 0 0 rgba(255,255,255,0.04) inset",                                "purpose": "Card inner-top highlight (primary elevation)" },
+    "md":    { "value": "0 8px 32px -8px rgba(0,0,0,0.6)",                                       "purpose": "Card page-level elevation" },
+    "lg":    { "value": "0 0 0 1px rgba(56,189,248,0.25), 0 0 24px -4px rgba(56,189,248,0.4)",   "purpose": "Active play button glow (one at a time)" },
+    "glass": { "value": "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 8px 32px -8px rgba(0,0,0,0.6)", "purpose": "Combined card shadow (sm + md)" }
+  },
+  "motion": {
+    "duration": {
+      "micro":  { "value": "100ms", "use": "play-state toggle, chip press" },
+      "hover":  { "value": "200ms", "use": "hover, focus ring, sidebar collapse" },
+      "enter":  { "value": "300ms", "use": "page enter, sidebar indicator slide" }
+    },
+    "easing": {
+      "standard": { "value": "cubic-bezier(0.2, 0, 0, 1)", "use": "most transitions (Material standard)" },
+      "decel":    { "value": "cubic-bezier(0, 0, 0.2, 1)", "use": "entrances" },
+      "accel":    { "value": "cubic-bezier(0.4, 0, 1, 1)", "use": "exits" }
+    },
+    "spring": {
+      "sidebar":      { "stiffness": 320, "damping": 32, "mass": 0.8 },
+      "indicator":    { "stiffness": 500, "damping": 30, "mass": 1.0 },
+      "player-enter": { "stiffness": 400, "damping": 32, "mass": 1.0 }
+    },
+    "stagger": {
+      "card-list": { "value": "30ms", "max-total": "360ms", "use": "voice card entrance stagger (12 cards × 30ms)" }
+    }
+  },
+  "breakpoints": {
+    "sm":  { "value": "640px",  "use": "2-col grid" },
+    "md":  { "value": "768px",  "use": "comfortable padding" },
+    "lg":  { "value": "1024px", "use": "sidebar stays open; 3-col grid" },
+    "xl":  { "value": "1280px", "use": "4-col grid" },
+    "2xl": { "value": "1536px", "use": "wide-screen cap" }
+  },
+  "iconography": {
+    "library": "lucide-react",
+    "stroke-width": "1.5-2px",
+    "color": "currentColor",
+    "sizes": { "nav": "16px", "button": "16px", "table-row": "16px", "empty-state": "64px" },
+    "fills": "none (except play triangle as deliberate focal point)",
+    "color-states": {
+      "default": "var(--text-secondary)",
+      "hover":   "var(--text-primary)",
+      "active":  "var(--accent-primary)"
+    }
+  },
+  "voice-specific": {
+    "voice-chip": {
+      "inactive": { "bg": "rgba(255,255,255,0.04)", "text": "var(--text-secondary)", "border": "rgba(255,255,255,0.06)", "use": "#arabic, #iq, #narrator tags" },
+      "active":   { "bg": "rgba(52,211,153,0.15)", "text": "#6ee7b7", "border": "none", "use": "user's own cloned voice (\"your\")" }
+    },
+    "voice-avatar": {
+      "size": "48px (card) / 32px (logo)",
+      "shape": "circle",
+      "background": "linear-gradient(135deg, rgba(56,189,248,0.30), rgba(168,85,247,0.30))",
+      "border": "1px solid rgba(255,255,255,0.08)",
+      "letter": { "color": "var(--text-primary)", "size": "18px (card) / 14px (logo)", "weight": 600 },
+      "rationale": "No deterministic hash-to-color per voice — names are the primary scan target in an Arabic/Kurdish catalog."
+    },
+    "audio-waveform": {
+      "bars": 24,
+      "bar-width": "2px",
+      "bar-gap": "2px",
+      "height-formula": "30 + ((i * 37) % 70)% (i in 0..23)",
+      "fill": "linear-gradient(to top, #38bdf8, #a855f7)",
+      "idle-opacity": 0.4,
+      "active-opacity": "0.6 + sin-modulated 0.2 (animated)",
+      "active-transform": "scaleY(0.4 + |sin(i*0.7 + t/300)| * 0.8)",
+      "tick-ms": 100,
+      "rationale": "The sky→violet gradient is reserved for audio signal UI only — it tells the eye 'this is sound'."
+    },
+    "language-badge": {
+      "ar-IQ": { "bg": "rgba(56,189,248,0.15)", "text": "#7dd3fc" },
+      "ckb":   { "bg": "rgba(168,85,247,0.15)", "text": "#c084fc" },
+      "shape": "pill (9999px)",
+      "rationale": "Two colors map to the two scripts the app actually serves; no third color means no ambiguity."
+    },
+    "gender-tag": {
+      "format": "plain text, no chip",
+      "size": "12px",
+      "color": "var(--text-muted)",
+      "separator": "·",
+      "rationale": "Gender is metadata, not a filterable facet on this page."
+    },
+    "checkpoint-hash": {
+      "font": "mono",
+      "size": "10px",
+      "color": "var(--text-disabled)",
+      "truncate": "first 12 chars + ellipsis",
+      "full-on-hover": "title attribute",
+      "rationale": "Engineers check the hash; users ignore it. Present but unobtrusive."
+    }
+  }
+}

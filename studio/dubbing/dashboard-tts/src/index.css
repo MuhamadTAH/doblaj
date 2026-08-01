@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(56, 189, 248, 0.08), transparent 60%),
+      radial-gradient(900px 500px at 0% 100%, rgba(168, 85, 247, 0.07), transparent 60%),
+      #0a0a0b;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #26262e;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3a3a47;
+    background-clip: padding-box;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] shadow-glass;
+  }
+  .glass-strong {
+    @apply bg-white/[0.05] backdrop-blur-xl border border-white/[0.08] shadow-glass;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2
+      bg-gradient-to-b from-brand-400 to-brand-600 text-white font-medium
+      shadow-glow hover:from-brand-300 hover:to-brand-500
+      transition-all duration-200 active:scale-[0.98] disabled:opacity-50
+      disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2
+      bg-white/[0.04] text-ink-200 font-medium border border-white/[0.06]
+      hover:bg-white/[0.07] hover:border-white/[0.1]
+      transition-all duration-200 active:scale-[0.98];
+  }
+  .input {
+    @apply w-full rounded-lg bg-ink-900/80 border border-white/[0.06]
+      px-3 py-2 text-sm text-white placeholder:text-ink-500
+      focus:outline-none focus:border-brand-400/50 focus:ring-1 focus:ring-brand-400/30
+      transition-colors;
+  }
+  .label {
+    @apply text-xs font-medium text-ink-400 uppercase tracking-wider;
+  }
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-ink-300
+      hover:bg-white/[0.04] hover:text-white
+      transition-colors;
+  }
+  .nav-item-active {
+    @apply bg-white/[0.06] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)];
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold transition-colors;
+  }
+  .badge-lang-ar {
+    @apply bg-sky-500/15 text-sky-300 border border-sky-500/30;
+  }
+  .badge-lang-ckb {
+    @apply bg-purple-500/15 text-purple-300 border border-purple-500/30;
+  }
+  .waveform {
+    background-image: linear-gradient(
+      to right,
+      rgba(56, 189, 248, 0.7) 0%,
+      rgba(168, 85, 247, 0.7) 100%
+    );
+  }
+}
+
+@keyframes wave-pulse {
+  0%, 100% {
+    transform: scaleY(0.3);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 0.9;
+  }
+}
+
+.waveform-bar-active {
+  animation: wave-pulse 1.2s ease-in-out infinite;
+}
+
+/* Pird: RTL mirror for directional icons. Apply class="arrow-flip" to
+   any glyph whose visual direction matters (download ↓, arrow →, etc.).
+   Symmetric glyphs (spinner, toast X, trash) don't need this. */
+[dir="rtl"] .arrow-flip {
+  transform: scaleX(-1);
+}
+
+/* Pird: progress bars fill naturally left-to-right regardless of page
+   direction. Mirroring a progress gradient confuses users — 0→100 should
+   always read in the same direction. */
+[dir="rtl"] .progress-bar-wrap {
+  direction: ltr;
+}

@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="{{ locale | default('ku') }}" dir="{{ dir | default('rtl') }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>پێگەیشتنی وەرگێڕان و دۆبلاژ — Manual Pipeline</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+Arabic:wght@300;400;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --secondary: #ec4899;
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #311042 100%);
+            --glass-bg: rgba(30, 41, 59, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --accent: #10b981;
+            --danger: #ef4444;
+            --terminal-bg: #000000;
+            --terminal-text: #00ff00;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Noto Sans Arabic', 'Outfit', sans-serif;
+            background: var(--bg-gradient);
+            background-attachment: fixed;
+            min-height: 100vh;
+            color: #f1f5f9;
+            display: flex;
+        }
+
+        /* Layout Split */
+        .layout {
+            display: flex;
+            width: 100%;
+            height: 100vh;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 2rem;
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        /* Terminal Sidebar */
+        .terminal-sidebar {
+            width: 400px;
+            background: var(--terminal-bg);
+            border-left: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .terminal-header {
+            background: #111;
+            color: #fff;
+            padding: 1rem;
+            font-family: monospace;
+            font-weight: bold;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .terminal-status {
+            font-size: 0.8rem;
+            color: var(--accent);
+        }
+        .terminal-status.error { color: var(--danger); }
+        .terminal-status.idle { color: #888; }
+
+        #terminal-output {
+            flex: 1;
+            padding: 1rem;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.85rem;
+            color: var(--terminal-text);
+            overflow-y: auto;
+            white-space: pre-wrap;
+            direction: ltr;
+        }
+
+        .terminal-line { margin-bottom: 0.2rem; }
+        .terminal-line.error { color: #ff3333; }
+        .terminal-line.warning { color: #ffaa00; }
+
+        /* UI Elements */
+        h1 { font-size: 2rem; background: linear-gradient(135deg, #c084fc, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        
+        .step-card {
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            opacity: 0.5;
+            pointer-events: none;
+            transition: all 0.3s;
+        }
+
+        .step-card.active {
+            opacity: 1;
+            pointer-events: auto;
+            border-color: var(--primary);
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.1);
+        }
+
+        .step-card.done {
+            opacity: 1;
+            pointer-events: auto;
+            border-color: var(--accent);
+        }
+
+        .step-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .step-header h3 { font-size: 1.2rem; color: #fff; display: flex; align-items: center; gap: 0.5rem; }
+        
+        button {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 700;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+        button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(99, 102, 241, 0.4); }
+        button:disabled { background: #334155; color: #888; cursor: not-allowed; }
+
+        .media-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            background: rgba(0,0,0,0.2);
+            padding: 1rem;
+            border-radius: 8px;
+        }
+
+        video, audio { width: 100%; border-radius: 8px; outline: none; }
+        
+        input[type="file"] { padding: 0.5rem; background: #1e293b; border-radius: 8px; color: #fff; }
+
+        .chunk-list { display: flex; flex-direction: column; gap: 1rem; max-height: 400px; overflow-y: auto; padding-right: 0.5rem; }
+        .chunk-item { background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px; display: grid; gap: 0.5rem; }
+        .chunk-text-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .chunk-text-box { background: rgba(0,0,0,0.3); padding: 0.5rem; border-radius: 6px; font-size: 0.9rem; min-height: 40px; }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+        ::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 4px; }
+        
+    </style>
+</head>
+<body>
+
+<div class="layout">
+    <!-- Main UI -->
+    <div class="main-content">
+        <div class="container">
+            <div style="text-align: center; position: relative;">
+                <h1>سیستەمی دۆبلاژی دەستی</h1>
+                <p style="color: #94a3b8;">Manual Control Pipeline with Live Terminal</p>
+                <div style="position: absolute; right: 0; top: 0; display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="text" id="resumeIdInput" placeholder="Job ID (e.g. 3)" style="padding: 0.5rem; border-radius: 6px; width: 120px; background: #1e293b; color: white; border: 1px solid var(--border-color);">
+                    <button onclick="resumeSession()" style="background: var(--primary); padding: 0.5rem 1rem; font-size: 0.9rem;">▶ Resume</button>
+                    <button onclick="saveSession()" style="background: var(--accent); padding: 0.5rem 1rem; font-size: 0.9rem;">💾 Save Session</button>
+                </div>
+            </div>
+
+            <!-- Step 1: Upload -->
+            <div class="step-card active" id="card-1">
+                <div class="step-header">
+                    <h3>١. هەڵگرتن و دەرهێنانی دەنگ (Upload & Extract)</h3>
+                    <button id="btn-1" onclick="runStep1()">دەستپێکردن</button>
+                </div>
+                <div class="media-container">
+                    <input type="file" id="videoInput" accept="video/mp4">
+                    <div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                        <label for="categoryInput" style="font-weight: 600;">پۆلێن (Category):</label>
+                        <select id="categoryInput" style="padding: 0.75rem; background: #1e293b; border-radius: 8px; color: #fff; border: 1px solid var(--border-color); width: 100%;">
+                            <option value="automotive">ئۆتۆمبێل (Automotive)</option>
+                            <option value="tech">تەکنەلۆژیا (Tech)</option>
+                            <option value="gaming">گەمە (Gaming)</option>
+                            <option value="clothes">جلوبەرگ (Clothes)</option>
+                        </select>
+                    </div>
+                    <div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                        <label for="entityInput" style="font-weight: 600;">(ئارەزوومەندانە) مۆدێلی ئۆتۆمبێل یان بابەت دیاری بکە:</label>
+                        <input type="text" id="entityInput" list="entityOptions" placeholder="بۆ نموونە: ford_f150, toyota_camry..." style="padding: 0.75rem; background: #1e293b; border-radius: 8px; color: #fff; border: 1px solid var(--border-color); width: 100%;">
+                        <datalist id="entityOptions"></datalist>
+                    </div>
+                    <video id="res-1-video" controls style="display:none;"></video>
+                </div>
+            </div>
+
+            <!-- Step 2: Separate -->
+            <div class="step-card" id="card-2">
+                <div class="step-header">
+                    <h3>٢. جیاکردنەوەی دەنگ (Stem Separation)</h3>
+                    <button id="btn-2" onclick="runStep2()">جیاکردنەوە</button>
+                </div>
+                <div class="media-container" id="res-2-media" style="display:none;">
+                    <div><p>دەنگی قسەکردن (Vocals):</p><audio id="res-2-voc" controls></audio></div>
+                    <div><p>دەنگی باکگراوند (Background):</p><audio id="res-2-bg" controls></audio></div>
+                </div>
+            </div>
+
+            <!-- Step 3: Chunking -->
+            <div class="step-card active" id="card-3">
+                <div class="step-header">
+                    <h3>٣. پارچەکردن (VAD Chunking)</h3>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="file" id="chunksZipInput" accept=".zip" style="font-size: 0.8rem; padding: 0.3rem;">
+                        <button id="btn-3-zip" onclick="uploadChunksZip()" style="background: var(--secondary);">Upload ZIP</button>
+                        <button id="btn-3" onclick="runStep3()">پارچەکردن</button>
+                    </div>
+                </div>
+                <div class="chunk-list" id="res-3-list"></div>
+            </div>
+
+            <!-- Step 4: Transcribe -->
+            <div class="step-card active" id="card-4">
+                <div class="step-header">
+                    <h3>٤. نووسینەوەی دەق (Gemini Transcription)</h3>
+                    <div>
+                        <input type="file" id="upload-transcribed-zip" style="display: none;" accept=".zip" onchange="uploadTranscribedZip(event)">
+                        <button onclick="document.getElementById('upload-transcribed-zip').click()" style="background-color: #27ae60;">بارکردنی پەڕگەی ZIP</button>
+                        <button id="btn-4" onclick="runStep4()">نووسینەوە</button>
+                    </div>
+                </div>
+                <div class="chunk-list" id="res-4-list"></div>
+            </div>
+
+            <!-- Step 5: Translate -->
+            <div class="step-card" id="card-5">
+                <div class="step-header">
+                    <h3>٥. وەرگێڕان (Arabic Translation)</h3>
+                    <div>
+                        <button id="btn-5" onclick="runPhysicsLoop()">دەستپێکردن</button>
+                        <button id="btn-5-saveall" onclick="saveAllChunks()" style="background: var(--secondary); display: none; margin-left: 10px;">💾 هەمووی خەزن بکە (Save All)</button>
+                    </div>
+                </div>
+                <div class="chunk-list" id="res-5-list"></div>
+            </div>
+
+            <!-- Step 6: Voice Generation -->
+            <div class="step-card" id="card-6">
+                <div class="step-header">
+                    <h3>٦. بەرهەمهێنانی دەنگ (Voice Generation)</h3>
+                    <button id="btn-6" onclick="runStep6()" style="background: var(--primary);">بەرهەمهێنان (Generate)</button>
+                </div>
+                <div class="chunk-list" id="res-6-list"></div>
+            </div>
+
+            <!-- Step 7: Final Assembly -->
+            <div class="step-card" id="card-7">
+                <div class="step-header">
+                    <h3>٧. کۆتایی (Final Video)</h3>
+                    <button id="btn-7-assemble" onclick="runStep7()" style="background: var(--accent); display: none;">🎬 دروستکردنی ڤیدیۆ (Assemble Video)</button>
+                </div>
+                <div class="media-container" id="res-7-media" style="display:none;">
+                    <video id="res-7-video" controls></video>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Live Terminal Sidebar -->
+    <div class="terminal-sidebar">
+        <div class="terminal-header">
+            <span>>_ Live Terminal</span>
+            <span class="terminal-status idle" id="term-status">IDLE</span>
+        </div>
+        <div id="terminal-output"></div>
+    </div>
+</div>
+
+<script>
+    let currentSessionId = null;
+    let logPollingInterval = null;
+    let cachedChunks = [];
+    
+    const terminalOut = document.getElementById('terminal-output');
+    const termStatus = document.getElementById('term-status');
+
+    function appendLog(text, level="INFO") {
+        const line = document.createElement('div');
+        line.className = `terminal-line ${level.toLowerCase()}`;
+        line.textContent = text;
+        terminalOut.appendChild(line);
+        terminalOut.scrollTop = terminalOut.scrollHeight;
+    }
+
+    function setTerminalStatus(status, type="idle") {
+        termStatus.textContent = status;
+        termStatus.className = `terminal-status ${type}`;
+    }
+
+    async function pollLogs() {
+        if (!currentSessionId) return;
+        try {
+            const res = await fetch(`/video/manual/logs/${currentSessionId}`);
+            if (res.ok) {
+                const data = await res.json();
+                terminalOut.innerHTML = '';
+                data.logs.forEach(line => {
+                    let lvl = "INFO";
+                    if(line.includes("[ERROR]")) lvl = "ERROR";
+                    if(line.includes("[WARNING]")) lvl = "WARNING";
+                    appendLog(line, lvl);
+                });
+            }
+        } catch (e) {}
+    }
+
+    function startPolling() {
+        if(logPollingInterval) clearInterval(logPollingInterval);
+        logPollingInterval = setInterval(pollLogs, 1000);
+        setTerminalStatus("POLLING", "active");
+    }
+
+    function stopPolling() {
+        if(logPollingInterval) clearInterval(logPollingInterval);
+        setTimeout(pollLogs, 500); // Final fetch
+        setTerminalStatus("IDLE", "idle");
+    }
+
+    function lockAllButtons() {
+        document.querySelectorAll('button').forEach(b => b.disabled = true);
+    }
+    
+    function unlockCard(stepNum) {
+        document.querySelectorAll('.step-card').forEach(c => {
+            c.classList.remove('active');
+            // Keep buttons enabled for all completed (done) cards so they can be retried
+            if(c.classList.contains('done')) {
+                c.querySelectorAll('button').forEach(btn => btn.disabled = false);
+            }
+        });
+        const card = document.getElementById(`card-${stepNum}`);
+        if(card) {
+            card.classList.add('active');
+            card.querySelectorAll('button').forEach(btn => btn.disabled = false);
+        }
+    }
+
+    function markCardDone(stepNum) {
+        document.getElementById(`card-${stepNum}`).classList.add('done');
+    }
+
+    async function apiCall(endpoint, formData, stepNum) {
+        lockAllButtons();
+        startPolling();
+        appendLog(`> Executing ${endpoint}...`, "INFO");
+        
+        try {
+            const res = await fetch(endpoint, { method: 'POST', body: formData });
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.detail || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            stopPolling();
+            appendLog(`> Success.`, "INFO");
+            markCardDone(stepNum);
+            unlockCard(stepNum + 1);
+            return data;
+        } catch (e) {
+            stopPolling();
+            setTerminalStatus("ERROR", "error");
+            appendLog(`> FATAL ERROR: ${e.message}`, "ERROR");
+            document.getElementById(`btn-${stepNum}`).disabled = false; // Re-enable current step
+            throw e;
+        }
+    }
+
+    async function saveSession() {
+        const file = document.getElementById('videoInput').files[0];
+        if (!file || !currentSessionId) {
+            alert("Upload a video and start a session first!");
+            return;
+        }
+        const fd = new FormData();
+        fd.append("filename", file.name);
+        fd.append("filesize", file.size);
+        fd.append("session_id", currentSessionId);
+        
+        try {
+            await fetch('/video/manual/save-session', { method: 'POST', body: fd });
+            alert("Session bookmarked! Re-uploading this exact file will restore your progress.");
+            appendLog("> Session bookmarked successfully.", "INFO");
+        } catch(e) {
+            alert("Failed to save session.");
+        }
+    }
+
+    async function resumeSession() {
+        const jobId = document.getElementById('resumeIdInput').value.trim();
+        if (!jobId) {
+            alert("Please enter a Job ID first.");
+            return;
+        }
+        
+        terminalOut.innerHTML = '';
+        appendLog(`> Attempting to resume Job ${jobId}...`, "INFO");
+        
+        try {
+            const res = await fetch(`/video/manual/state/${jobId}`);
+            if (!res.ok) throw new Error("Job not found or state is empty.");
+            
+            const state = await res.json();
+            restoreState(state);
+            
+            if (state.chunks && state.chunks.length > 0) {
+                pollPhysicsStatus(); // Restores Step 5, 6, 7 if data exists
+                startPolling();
+            } else {
+                appendLog(`> Job ${jobId} found, but no chunks were transcribed yet.`, "WARNING");
+            }
+        } catch(e) {
+            appendLog(`> Error resuming: ${e.message}`, "ERROR");
+            alert("Could not resume that Job ID.");
+        }
+    }
+
+    function restoreState(state) {
+        currentSessionId = state.session_id;
+        appendLog(`> Restoring session ${currentSessionId}`, "INFO");
+        
+        // Restore Step 1
+        const vid = document.getElementById('res-1-video');
+        vid.src = state.video_url + "?t=" + Date.now();
+        vid.style.display = 'block';
+        markCardDone(1);
+        unlockCard(2);
+        
+        // Restore Step 2
+        if (state.voc_url) {
+            document.getElementById('res-2-media').style.display = 'flex';
+            document.getElementById('res-2-voc').src = state.voc_url + "?t=" + Date.now();
+            if(state.bg_url) document.getElementById('res-2-bg').src = state.bg_url + "?t=" + Date.now();
+            markCardDone(2);
+            unlockCard(3);
+        }
+        
+        // Restore Step 3 & beyond
+        if (state.chunks && state.chunks.length > 0) {
+            let phase = "chunk";
+            renderChunks(state.chunks, "chunk", state.video_url);
+            
+            if (state.chunks[0].kurdish_raw) {
+                phase = "transcribe";
+                renderChunks(state.chunks, "transcribe", state.video_url);
+            }
+            if (state.chunks[0].arabic_translated || state.chunks[0].arabic_text) {
+                phase = "translate";
+                renderChunks(state.chunks, "translate", state.video_url);
+            }
+            if (state.chunks[0].tts_url || state.chunks[0].arabic_audio_url) {
+                phase = "tts";
+                renderChunks(state.chunks, "tts", state.video_url);
+            }
+            markCardDone(3);
+            unlockCard(4);
+            
+            if (phase === "transcribe") {
+                markCardDone(4);
+                unlockCard(5);
+            }
+            if (phase === "translate") {
+                markCardDone(4);
+                markCardDone(5);
+                unlockCard(6);
+            }
+            if (phase === "tts") {
+                markCardDone(4);
+                markCardDone(5);
+                markCardDone(6);
+                unlockCard(7);
+            }
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", async () => {
+        try {
+            const res = await fetch("/video/manual/entities");
+            const data = await res.json();
+            const dl = document.getElementById("entityOptions");
+            data.entities.forEach(ent => {
+                const opt = document.createElement("option");
+                opt.value = ent;
+                dl.appendChild(opt);
+            });
+        } catch(e) {
+            console.error("Failed to load entities:", e);
+        }
+    });
+
+    // Step 1
+    async function runStep1() {
+        const file = document.getElementById('videoInput').files[0];
+        if (!file) { alert("Please select a video!"); return; }
+        
+        const fd = new FormData();
+        fd.append("file", file);
+        
+        const entityVal = document.getElementById("entityInput").value.trim();
+        if (entityVal) {
+            fd.append("entity", entityVal);
+        }
+        
+        const categoryVal = document.getElementById("categoryInput").value;
+        if (categoryVal) {
+            fd.append("category_id", categoryVal);
+        }
+        
+        const data = await apiCall('/video/manual/step1-upload', fd, 1);
+        
+        if (data.restored) {
+            restoreState(data);
+        } else {
+            currentSessionId = data.session_id;
+            const vid = document.getElementById('res-1-video');
+            vid.src = data.video_url + "?t=" + Date.now();
+            vid.style.display = 'block';
+        }
+    }
+
+    // Step 2
+    async function runStep2() {
+        const fd = new FormData();
+        fd.append("session_id", currentSessionId);
+        
+        const data = await apiCall('/video/manual/step2-separate', fd, 2);
+        
+        document.getElementById('res-2-media').style.display = 'flex';
+        document.getElementById('res-2-voc').src = data.voc_url + "?t=" + Date.now();
+        if(data.bg_url) document.getElementById('res-2-bg').src = data.bg_url + "?t=" + Date.now();
+    }
+
+    // Render chunks list
+    function renderChunks(chunks, phase="chunk", videoUrl="") {
+        let listId = 'res-3-list';
+        if (phase === 'transcribe') listId = 'res-4-list';
+        if (phase === 'translate') listId = 'res-5-list';
+        if (phase === 'tts') listId = 'res-6-list';
+        
+        const list = document.getElementById(listId);
+        list.innerHTML = '';
+        
+        if (phase === 'tts') {
+            list.style.display = 'grid';
+            list.style.gridTemplateColumns = 'repeat(3, 1fr)';
+            list.style.maxHeight = '800px';
+        } else {
+            list.style.display = 'flex';
+            list.style.gridTemplateColumns = '';
+            list.style.maxHeight = '400px';
+        }
+        
+        cachedChunks = chunks;
+
+        chunks.forEach((c, idx) => {
+            const item = document.createElement('div');
+            item.className = 'chunk-item';
+            
+            let speakerTag = c.speaker ? ` - Speaker ${c.speaker}` : '';
+            let topRow = `<div><strong>Chunk ${idx+1}${speakerTag}</strong> (${c.speech_duration.toFixed(1)}s)</div>`;
+            
+            // Video Preview for Chunking Phase -> Changed back to Audio to remove background noise and timeline confusion
+            if (phase === "chunk" && c.audio_url) {
+                topRow += `<audio controls src="${c.audio_url}" style="height:30px;"></audio>`;
+            }
+            // Transcription Phase (Only Kurdish text)
+            else if (phase === "transcribe") {
+                topRow += `<div class="chunk-text-box">${c.kurdish_raw || '<span style="color:#888;">(No Kurdish Text)</span>'}</div>`;
+            }
+            // Translation Phase (Only Arabic text)
+            else if (phase === "translate") {
+                topRow += `<div style="display:flex; flex-direction:column; gap:10px; width:100%;">
+                    <div class="chunk-text-box" style="background:#1e293b; padding:10px; border-radius:6px; color:#888; font-size:0.9rem;">
+                        [Kurdish]: ${c.kurdish_raw || ''}
+                    </div>
+                    <textarea id="trans_${idx}" style="width:100%; height:60px; background:rgba(0,0,0,0.5); color:#fff; padding:0.5rem; border-radius:6px; font-family:inherit; border:1px solid var(--accent);" dir="rtl">${c.arabic_text || ''}</textarea>
+                    <audio id="audio_preview_${idx}" controls style="display: ${c.tts_url ? 'block' : 'none'}; width:100%; height:40px; border:1px solid var(--accent); border-radius:8px;" src="${c.tts_url ? c.tts_url + '?t=' + Date.now() : ''}"></audio>
+                    <div style="display:flex; justify-content: flex-end; gap: 10px; width: 100%;">
+                        <button onclick="generateChunkVoice('${c.chunk_id}', 'trans_${idx}', 'audio_preview_${idx}')" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; background: var(--accent); color: #0f172a;">🎙️ Generate Voice</button>
+                        <button onclick="saveChunkText('${c.chunk_id}', 'trans_${idx}')" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; background: var(--secondary);">💾 Save Text</button>
+                    </div>
+                </div>`;
+            }
+            // Voice Generation Phase (Muted Video + TTS Audio synced OR Prerendered MP4)
+            else if (phase === "tts" && videoUrl) {
+                // Determine target speech rate (WPS) roughly for UI display
+                let wpsText = "";
+                if (c.arabic_text && c.duration_sec) {
+                    const words = c.arabic_text.split(" ").length;
+                    const wps = (words / c.duration_sec).toFixed(2);
+                    let wpsColor = (wps < 1.0 || wps > 2.5) ? "var(--danger)" : "var(--accent)";
+                    wpsText = `<span style="color:${wpsColor}; font-size: 0.8rem;">(WPS: ${wps})</span>`;
+                }
+                
+                let audioPlayer = c.tts_url 
+                    ? `<audio id="aud_${idx}" controls src="${c.tts_url}?t=${Date.now()}" style="width:100%; height:40px; border:1px solid var(--accent); border-radius:8px;"></audio>`
+                    : `<div style="padding: 10px; background: rgba(255,0,0,0.1); color: var(--danger); text-align: center; border-radius: 6px; border: 1px dashed var(--danger);">No Audio Generated</div>`;
+                
+                topRow += `<div style="display:flex; flex-direction:column; gap:10px; width:100%;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:0.8rem; color:#888;">[${c.start_time.toFixed(2)}s -> ${(c.start_time + c.duration_sec).toFixed(2)}s] ${wpsText}</span>
+                    </div>
+                    <div class="chunk-text-box" dir="rtl" style="font-size:1.1rem; color:#fff;">${c.arabic_text || '<span style="color:#888">(No translation)</span>'}</div>
+                    
+                    <div style="display:flex; flex-direction:column; justify-content:center; gap:5px; width:100%;">
+                        ${audioPlayer}
+                    </div>
+                </div>`;
+            }
+
+            if (phase === "tts" || phase === "translate") {
+                // In TTS/Translate phase, we don't want the horizontal flex wrapper, we want the vertical stack to take full width
+                item.innerHTML += topRow;
+            } else {
+                item.innerHTML += `<div style="display:flex; justify-content:space-between; align-items:center;">${topRow}</div>`;
+            }
+            
+            list.appendChild(item);
+            
+            // Add Sync Listener for TTS (Only if using the fallback JS-sync layout)
+            if (phase === "tts" && c.tts_url && videoUrl && !c.tts_video_url) {
+                const aud = document.getElementById(`aud_${idx}`);
+                const vid = document.getElementById(`vid_${idx}`);
+                aud.onplay = () => { vid.currentTime = c.start_time; vid.play(); };
+                aud.onpause = () => { vid.pause(); };
+                aud.onseeked = () => { vid.currentTime = c.start_time + aud.currentTime; };
+            }
+        });
+    }
+
+    // Step 3
+    async function runStep3() {
+        const fd = new FormData();
+        fd.append("session_id", currentSessionId);
+        const data = await apiCall('/video/manual/step3-chunk', fd, 3);
+        renderChunks(data.chunks, "chunk", data.video_url);
+    }
+
+    // Step 3 (Alternative: ZIP Upload)
+    async function uploadChunksZip() {
+        const fileInput = document.getElementById('chunksZipInput');
+        if(!fileInput.files.length) {
+            alert("Please select a ZIP file containing .wav chunks first.");
+            return;
+        }
+        
+        const fd = new FormData();
+        fd.append("file", fileInput.files[0]);
+        if(currentSessionId) fd.append("session_id", currentSessionId);
+        
+        lockAllButtons();
+        startPolling();
+        appendLog(`> Uploading chunks ZIP...`, "INFO");
+        
+        try {
+            const response = await fetch('/video/manual/step3-upload-chunks', { method: 'POST', body: fd });
+            const data = await response.json();
+            if(!response.ok) throw new Error(data.detail || "Upload failed");
+            
+            stopPolling();
+            currentSessionId = data.session_id;
+            appendLog(`> Chunks ZIP processed successfully! Session: ${currentSessionId}`, "INFO");
+            renderChunks(data.chunks, "chunk", data.video_url);
+            markCardDone(3);
+            unlockCard(4);
+        } catch(e) {
+            stopPolling();
+            appendLog(`> [ERROR] ${e.message}`, "ERROR");
+            alert("Failed: " + e.message);
+        }
+    }
+    // Step 4 (Alternative: Transcription ZIP Upload)
+    async function uploadTranscribedZip(event) {
+        const file = event.target.files[0];
+        if(!file) return;
+        
+        const fd = new FormData();
+        fd.append("file", file);
+        if(currentSessionId) fd.append("session_id", currentSessionId);
+        
+        lockAllButtons();
+        startPolling();
+        appendLog(`> Uploading transcription ZIP...`, "INFO");
+        
+        try {
+            const response = await fetch('/video/manual/step4-upload-transcription', { method: 'POST', body: fd });
+            const data = await response.json();
+            if(!response.ok) throw new Error(data.detail || "Upload failed");
+            
+            stopPolling();
+            currentSessionId = data.session_id;
+            appendLog(`> Transcription ZIP processed successfully!`, "INFO");
+            renderChunks(data.chunks, "transcribe", data.video_url);
+            markCardDone(4);
+            unlockCard(5);
+        } catch(e) {
+            stopPolling();
+            appendLog(`> [ERROR] ${e.message}`, "ERROR");
+            alert("Failed: " + e.message);
+        }
+    }
+    // Step 4
+    async function runStep4() {
+        const fd = new FormData();
+        fd.append("session_id", currentSessionId);
+        const data = await apiCall('/video/manual/step4-transcribe', fd, 4);
+        renderChunks(data.chunks, "transcribe", data.video_url);
+    }
+
+    // Step 5: Physics Loop (Handles Translation and TTS in backend asynchronously)
+    let physicsPollingInterval = null;
+
+    async function pollPhysicsStatus() {
+        if (!currentSessionId) return;
+        try {
+            const res = await fetch(`/video/manual/status/${currentSessionId}`);
+            if (res.ok) {
+                const data = await res.json();
+                
+                // Update UI dynamically
+                if (data.chunks && data.chunks.length > 0) {
+                    // Check if any chunk has arabic_text (Translation phase started)
+                    const hasTranslation = data.chunks.some(c => c.arabic_text);
+                    if (hasTranslation) {
+                        renderChunks(data.chunks, "translate", data.video_url);
+                        markCardDone(5);
+                        unlockCard(6);
+                        document.getElementById('btn-5-saveall').style.display = 'inline-block';
+                    }
+                    
+                    // Check if any chunk has tts_url (TTS phase started)
+                    const hasTTS = data.chunks.some(c => c.tts_url || c.tts_file);
+                    if (hasTTS) {
+                        renderChunks(data.chunks, "tts", data.video_url);
+                        markCardDone(6);
+                        unlockCard(7);
+                        document.getElementById('btn-7-assemble').style.display = 'block';
+                    }
+                }
+                
+                // Check if final video is ready
+                if (data.job_status === "completed" && data.final_url) {
+                    clearInterval(physicsPollingInterval);
+                    stopPolling(); // Stop log polling too
+                    appendLog("> Assembly complete!", "INFO");
+                    
+                    document.getElementById('res-7-media').style.display = 'block';
+                    const vid = document.getElementById('res-7-video');
+                    vid.src = data.final_url + "?t=" + Date.now();
+                    vid.play();
+                } else if (data.job_status === "failed" || data.job_status === "requires_wps_recalibration") {
+                    clearInterval(physicsPollingInterval);
+                    stopPolling();
+                    appendLog(`> Job Failed: ${data.job_status}`, "ERROR");
+                    setTerminalStatus("ERROR", "error");
+                }
+            }
+        } catch (e) {
+            console.error("Polling error", e);
+        }
+    }
+
+    async function runPhysicsLoop() {
+        const fd = new FormData();
+        fd.append("session_id", currentSessionId);
+        
+        lockAllButtons();
+        startPolling(); // Start reading logs
+        appendLog("> Triggering Asynchronous Physics Engine...", "INFO");
+        
+        try {
+            // Trigger the job
+            const res = await fetch('/video/manual/step5-run-physics', { method: 'POST', body: fd });
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.detail || `HTTP ${res.status}`);
+            }
+            
+            // Job triggered successfully, now start polling for status
+            if (physicsPollingInterval) clearInterval(physicsPollingInterval);
+            physicsPollingInterval = setInterval(pollPhysicsStatus, 2000);
+            appendLog("> Background workers dispatched. Polling for results...", "INFO");
+            
+        } catch (e) {
+            stopPolling();
+            setTerminalStatus("ERROR", "error");
+            appendLog(`> FATAL ERROR: ${e.message}`, "ERROR");
+            document.getElementById(`btn-5`).disabled = false;
+        }
+    }
+    
+    // UI Function: Save Chunk Text (For Manual Translation Step)
+    async function saveChunkText(chunkId, textAreaId) {
+        if (!currentSessionId) return;
+        const textVal = document.getElementById(textAreaId).value;
+        const fd = new FormData();
+        fd.append("session_id", currentSessionId);
+        fd.append("chunk_id", chunkId);
+        fd.append("arabic_text", textVal);
+        
+        appendLog(`> Saving text for Chunk ${chunkId}...`, "INFO");
+        try {
+            // Re-use the retry endpoint but since we decoupled TTS, it will just save the text
+            const res = await fetch('/video/manual/step5-retry-chunk', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+            
+            appendLog(`> Successfully saved text for Chunk ${chunkId}.`, "INFO");
+            // Highlight button green temporarily
+            const btn = document.querySelector(`button[onclick="saveChunkText('${chunkId}', '${textAreaId}')"]`);
+            if(btn) {
+                const oldBg = btn.style.background;
+                btn.style.background = "#22c55e"; // Success green
+                btn.textContent = "✓ Saved";
+                setTimeout(() => {
+                    btn.style.background = oldBg;
+                    btn.textContent = "💾 Save Text";
+                }, 2000);
+            }
+            
+            const targetIdx = cachedChunks.findIndex(c => String(c.chunk_id) === String(chunkId));
+            if(targetIdx !== -1) {
+                cachedChunks[targetIdx].arabic_text = textVal;
+            }
+        } catch (e) {
+            appendLog(`> [ERROR] Save failed: ${e.message}`, "ERROR");
+            alert("Save Failed: " + e.message);
+        }
+    }
+
+    // UI Function: Generate Voice for Single Chunk
+    async function generateChunkVoice(chunkId, textAreaId, audioId) {
+        if (!currentSessionId) return;
+        const textVal = document.getElementById(textAreaId).value;
+        const fd = new FormData();
+        fd.append("session_id", currentSessionId);
+        fd.append("chunk_id", chunkId);
+        fd.append("arabic_text", textVal);
+        fd.append("generate_voice", "true");
+        
+        appendLog(`> Generating voice for Chunk ${chunkId}...`, "INFO");
+        try {
+            const btn = document.querySelector(`button[onclick="generateChunkVoice('${chunkId}', '${textAreaId}', '${audioId}')"]`);
+            if(btn) btn.textContent = "⏳ Generating...";
+            
+            const res = await fetch('/video/manual/step5-retry-chunk', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+            
+            appendLog(`> Successfully generated voice for Chunk ${chunkId}.`, "INFO");
+            
+            if(btn) {
+                const oldBg = btn.style.background;
+                btn.style.background = "#22c55e"; // Success green
+                btn.textContent = "✓ Generated";
+                setTimeout(() => {
+                    btn.style.background = oldBg;
+                    btn.textContent = "🎙️ Generate Voice";
+                }, 2000);
+            }
+            
+            // Update cache with whatever the physics engine settled on
+            const targetIdx = cachedChunks.findIndex(c => String(c.chunk_id) === String(chunkId));
+            if(targetIdx !== -1 && data.chunk) {
+                cachedChunks[targetIdx] = data.chunk;
+                // Update textarea text in case Physics Engine expanded/deleted words
+                document.getElementById(textAreaId).value = data.chunk.arabic_text || textVal;
+                
+                // Show audio player
+                const audioEl = document.getElementById(audioId);
+                if(audioEl && data.chunk.tts_url) {
+                    audioEl.src = data.chunk.tts_url + "?t=" + Date.now();
+                    audioEl.style.display = "block";
+                }
+            }
+        } catch (e) {
+            appendLog(`> [ERROR] Voice Generation failed: ${e.message}`, "ERROR");
+            alert("Voice Generation Failed: " + e.message);
+            const btn = document.querySelector(`button[onclick="generateChunkVoice('${chunkId}', '${textAreaId}', '${audioId}')"]`);
+            if(btn) btn.textContent = "🎙️ Generate Voice";
+        }
+    }
+
+    // UI Function: Save All Chunks
+    async function saveAllChunks() {
+        if (!currentSessionId) return;
+        
+        const updates = [];
+        cachedChunks.forEach((c, idx) => {
+            const ta = document.getElementById(`trans_${idx}`);
+            if (ta) {
+                updates.push({
+                    chunk_id: c.chunk_id,
+                    arabic_text: ta.value
+                });
+                c.arabic_text = ta.value; // update cache
+            }
+        });
+        
+        if (updates.length === 0) return;
+        
+        const payload = {
+            session_id: currentSessionId,
+            updates: updates
+        };
+        
+        appendLog(`> Saving all ${updates.length} translations...`, "INFO");
+        lockAllButtons();
+        
+        try {
+            const res = await fetch('/video/manual/step5-save-all-chunks', { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload) 
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+            
+            appendLog(`> Successfully saved all translations!`, "INFO");
+            
+            const btn = document.getElementById('btn-5-saveall');
+            const oldBg = btn.style.background;
+            btn.style.background = "#22c55e";
+            btn.textContent = "✓ هەمووی خەزن کرا (All Saved)";
+            setTimeout(() => {
+                btn.style.background = oldBg;
+                btn.textContent = "💾 هەمووی خەزن بکە (Save All)";
+            }, 3000);
+            
+        } catch (e) {
+            appendLog(`> [ERROR] Save All failed: ${e.message}`, "ERROR");
+            alert("Save All Failed: " + e.message);
+        }
+        
+        unlockCard(6); // Make sure Step 6 is unlocked
+        document.getElementById('btn-5-saveall').disabled = false;
+    }
+    
+    // Step 6: Voice Generation
+    async function runStep6() {
+        const fd = new FormData();
+        fd.append("session_id", currentSessionId);
+        
+        lockAllButtons();
+        startPolling(); // Start reading logs
+        appendLog("> Triggering Manual Voice Generation (TTS)...", "INFO");
+        
+        try {
+            const res = await fetch('/video/manual/step6-run-tts', { method: 'POST', body: fd });
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.detail || `HTTP ${res.status}`);
+            }
+            
+            if (physicsPollingInterval) clearInterval(physicsPollingInterval);
+            physicsPollingInterval = setInterval(pollPhysicsStatus, 2000);
+            appendLog("> Background TTS workers dispatched. Polling for results...", "INFO");
+            
+        } catch (e) {
+            stopPolling();
+            setTerminalStatus("ERROR", "error");
+            appendLog(`> FATAL ERROR: ${e.message}`, "ERROR");
+            document.getElementById(`btn-6`).disabled = false;
+        }
+    }
+
+    // Step 7: Final Video Assembly
+    async function runStep7() {
+        if (!currentSessionId) return;
+        const fd = new FormData();
+        fd.append("session_id", currentSessionId);
+        
+        lockAllButtons();
+        startPolling();
+        appendLog(`> Triggering Final Video Assembly...`, "INFO");
+        try {
+            const res = await fetch('/video/manual/step7-run-assembly', { method: 'POST', body: fd });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.detail || `HTTP ${res.status}`);
+            }
+            appendLog(`> Assembly dispatched to background worker.`, "INFO");
+            if (physicsPollingInterval) clearInterval(physicsPollingInterval);
+            physicsPollingInterval = setInterval(pollPhysicsStatus, 2000);
+        } catch (e) {
+            stopPolling();
+            appendLog(`> [ERROR] Assembly failed: ${e.message}`, "ERROR");
+            alert("Assembly Failed: " + e.message);
+            unlockCard(7);
+        }
+    }
+
+
+    // Automatically load session if passed in URL
+    window.addEventListener('DOMContentLoaded', async () => {
+        const params = new URLSearchParams(window.location.search);
+        const sid = params.get('session_id');
+        if (sid) {
+            appendLog(`> Auto-loading session ${sid} from URL...`, "INFO");
+            try {
+                const res = await fetch(`/video/manual/state/${sid}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    data.session_id = sid; // Ensure it's set
+                    restoreState(data);
+                } else {
+                    appendLog(`> [ERROR] Failed to load session ${sid}`, "ERROR");
+                }
+            } catch (e) {
+                appendLog(`> [ERROR] ${e.message}`, "ERROR");
+            }
+        }
+    });
+</script>
+
+</body>
+</html>

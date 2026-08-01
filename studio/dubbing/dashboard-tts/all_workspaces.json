@@ -1,0 +1,32 @@
+[
+  {
+    "_creationTime": 1784696717427.9412,
+    "_id": "k57bpwfq5wbedc22g18k8xg7ps8b0qwb",
+    "createdAt": "2026-06-22T17:39:57.736935+00:00",
+    "dubbingMinutes": 99999996,
+    "legacyId": "6820c4e7-062e-4946-8f0d-9c26aebcd000",
+    "name": "Muhamad's Workspace",
+    "ownerUserId": "e7339cd2-a4c9-440b-a527-d9d0204e328b",
+    "updatedAt": "2026-06-22T17:39:57.736935+00:00"
+  },
+  {
+    "_creationTime": 1784696717427.9414,
+    "_id": "k573ka91z96mn64ttgc8rg9z758b1qpq",
+    "createdAt": "2026-06-25T15:37:56.776725+00:00",
+    "dubbingMinutes": 99999999,
+    "legacyId": "a878cf8e-97c3-4f46-9ed1-cfdd91d00158",
+    "name": "RLS Test Workspace",
+    "ownerUserId": "6c2776ef-f00a-46ae-a0e8-5f3e6e6c8642",
+    "updatedAt": "2026-06-25T15:37:56.776725+00:00"
+  },
+  {
+    "_creationTime": 1785273928246.6604,
+    "_id": "k57fh2smh2n9r1mzh2phwpgtw18bdfn3",
+    "createdAt": "2026-07-28T21:25:28.246Z",
+    "dubbingMinutes": 0,
+    "legacyId": "org_3Gqh0tJsDrEn6YFh95nhqR78AKE",
+    "name": "Default Workspace",
+    "ownerUserId": "user_3Gqh0sVtFqypoOoT3L5TntH3AO9",
+    "updatedAt": "2026-07-28T21:25:28.246Z"
+  }
+]

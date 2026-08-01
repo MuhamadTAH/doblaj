@@ -1,0 +1,94 @@
+# Pird local-dev reverse proxy.
+#
+# Single entry port :8081, three virtual hosts by subdomain:
+#
+#   localhost:8081          → shell (Supabase sign-in page)
+#   store.localhost:8081    → Medusa admin + store API  (port 9000)
+#   chat.localhost:8081     → Chatwoot agent UI + API   (port 3000)
+#   dubbing.localhost:8081  → Dubbing FastAPI service   (port 8002)
+#
+# *.localhost resolves to 127.0.0.1 natively in Chrome/Edge/Firefox —
+# no hosts-file edits needed for local dev.
+#
+# For production: replace each `*.localhost:8081` with the real subdomain
+# (e.g. `store.pird.com`). Caddy auto-issues HTTPS via Let's Encrypt.
+# No other config changes required.
+
+{
+    # Disable Caddy's admin API — not needed for local dev.
+    admin off
+}
+
+# ── Shell ────────────────────────────────────────────────────────────────────
+# In prod, doblaj.com is served by FastAPI directly via the Cloudflare Tunnel.
+# This Caddy block is dev-only: forwards localhost:8081 → dubbing FastAPI on
+# :8002 so the same FastAPI `/` route renders the sign-in shell during dev.
+# Using bare `:8081` as catch-all — Caddy matches more-specific site blocks
+# (store.localhost:8081, chat.localhost:8081, dubbing.localhost:8081) before
+# falling back here.
+http://:8081 {
+    encode gzip zstd
+    tls internal
+
+    handle /health {
+        respond "ok" 200
+    }
+
+    handle /vendor/* {
+        root * /srv/pird
+        file_server
+    }
+
+    handle {
+        reverse_proxy host.docker.internal:8002
+    }
+}
+
+# ── Medusa admin + store API ──────────────────────────────────────────────────
+# Full reverse proxy — passes everything through to port 9000:
+#   HTML SPA    /app/*
+#   Admin API   /admin/*
+#   Store API   /store/*
+#   Auth API    /auth/*
+#   SW bridge   /pird-supabase-login, /pird-sw
+#
+# The SPA generates links like /app/orders — the browser sends those back
+# to store.localhost:8081 which Caddy forwards here. No path rewriting needed.
+http://store.localhost:8081 {
+    encode gzip zstd
+    tls internal
+    reverse_proxy host.docker.internal:9000
+}
+
+# ── Chatwoot agent UI + API ───────────────────────────────────────────────────
+# Full reverse proxy — passes everything through to port 3000:
+#   HTML SPA      /app/*
+#   Chatwoot API  /api/v1/*, /api/v2/*
+#   dta auth      /auth/*
+#   SW bridge     /pird/supabase_login
+#   SW file       /pird-chat-sw.js
+#
+# Same reasoning as Medusa: the SPA's absolute paths work because the browser
+# sends them back to chat.localhost:8081 which Caddy forwards here.
+http://chat.localhost:8081 {
+    encode gzip zstd
+    tls internal
+    reverse_proxy host.docker.internal:3000
+}
+
+# ── Dubbing FastAPI ───────────────────────────────────────────────────────────
+http://dubbing.localhost:8081 {
+    encode gzip zstd
+    tls internal
+    reverse_proxy host.docker.internal:8002
+}
+
+# ── Dubbing PRODUCTION ────────────────────────────────────────────────────────
+# Cutover Fix 5: real domain, real HTTPS. Caddy auto-issues Let's Encrypt.
+# Requires DNS A/AAAA for dubbing.pird.com pointing at this machine.
+# The dubbing_access_token cookie lands with Secure=True (PIRD_ENV=prod)
+# so the browser will keep it under HTTPS only.
+https://dubbing.pird.com {
+    encode gzip zstd
+    reverse_proxy host.docker.internal:8002
+}
