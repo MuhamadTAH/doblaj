@@ -228,14 +228,17 @@ export const deductMinutesInternal = mutation({
     
     if (ageHours < 48 && totalPurchased === 0) {
       const fortyEightHoursAgoIso = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+      // Database-level range filtering on compound index [workspaceId, createdAt]
       const recentJobs = await ctx.db
         .query("dubbingJobs")
-        .withIndex("by_workspace_id", (q: any) => q.eq("workspaceId", ws._id))
+        .withIndex("by_workspace_and_created", (q: any) =>
+          q.eq("workspaceId", ws._id).gte("createdAt", fortyEightHoursAgoIso)
+        )
         .collect();
 
       let totalConsumedLast48h = 0;
       for (const j of recentJobs) {
-        if (j.createdAt && j.createdAt >= fortyEightHoursAgoIso && j.total_duration_sec) {
+        if (j.total_duration_sec) {
           totalConsumedLast48h += j.total_duration_sec / 60;
         }
       }

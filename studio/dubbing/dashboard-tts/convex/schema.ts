@@ -71,6 +71,7 @@ export default defineSchema({
   })
     .index("by_legacy_id", ["legacyId"])
     .index("by_workspace_id", ["workspaceId"])
+    .index("by_workspace_and_created", ["workspaceId", "createdAt"])
     .index("by_status", ["status"]),
 
   dubbingChunks: defineTable({
