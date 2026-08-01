@@ -2,6 +2,9 @@
 // the Clerk session cookie set by the shell, then proxies reads/writes
 // to the Convex backend.
 
+// Pird: see api/tts.ts API_BASE note. Same env var drives /video/* too.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+
 export type DubJobStatus = "pending" | "processing" | "completed" | "failed";
 
 export type DubJob = {
@@ -27,7 +30,7 @@ export async function submitDubJob(
   if (meta?.entity) form.append("entity", meta.entity);
   // Pird: include dubbing_access_token cookie so the request isn't 401'd.
   // See handoffs/dubbing-security-pass2-fixes.md Fix 6.
-  const r = await fetch("/video/jobs", { method: "POST", body: form, credentials: "include" });
+  const r = await fetch(`${API_BASE}/video/jobs`, { method: "POST", body: form, credentials: "include" });
   if (!r.ok) {
     const t = await r.text();
     throw new Error(`dubbing submit -> ${r.status}: ${t.slice(0, 200)}`);
@@ -36,13 +39,13 @@ export async function submitDubJob(
 }
 
 export async function getDubStatus(jobId: string): Promise<DubJob> {
-  const r = await fetch(`/video/jobs/${jobId}`, { credentials: "include" });
+  const r = await fetch(`${API_BASE}/video/jobs/${jobId}`, { credentials: "include" });
   if (!r.ok) throw new Error(`dubbing status -> ${r.status}`);
   return r.json();
 }
 
 export async function getDubJobs(): Promise<DubJob[]> {
-  const r = await fetch(`/video/jobs`, { credentials: "include" });
+  const r = await fetch(`${API_BASE}/video/jobs`, { credentials: "include" });
   if (!r.ok) throw new Error(`dubbing list -> ${r.status}`);
   return r.json();
 }

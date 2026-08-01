@@ -3,6 +3,12 @@
 // In dev, when the backend isn't running, the fetch helper falls back to a silent
 // WAV so the UI flow still demos.
 
+// Pird: when deployed to CF Pages (doblaj.com) the API lives at api.doblaj.com,
+// not on the same origin. VITE_API_BASE_URL is set in the Pages dashboard and
+// injected at build time. Empty in dev -> fetch uses a relative path so Vite's
+// proxy in vite.config.ts can forward /api and /video to localhost:8002.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+
 export type TtsRequest = {
   text: string;
   voice_id: string;
@@ -79,7 +85,7 @@ export type Voice = {
  */
 export async function fetchVoices(): Promise<Voice[]> {
   try {
-    const res = await fetch("/api/tts-dashboard/voices");
+    const res = await fetch(`${API_BASE}/api/tts-dashboard/voices`);
     if (!res.ok) throw new Error(`voices: ${res.status}`);
     const data: Voice[] = await res.json();
     if (!Array.isArray(data)) return [];
@@ -113,7 +119,7 @@ export async function fetchVoices(): Promise<Voice[]> {
  */
 export async function generateTts(req: TtsRequest): Promise<Blob> {
   try {
-    const res = await fetch("/api/tts-dashboard/tts", {
+    const res = await fetch(`${API_BASE}/api/tts-dashboard/tts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req),
@@ -140,7 +146,7 @@ export async function previewVoice(voiceId: string): Promise<{ blob: Blob; url: 
   }
 
   try {
-    const res = await fetch(`/api/tts-dashboard/voices/${encodeURIComponent(voiceId)}/preview`);
+    const res = await fetch(`${API_BASE}/api/tts-dashboard/voices/${encodeURIComponent(voiceId)}/preview`);
     if (!res.ok) throw new Error(`preview: ${res.status}`);
     const blob = await res.blob();
     const result = { blob, url: URL.createObjectURL(blob), isMock: false };
