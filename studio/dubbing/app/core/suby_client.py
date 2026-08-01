@@ -13,15 +13,18 @@ class SubyClient:
         # PIRD-029: fail-closed in production. The default
         # "sandbox_secret" placeholder must NEVER be used in prod — a
         # webhook signed with the default would be accepted.
-        if os.getenv("PIRD_ENV", "").lower() == "prod" and (
-            not self.webhook_secret
-            or self.webhook_secret == "sandbox_secret"
-        ):
-            raise RuntimeError(
-                "SUBY_WEBHOOK_SECRET is not configured (or is the placeholder "
-                "'sandbox_secret'). Set it in the prod environment before "
-                "starting the service."
-            )
+        INVALID_PLACEHOLDERS = {"sandbox_key", "sandbox_secret", "test_key", "your_api_key_here", "your_webhook_secret_here", "placeholder", ""}
+        if os.getenv("PIRD_ENV", "").lower() == "prod":
+            if not self.webhook_secret or self.webhook_secret.lower() in INVALID_PLACEHOLDERS:
+                raise RuntimeError(
+                    "SUBY_WEBHOOK_SECRET is not configured or is set to a placeholder. "
+                    "In production, a valid secret is required."
+                )
+            if not self.api_key or self.api_key.lower() in INVALID_PLACEHOLDERS:
+                raise RuntimeError(
+                    "SUBY_API_KEY is not configured or is set to a placeholder. "
+                    "In production, a valid sk_live_ or sk_test_ key is required."
+                )
 
     async def create_checkout(self, user_id: str, workspace_id: str, tier_id: str, amount_usd: int) -> str:
         """Suby.fi API call to generate a payment checkout URL"""

@@ -477,6 +477,21 @@ async def add_transaction(client: Any = None, *, transaction_id: str = "", works
         pass
 
 
+async def process_payment_success_atomic(client: Any = None, *, transaction_id: str = "", workspace_id: str = "", tier: str = "", amount_usd: int = 0, minutes_added: int = 0) -> Dict[str, Any]:
+    """Execute atomic transaction record + minute addition in a single Convex transaction."""
+    c = client or _get_client()
+    payload = {
+        "transactionId": transaction_id,
+        "workspaceId": workspace_id,
+        "tier": tier,
+        "amountUsd": amount_usd,
+        "minutesAdded": minutes_added,
+    }
+    def _do():
+        return c.mutation("transactions:processPaymentSuccessInternal", _internal_args(payload))
+    return await asyncio.to_thread(_do)
+
+
 async def transaction_exists(client: Any = None, *, transaction_id: str = "") -> bool:
     try:
         c = client or _get_client()

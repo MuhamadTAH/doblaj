@@ -92,6 +92,47 @@ export const recordInternal = mutation({
   },
 });
 
+export const processPaymentSuccessInternal = mutation({
+  args: {
+    transactionId: v.string(),
+    workspaceId: v.string(),
+    tier: v.string(),
+    amountUsd: v.number(),
+    minutesAdded: v.number(),
+    __internalApiKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const workspaceId = await resolveWorkspaceId(ctx, args.workspaceId);
+    const existing = await ctx.db
+      .query("transactions")
+      .withIndex("by_legacy_id", (q) => q.eq("legacyId", args.transactionId))
+      .unique();
+      
+    if (existing) {
+      return { status: "already_processed", transactionId: existing._id };
+    }
+    
+    const txId = await ctx.db.insert("transactions", {
+      legacyId: args.transactionId,
+      workspaceId,
+      tier: args.tier,
+      amountUsd: args.amountUsd,
+      minutesAdded: args.minutesAdded,
+      createdAt: new Date().toISOString(),
+    });
+    
+    const ws = await ctx.db.get(workspaceId);
+    if (!ws) throw new ConvexError("WORKSPACE_NOT_FOUND");
+    const nextMinutes = (ws.dubbingMinutes ?? 0) + args.minutesAdded;
+    await ctx.db.patch(workspaceId, {
+      dubbingMinutes: nextMinutes,
+      updatedAt: new Date().toISOString(),
+    });
+    
+    return { status: "success", transactionId: txId, newBalance: nextMinutes };
+  },
+});
+
 export const listInternal = query({
   args: { workspaceId: v.string() },
   handler: async (ctx, args) => {
