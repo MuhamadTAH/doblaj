@@ -26,27 +26,31 @@ class CheckoutRequest(BaseModel):
 async def options_checkout_session():
     return {}
 
+import urllib.parse
+
+SUBY_LINKS = {
+    "starter": os.getenv("SUBY_LINK_STARTER", "[INSERT_STARTER_URL_HERE]"),
+    "pro": os.getenv("SUBY_LINK_PRO", "[INSERT_PRO_URL_HERE]"),
+    "creator": os.getenv("SUBY_LINK_CREATOR", "[INSERT_CREATOR_URL_HERE]"),
+}
+
 @router.post("/checkout")
 @router.post("/checkout/")
 async def create_checkout_session(req: CheckoutRequest, user: AuthenticatedUser = Depends(require_user)):
-    """Generate a Suby checkout URL for the requested tier."""
+    """Return a static Suby checkout URL for the requested tier."""
     if req.tier not in TIERS:
         raise HTTPException(status_code=400, detail="Invalid tier")
         
-    tier_info = TIERS[req.tier]
+    static_link = SUBY_LINKS.get(req.tier)
+    if not static_link or static_link == "[INSERT_" + req.tier.upper() + "_URL_HERE]":
+        raise HTTPException(status_code=500, detail=f"No static checkout link configured for {req.tier}")
+
+    # Safe Client Reference Encoding using _ as requested
+    client_ref = f"{user.user_id}_{user.workspace_id}_{req.tier}"
+    encoded_ref = urllib.parse.quote(client_ref)
     
-    try:
-        suby = SubyClient()
-        checkout_url = await suby.create_checkout(
-            user_id=user.user_id,
-            workspace_id=user.workspace_id,
-            tier_id=req.tier,
-            amount_usd=tier_info["price_usd"]
-        )
-        return {"checkoutUrl": checkout_url}
-    except Exception as e:
-        logger.exception("Suby checkout failed")
-        raise HTTPException(status_code=500, detail=str(e))
+    checkout_url = f"{static_link}?clientReferenceId={encoded_ref}"
+    return {"checkoutUrl": checkout_url}
 
 from fastapi.responses import RedirectResponse
 import uuid
@@ -131,11 +135,46 @@ async def suby_webhook(request: Request):
         event_id = event.get("id") or f"evt_{uuid.uuid4().hex[:12]}"
         event_type = event.get("type") or request.headers.get("x-webhook-event", "PAYMENT_SUCCESS")
         
+        # Parse clientReferenceId instead of metadata
+        data = event.get("data", event)
+        client_ref = data.get("clientReferenceId")
+        if not client_ref:
+            raise ValueError("Webhook missing clientReferenceId")
+            
+        parts = client_ref.split("_")
+        # Ensure we can reconstruct IDs like user_xxxx and org_yyyy
+        if len(parts) >= 5:
+            user_id = f"{parts[0]}_{parts[1]}"
+            workspace_id = f"{parts[2]}_{parts[3]}"
+            tier_id = "_".join(parts[4:])
+        elif len(parts) == 3:
+            # Fallback if IDs didn't contain underscores
+            user_id, workspace_id, tier_id = parts
+        else:
+            raise ValueError(f"Malformed clientReferenceId: {client_ref}")
+
+        if not user_id or not workspace_id or not tier_id:
+            raise ValueError("clientReferenceId missing required components")
+        
+        if tier_id not in TIERS:
+            raise ValueError(f"Invalid tier_id in clientReferenceId: {tier_id}")
+
         from app.core import db as database
         from app.core.db import _get_service_role_client
         client = _get_service_role_client()
         
         # DURABLE INGESTION: Writes raw webhook to webhookEvents table in Convex before returning 200 OK
+        # We also pass the extracted user_id, workspace_id, tier_id to the durable ingestion or handle it there
+        # Wait, the durable ingestion currently might rely on event.data.metadata. Let's make sure it has what it needs.
+        # It just passes payload=event to Convex. The convex mutation must handle the parsing, OR we modify the payload here.
+        if "metadata" not in event["data"]:
+            event["data"]["metadata"] = {}
+        event["data"]["metadata"].update({
+            "user_id": user_id,
+            "workspace_id": workspace_id,
+            "tier_id": tier_id
+        })
+
         res = await database.record_and_process_webhook_durable(
             client,
             event_id=event_id,
