@@ -7,7 +7,8 @@ import jwt
 from fastapi import Cookie, Header, HTTPException
 from jwt import PyJWKClient
 
-CLERK_ISSUER = os.getenv("CLERK_ISSUER", "https://deciding-quagga-70.clerk.accounts.dev").rstrip("/")
+CLERK_FRONTEND_API = os.getenv("CLERK_FRONTEND_API", "deciding-quagga-70.clerk.accounts.dev")
+CLERK_ISSUER = os.getenv("CLERK_ISSUER", f"https://{CLERK_FRONTEND_API}").rstrip("/")
 CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL", f"{CLERK_ISSUER}/.well-known/jwks.json")
 CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE", "pird-dubbing")
 CLERK_AUDIENCE_REQUIRED = os.getenv("CLERK_AUDIENCE_REQUIRED", "true").lower() == "true"
