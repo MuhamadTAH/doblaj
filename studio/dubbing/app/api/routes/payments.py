@@ -46,7 +46,7 @@ async def create_checkout_session(req: CheckoutRequest, user: AuthenticatedUser 
         return {"checkoutUrl": checkout_url}
     except Exception as e:
         logger.exception("Suby checkout failed")
-        raise HTTPException(status_code=500, detail="Payment gateway error")
+        raise HTTPException(status_code=500, detail=str(e))
 
 from fastapi.responses import RedirectResponse
 import uuid
