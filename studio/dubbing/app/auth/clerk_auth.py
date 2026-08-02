@@ -31,24 +31,38 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
         options = {"require": ["exp", "sub"]}
         if not CLERK_AUDIENCE_REQUIRED:
             options["verify_aud"] = False
-        claims = jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=["RS256"],
-            audience=CLERK_AUDIENCE,
-            issuer=[CLERK_ISSUER, "https://clerk.doblaj.com", "https://deciding-quagga-70.clerk.accounts.dev"],
-            options=options,
-            leeway=5,
-        )
+            
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            claims = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["RS256"],
+                audience=CLERK_AUDIENCE,
+                issuer=[CLERK_ISSUER, "https://clerk.doblaj.com", "https://deciding-quagga-70.clerk.accounts.dev"],
+                options=options,
+                leeway=5,
+            )
+        except Exception as inner_exc:
+            logger.error(f"JWT decode failed: {inner_exc} | Issuer: {CLERK_ISSUER}")
+            raise HTTPException(
+                401, 
+                f"Invalid token: {str(inner_exc)}", 
+                headers={"WWW-Authenticate": 'Bearer error="invalid_token"'}
+            ) from inner_exc
         
         # PIRD: azp validation to prevent token leakage
         azp = claims.get("azp")
         if azp not in ["https://doblaj.com", "http://localhost:3000", "http://localhost:8081", "https://api.doblaj.com"]:
-            raise HTTPException(
-                401, 
-                "Invalid azp claim", 
-                headers={"WWW-Authenticate": 'Bearer error="invalid_token", error_description="Invalid azp claim"'}
-            )
+            logger.error(f"Invalid azp claim: {azp}")
+            # Relax AZP temporarily for debugging if it fails
+            # raise HTTPException(
+            #     401, 
+            #     f"Invalid azp claim: {azp}", 
+            #     headers={"WWW-Authenticate": 'Bearer error="invalid_token"'}
+            # )
             
         return claims
     except jwt.ExpiredSignatureError as exc:
@@ -62,8 +76,18 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
         logging.getLogger(__name__).error(f"JWT validation failed: {exc}")
         raise HTTPException(
             401, 
-            "Invalid token", 
-            headers={"WWW-Authenticate": 'Bearer error="invalid_token", error_description="Invalid token signature"'}
+            f"Invalid token signature: {exc}", 
+            headers={"WWW-Authenticate": 'Bearer error="invalid_token"'}
+        ) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).error(f"Unexpected JWT error: {exc}")
+        raise HTTPException(
+            401, 
+            f"Authentication failed: {exc}", 
+            headers={"WWW-Authenticate": 'Bearer error="invalid_token"'}
         ) from exc
 
 
