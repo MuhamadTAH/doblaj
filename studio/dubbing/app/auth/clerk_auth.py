@@ -11,7 +11,7 @@ CLERK_FRONTEND_API = os.getenv("CLERK_FRONTEND_API", "deciding-quagga-70.clerk.a
 CLERK_ISSUER = os.getenv("CLERK_ISSUER", f"https://{CLERK_FRONTEND_API}").rstrip("/")
 CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL", f"{CLERK_ISSUER}/.well-known/jwks.json")
 CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE", "pird-dubbing")
-CLERK_AUDIENCE_REQUIRED = os.getenv("CLERK_AUDIENCE_REQUIRED", "true").lower() == "true"
+CLERK_AUDIENCE_REQUIRED = os.getenv("CLERK_AUDIENCE_REQUIRED", "false").lower() == "true"
 _jwks_client = PyJWKClient(CLERK_JWKS_URL)
 
 
@@ -36,7 +36,7 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
             signing_key.key,
             algorithms=["RS256"],
             audience=CLERK_AUDIENCE,
-            issuer=CLERK_ISSUER,
+            issuer=[CLERK_ISSUER, "https://clerk.doblaj.com", "https://deciding-quagga-70.clerk.accounts.dev"],
             options=options,
             leeway=5,
         )
@@ -58,6 +58,8 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
             headers={"WWW-Authenticate": 'Bearer error="invalid_token", error_description="Token expired"'}
         ) from exc
     except jwt.PyJWTError as exc:
+        import logging
+        logging.getLogger(__name__).error(f"JWT validation failed: {exc}")
         raise HTTPException(
             401, 
             "Invalid token", 
