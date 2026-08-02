@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { fetchVoices, generateTts, type Voice } from "@/api/tts";
+import { type Voice } from "@/api/tts";
+import { useApi, AuthFailedError, AuthNetworkError } from "@/hooks/useApi";
 import { useTtsStore } from "@/store/tts";
 import { uid } from "@/lib/format";
 import VoicePickerModal from "@/components/VoicePickerModal";
@@ -38,11 +39,12 @@ export default function TextToSpeechPage() {
   const error = useTtsStore((s) => s.error);
   const addToHistory = useTtsStore((s) => s.addToHistory);
   const setPlayback = useTtsStore((s) => s.setPlayback);
+  const api = useApi();
 
   // Load voices once
   useEffect(() => {
     let mounted = true;
-    fetchVoices().then((v) => {
+    api.fetchVoices().then((v) => {
       if (!mounted) return;
       setVoices(v);
       // Auto-pick the first voice for the first speaker
@@ -57,7 +59,7 @@ export default function TextToSpeechPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [api]);
 
   // Set initial active speaker
   useEffect(() => {
@@ -136,7 +138,7 @@ export default function TextToSpeechPage() {
       // For multi-speaker, generate per-speaker sequentially
       for (const sp of speakers) {
         if (!sp.voice || !sp.text.trim()) continue;
-        const blob = await generateTts({
+        const blob = await api.generateTts({
           text: sp.text.trim(),
           voice_id: sp.voice.id,
           language: sp.voice.language,

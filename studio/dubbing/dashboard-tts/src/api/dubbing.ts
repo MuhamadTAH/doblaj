@@ -17,20 +17,11 @@ export type DubJob = {
   updated_at?: string | null;
 };
 
-export async function getClerkToken(): Promise<string> {
-  // @ts-ignore
-  if (window.Clerk?.session) {
-    // @ts-ignore
-    const token = await window.Clerk.session.getToken({ template: 'pird-dubbing' });
-    if (token) return token;
-  }
-  window.location.href = '/';
-  throw new Error("Not authenticated");
-}
-
 export async function submitDubJob(
+  fetchClient: typeof fetch,
   file: File,
   meta?: { category?: string; entity?: string },
+  signal?: AbortSignal
 ): Promise<{ id: string; status: DubJobStatus }> {
   const form = new FormData();
   form.append("file", file);
@@ -40,33 +31,20 @@ export async function submitDubJob(
   if (meta?.category) form.append("category", meta.category);
   if (meta?.entity) form.append("entity", meta.entity);
   
-  const token = await getClerkToken();
-  const r = await fetch(`${API_BASE}/video/jobs`, { 
+  const r = await fetchClient(`${API_BASE}/video/jobs`, { 
     method: "POST", 
-    body: form, 
-    headers: { "Authorization": `Bearer ${token}` }
+    body: form,
+    signal
   });
-  if (!r.ok) {
-    const t = await r.text();
-    throw new Error(`dubbing submit -> ${r.status}: ${t.slice(0, 200)}`);
-  }
   return r.json();
 }
 
-export async function getDubStatus(jobId: string): Promise<DubJob> {
-  const token = await getClerkToken();
-  const r = await fetch(`${API_BASE}/video/jobs/${jobId}`, { 
-    headers: { "Authorization": `Bearer ${token}` }
-  });
-  if (!r.ok) throw new Error(`dubbing status -> ${r.status}`);
+export async function getDubStatus(fetchClient: typeof fetch, jobId: string, signal?: AbortSignal): Promise<DubJob> {
+  const r = await fetchClient(`${API_BASE}/video/jobs/${jobId}`, { signal });
   return r.json();
 }
 
-export async function getDubJobs(): Promise<DubJob[]> {
-  const token = await getClerkToken();
-  const r = await fetch(`${API_BASE}/video/jobs`, { 
-    headers: { "Authorization": `Bearer ${token}` }
-  });
-  if (!r.ok) throw new Error(`dubbing list -> ${r.status}`);
+export async function getDubJobs(fetchClient: typeof fetch, signal?: AbortSignal): Promise<DubJob[]> {
+  const r = await fetchClient(`${API_BASE}/video/jobs`, { signal });
   return r.json();
 }

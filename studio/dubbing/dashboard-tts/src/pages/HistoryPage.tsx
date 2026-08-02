@@ -4,7 +4,8 @@ import { Link } from "react-router-dom";
 import { useTtsStore } from "@/store/tts";
 import { formatBytes, formatDuration, formatTimeAgo } from "@/lib/format";
 import { t } from "@/lib/i18n";
-import { DubJob, getDubJobs } from "@/api/dubbing";
+import { DubJob } from "@/api/dubbing";
+import { useApi } from "@/hooks/useApi";
 
 export default function HistoryPage() {
   const [activeTab, setActiveTab] = useState<"video" | "tts">("video");
@@ -14,6 +15,7 @@ export default function HistoryPage() {
   const playback = useTtsStore((s) => s.playback);
   const remove = useTtsStore((s) => s.removeFromHistory);
   const clear = useTtsStore((s) => s.clearHistory);
+  const api = useApi();
 
   const [videoJobs, setVideoJobs] = useState<DubJob[]>([]);
   const [loadingVideo, setLoadingVideo] = useState(false);
@@ -28,7 +30,7 @@ export default function HistoryPage() {
       setIsRefreshing(true);
     }
     try {
-      const jobs = await getDubJobs();
+      const jobs = await api.getDubJobs();
       setVideoJobs(jobs || []);
     } catch (err) {
       console.error(err);
@@ -43,7 +45,7 @@ export default function HistoryPage() {
   useEffect(() => {
     if (activeTab !== "video") return;
     fetchJobs();
-  }, [activeTab]);
+  }, [activeTab, api]);
 
   // Polling logic removed
   const handleCopyId = (id: string) => {

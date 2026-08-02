@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { fetchVoices, previewVoice, type Voice } from "@/api/tts";
+import { type Voice } from "@/api/tts";
+import { useApi } from "@/hooks/useApi";
 import { useTtsStore } from "@/store/tts";
 import { uid } from "@/lib/format";
 import { t } from "@/lib/i18n";
@@ -13,9 +14,10 @@ export default function VoiceLibraryPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const setPlayback = useTtsStore((s) => s.setPlayback);
+  const api = useApi();
 
   useEffect(() => {
-    fetchVoices()
+    api.fetchVoices()
       .then((list) => {
         setVoices(list);
         if (list.length === 0) {
@@ -23,12 +25,12 @@ export default function VoiceLibraryPage() {
         } else {
           // Pre-fetch top 4 voices in background for zero-delay play
           list.slice(0, 4).forEach((v) => {
-            previewVoice(v.id).catch(() => {});
+            api.previewVoice(v.id).catch(() => {});
           });
         }
       })
       .catch((e) => setLoadError(String(e)));
-  }, []);
+  }, [api]);
 
   const langs = useMemo(() => {
     const set = new Set(voices.map((v) => v.language));
@@ -55,7 +57,7 @@ export default function VoiceLibraryPage() {
 
     setLoadingId(v.id);
     try {
-      const { url, isMock } = await previewVoice(v.id);
+      const { url, isMock } = await api.previewVoice(v.id);
       setPreviewingId(v.id);
       setPlayback({
         id: uid(),
@@ -130,7 +132,7 @@ export default function VoiceLibraryPage() {
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: Math.min(idx * 0.02, 0.2), duration: 0.2 }}
-              onMouseEnter={() => previewVoice(v.id)}
+              onMouseEnter={() => api.previewVoice(v.id).catch(() => {})}
               className="glass rounded-xl p-4 hover:border-sky-500/30 hover:shadow-lg transition-all group flex flex-col justify-between"
             >
               <div>
@@ -154,7 +156,7 @@ export default function VoiceLibraryPage() {
                   </div>
                   <button
                     onClick={() => onPreview(v)}
-                    onMouseEnter={() => previewVoice(v.id)}
+                    onMouseEnter={() => api.previewVoice(v.id).catch(() => {})}
                     aria-label={`Preview voice sample for ${v.name}`}
                     aria-pressed={isPlaying}
                     disabled={isLoading}

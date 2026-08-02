@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { t } from "@/lib/i18n";
-import { submitDubJob, getDubStatus, type DubJob } from "@/api/dubbing";
+import { type DubJob } from "@/api/dubbing";
 import StageIcons, { activeStageIndex } from "@/components/StageIcons";
+import { useApi, AuthFailedError, AuthNetworkError } from "@/hooks/useApi";
 
 const ACCEPTED = ".mp4,.mov,.webm,.mkv,video/*";
 const MAX_BYTES = 500 * 1024 * 1024; // 500 MB
@@ -73,6 +74,7 @@ const CATEGORIES: { id: string; labelKey: string; defaultLabel: string; subOptio
 ];
 
 export default function VideoDubbingPage() {
+  const api = useApi();
   const [file, setFile] = useState<File | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState(0);
@@ -184,7 +186,7 @@ export default function VideoDubbingPage() {
     setStatusMsg(t("status_uploading", "Uploading to pipeline…"));
 
     try {
-      const job = await submitDubJob(file, {
+      const job = await api.submitDubJob(file, {
         category: resolvedCategory || undefined,
         entity: resolvedEntity || undefined,
       });
@@ -195,7 +197,7 @@ export default function VideoDubbingPage() {
 
       pollRef.current = window.setInterval(async () => {
         try {
-          const s: DubJob = await getDubStatus(job.id);
+          const s: DubJob = await api.getDubStatus(job.id);
           setProgress((p) => Math.max(p, s.progress));
           if (s.status === "completed") {
             setProgress(100);
@@ -230,12 +232,20 @@ export default function VideoDubbingPage() {
           } else {
             setStatusMsg(stageLabel(s.progress));
           }
-        } catch (e) {
+        } catch (e: any) {
+          if (e instanceof AuthFailedError || e instanceof AuthNetworkError) {
+            if (pollRef.current) {
+              window.clearInterval(pollRef.current);
+              pollRef.current = null;
+            }
+            return;
+          }
           // Silent — keep polling; transient errors shouldn't kill the job.
           console.warn("poll err", e);
         }
       }, 1500);
     } catch (e: any) {
+      if (e instanceof AuthFailedError || e instanceof AuthNetworkError) return;
       setPhase("failed");
       setError(e?.message ?? "Upload failed");
     }

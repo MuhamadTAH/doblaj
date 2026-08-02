@@ -8,9 +8,7 @@
 // injected at build time. Empty in dev -> fetch uses a relative path so Vite's
 // proxy in vite.config.ts can forward /api and /video to localhost:8002.
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
-
-import { getClerkToken } from "./dubbing";
-
+import { AuthFailedError, AuthNetworkError } from '../hooks/useApi';
 export type TtsRequest = {
   text: string;
   voice_id: string;
@@ -85,13 +83,9 @@ export type Voice = {
  * Endpoint: /api/tts-dashboard/voices (merged from tts-service_old;
  * /api/voices is a legacy stub in dubbing with a different shape).
  */
-export async function fetchVoices(): Promise<Voice[]> {
+export async function fetchVoices(fetchClient: typeof fetch, signal?: AbortSignal): Promise<Voice[]> {
   try {
-    const token = await getClerkToken();
-    const res = await fetch(`${API_BASE}/api/tts-dashboard/voices`, { 
-      headers: { "Authorization": `Bearer ${token}` }
-    });
-    if (!res.ok) throw new Error(`voices: ${res.status}`);
+    const res = await fetchClient(`${API_BASE}/api/tts-dashboard/voices`, { signal });
     const data: Voice[] = await res.json();
     if (!Array.isArray(data)) return [];
     // Hardening: defend against partial / shape-mismatched rows so a stray
@@ -113,6 +107,9 @@ export async function fetchVoices(): Promise<Voice[]> {
         voice_type: v.voice_type,
       }));
   } catch (err) {
+    // If it's an abort or an auth failure, don't swallow it.
+    if (err instanceof Error && err.name === 'AbortError') throw err;
+    if (err instanceof AuthFailedError || err instanceof AuthNetworkError) throw err;
     console.warn("Voices fetch failed, returning empty list", err);
     return [];
   }
@@ -122,20 +119,20 @@ export async function fetchVoices(): Promise<Voice[]> {
  * Real TTS call. Streams a Blob (mp3) from the backend, which proxies Fish Audio.
  * Falls back to a silent WAV if the backend is unreachable.
  */
-export async function generateTts(req: TtsRequest): Promise<Blob> {
+export async function generateTts(fetchClient: typeof fetch, req: TtsRequest, signal?: AbortSignal): Promise<Blob> {
   try {
-    const token = await getClerkToken();
-    const res = await fetch(`${API_BASE}/api/tts-dashboard/tts`, {
+    const res = await fetchClient(`${API_BASE}/api/tts-dashboard/tts`, {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
       },
       body: JSON.stringify(req),
+      signal
     });
-    if (!res.ok) throw new Error(`TTS backend returned ${res.status}`);
     return await res.blob();
   } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') throw err;
+    if (err instanceof AuthFailedError || err instanceof AuthNetworkError) throw err;
     console.warn("TTS fetch failed, returning silent fallback", err);
     const seconds = Math.max(1, Math.min(8, Math.round(req.text.length / 20)));
     return makeSilentWav(seconds);
@@ -149,22 +146,20 @@ const previewCache = new Map<string, { blob: Blob; url: string; isMock: boolean 
  * Returns a Blob URL the GlobalPlayer can consume.
  * Falls back to a silent WAV if the backend is unreachable.
  */
-export async function previewVoice(voiceId: string): Promise<{ blob: Blob; url: string; isMock: boolean }> {
+export async function previewVoice(fetchClient: typeof fetch, voiceId: string, signal?: AbortSignal): Promise<{ blob: Blob; url: string; isMock: boolean }> {
   if (previewCache.has(voiceId)) {
     return previewCache.get(voiceId)!;
   }
 
   try {
-    const token = await getClerkToken();
-    const res = await fetch(`${API_BASE}/api/tts-dashboard/voices/${encodeURIComponent(voiceId)}/preview`, { 
-      headers: { "Authorization": `Bearer ${token}` }
-    });
-    if (!res.ok) throw new Error(`preview: ${res.status}`);
+    const res = await fetchClient(`${API_BASE}/api/tts-dashboard/voices/${encodeURIComponent(voiceId)}/preview`, { signal });
     const blob = await res.blob();
     const result = { blob, url: URL.createObjectURL(blob), isMock: false };
     previewCache.set(voiceId, result);
     return result;
   } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') throw err;
+    if (err instanceof AuthFailedError || err instanceof AuthNetworkError) throw err;
     console.warn("Preview failed, returning silent fallback", err);
     const blob = makeSilentWav(1.4);
     return { blob, url: URL.createObjectURL(blob), isMock: true };

@@ -1,13 +1,11 @@
 import React, { useState } from "react";
-import { getClerkToken } from "@/api/dubbing";
-
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
-
+import { useApi, HttpError, AuthFailedError, AuthNetworkError } from "@/hooks/useApi";
 
 export default function SettingsPage() {
   const [password, setPassword] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [message, setMessage] = useState("");
+  const api = useApi();
 
   const handleDelete = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -15,27 +13,21 @@ export default function SettingsPage() {
     setMessage("");
 
     try {
-      const token = await getClerkToken();
-      const res = await fetch(`${API_BASE}/api/user/delete`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ password }),
-      });
-
-      if (res.ok) {
-        setMessage("Your account has been queued for deletion.");
-        setTimeout(() => {
-          window.location.href = "/";
-        }, 2000);
-      } else {
-        const data = await res.json();
-        setMessage(data.detail || "Failed to delete account.");
-      }
+      await api.deleteAccount(password);
+      setMessage("Your account has been queued for deletion.");
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 2000);
     } catch (err) {
-      setMessage("Error communicating with the server.");
+      if (err instanceof HttpError) {
+        setMessage(err.detail || "Failed to delete account.");
+      } else if (err instanceof AuthFailedError) {
+        setMessage("Authentication failed. Please log in again.");
+      } else if (err instanceof AuthNetworkError) {
+        setMessage("Network error during authentication.");
+      } else {
+        setMessage("Error communicating with the server.");
+      }
     } finally {
       setIsDeleting(false);
     }
