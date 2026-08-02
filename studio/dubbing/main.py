@@ -176,7 +176,6 @@ else:
         "https://doblaj.com",
         "https://www.doblaj.com",
         "https://checkout.suby.fi",
-        SHELL_ORIGIN,
     ]
 
 app.add_middleware(
