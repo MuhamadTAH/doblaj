@@ -4,7 +4,7 @@ import os
 from typing import Any, Dict, Optional
 
 import jwt
-from fastapi import Cookie, Header, HTTPException
+from fastapi import Cookie, Header, HTTPException, Request
 from jwt import PyJWKClient
 
 CLERK_FRONTEND_API = os.getenv("CLERK_FRONTEND_API", "deciding-quagga-70.clerk.accounts.dev")
@@ -194,9 +194,12 @@ async def _resolve_legacy_workspace_id(org_or_workspace_id: str, user_id: str) -
     return ""
 
 async def require_user(
+    request: Request,
     authorization: Optional[str] = Header(None)
 ) -> AuthenticatedUser:
-    token = _bearer_token(authorization)
+    # Use request.headers as a fallback if FastAPI dependency injection misses it
+    auth_header = authorization or request.headers.get("authorization")
+    token = _bearer_token(auth_header)
     claims = _decode_clerk_jwt(token)
     workspace_id = claims.get("workspace_id") or claims.get("org_id") or claims.get("sub")
     if not workspace_id:
