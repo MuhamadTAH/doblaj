@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import PricingCard from "@/components/PricingCard";
 import { useAuth } from "@clerk/clerk-react";
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
 
 export default function PricingPage() {

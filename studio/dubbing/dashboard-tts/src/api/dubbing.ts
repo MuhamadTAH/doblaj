@@ -3,7 +3,7 @@
 // to the Convex backend.
 
 // Pird: see api/tts.ts API_BASE note. Same env var drives /video/* too.
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
 export type DubJobStatus = "pending" | "processing" | "completed" | "failed";
 
