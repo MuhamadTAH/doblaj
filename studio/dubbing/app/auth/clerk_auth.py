@@ -84,7 +84,7 @@ async def _resolve_legacy_workspace_id(org_or_workspace_id: str, user_id: str) -
     actual workspace legacyId via Convex `workspaces:findByOwnerInternal`.
     Otherwise return the value unchanged (assumed to already be a legacy UUID).
     """
-    if not org_or_workspace_id or not org_or_workspace_id.startswith("org_"):
+    if not org_or_workspace_id or (not org_or_workspace_id.startswith("org_") and not org_or_workspace_id.startswith("user_")):
         return org_or_workspace_id
 
     # Use the Clerk user id directly. The Convex `workspaces` table stores
@@ -170,7 +170,7 @@ async def require_user(
 ) -> AuthenticatedUser:
     token = _bearer_token(authorization)
     claims = _decode_clerk_jwt(token)
-    workspace_id = claims.get("workspace_id")
+    workspace_id = claims.get("workspace_id") or claims.get("org_id") or claims.get("sub")
     if not workspace_id:
         raise HTTPException(403, "Select or create a Clerk organization before using Dubbing Studio")
     user_id = claims["sub"]

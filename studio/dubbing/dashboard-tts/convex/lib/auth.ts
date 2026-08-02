@@ -17,7 +17,8 @@ export async function requireWorkspace(
   const rawWorkspace =
     (identity as unknown as { workspace_id?: string }).workspace_id ??
     (identity as unknown as { org_id?: string }).org_id ??
-    (identity as unknown as { orgId?: string }).orgId;
+    (identity as unknown as { orgId?: string }).orgId ??
+    identity.subject;
   const workspaceId =
     typeof rawWorkspace === "string" && rawWorkspace.length > 0
       ? rawWorkspace
