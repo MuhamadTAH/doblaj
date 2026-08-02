@@ -27,7 +27,7 @@ class AuthenticatedUser:
 
 def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
     try:
-        signing_key = _jwks_client.get_signing_key_from_jwt(token)
+        signing_key = get_jwks_client().get_signing_key_from_jwt(token)
         options = {"require": ["exp", "sub"]}
         if not CLERK_AUDIENCE_REQUIRED:
             options["verify_aud"] = False

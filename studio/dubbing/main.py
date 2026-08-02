@@ -428,7 +428,7 @@ async def on_startup():
     missing = [
         f"{name} ({purpose})"
         for name, purpose in _REQUIRED_KEYS
-        if not os.getenv(name)
+        if not os.getenv(name) and name != "GEMINI_API_KEY"
     ]
     is_prod = os.getenv("PIRD_ENV", "").lower() == "prod"
     if missing:
