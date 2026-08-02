@@ -12,8 +12,20 @@ CLERK_ISSUER = os.getenv("CLERK_ISSUER", f"https://{CLERK_FRONTEND_API}").rstrip
 CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL", f"{CLERK_ISSUER}/.well-known/jwks.json")
 CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE", "pird-dubbing")
 CLERK_AUDIENCE_REQUIRED = os.getenv("CLERK_AUDIENCE_REQUIRED", "false").lower() == "true"
-_jwks_client = PyJWKClient(CLERK_JWKS_URL)
+# Pird: lazy-init JWKS client.
+# PyJWT 2.6+ prefetches the JWKS at construction time, which blocks startup
+# indefinitely if Clerk is unreachable from this host. Build the client on
+# first call inside get_jwks_client() so a Clerk outage fails auth requests,
+# not the whole server boot.
+_jwks_client = None
 
+
+def get_jwks_client():
+    global _jwks_client
+    if _jwks_client is None:
+        # timeout=5s so a hung JWKS fetch never stalls request handlers.
+        _jwks_client = PyJWKClient(CLERK_JWKS_URL, timeout=5)
+    return _jwks_client
 
 @dataclass(frozen=True)
 class AuthenticatedUser:
