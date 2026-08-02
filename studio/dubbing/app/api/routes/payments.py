@@ -122,7 +122,7 @@ async def test_suby_webhook(request: Request):
                 amount_usd=price,
                 minutes_added=minutes
             )
-            new_balance = await database.add_workspace_minutes(client, workspace_id, minutes)
+            new_balance = await database.add_workspace_minutes(client, workspace_id=workspace_id, minutes=minutes)
             logger.info(f"[TEST_WEBHOOK] Added {minutes} minutes to workspace {safe_ws(workspace_id)}. New balance: {new_balance}")
             return {"status": "ok", "message": f"Successfully added {minutes} minutes to workspace {workspace_id}", "new_balance": new_balance}
         else:

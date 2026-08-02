@@ -4,12 +4,11 @@ import { Id } from "./_generated/dataModel";
 import { requireWorkspace } from "./lib/auth";
 
 async function resolveWorkspaceId(
-  ctx: { db: { query: any; get: any } },
+  ctx: { db: { query: any; get: any; normalizeId: any } },
   workspaceIdOrLegacy: string,
 ): Promise<Id<"workspaces">> {
-  if (workspaceIdOrLegacy.length === 32) {
-    return workspaceIdOrLegacy as Id<"workspaces">;
-  }
+  const normalized = ctx.db.normalizeId("workspaces", workspaceIdOrLegacy);
+  if (normalized) return normalized;
   const ws = await ctx.db
     .query("workspaces")
     .withIndex("by_legacy_id", (q: any) => q.eq("legacyId", workspaceIdOrLegacy))
