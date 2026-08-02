@@ -28,51 +28,7 @@ class SubyClient:
                     f"SUBY_WEBHOOK_SECRET failed cryptographic format validation. Must match pattern '{WEBHOOK_SECRET_REGEX}'."
                 )
 
-    async def create_checkout(self, user_id: str, workspace_id: str, tier_id: str, amount_usd: int) -> str:
-        """Suby.fi API call to generate a payment checkout URL"""
-        logger.info(f"Creating Suby checkout for user {user_id}, workspace {workspace_id}, tier {tier_id}, ${amount_usd}")
-        
-        import httpx
-        
-        async with httpx.AsyncClient() as client:
-            payload = {
-                "productId": f"dubbing-tier-{tier_id}",
-                "priceCents": str(amount_usd * 100),
-                "currency": "USD",
-                "paymentMethods": ["CARD"],
-                "metadata": {
-                    "user_id": user_id,
-                    "workspace_id": workspace_id,
-                    "tier_id": tier_id
-                }
-            }
-            
-            headers = {
-                "X-Suby-Api-Key": self.api_key,
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            try:
-                # Call Suby.fi API endpoint: /payment/create
-                url = f"{self.base_url}/payment/create"
-                logger.info(f"[SUBY_CHECKOUT_REQ] POST {url} with payload: {payload} and headers (API Key omitted)")
-                res = await client.post(url, json=payload, headers=headers, timeout=10.0)
-                if not res.is_success:
-                    error_msg = f"Suby API error {res.status_code}: {res.text}"
-                    logger.error(f"[SUBY_CHECKOUT_ERR] {error_msg}")
-                    raise RuntimeError(error_msg)
-                    
-                data = res.json()
-                logger.info(f"[SUBY_CHECKOUT_RES] Suby API response: {data}")
-                payment_url = data.get("data", {}).get("paymentUrl") or data.get("url")
-                if payment_url:
-                    return payment_url
-                raise RuntimeError("No payment URL found in Suby API response.")
-            except Exception as e:
-                logger.exception(f"[SUBY_CHECKOUT_FAIL] Failed to create Suby checkout: {e}")
-                # Propagate the error so the frontend can see it
-                raise RuntimeError(f"Suby checkout creation failed: {str(e)}")
+
 
     def verify_signature(self, payload: bytes, signature: str) -> bool:
         """Verify the webhook signature using HMAC-SHA256"""

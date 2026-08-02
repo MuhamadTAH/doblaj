@@ -26,31 +26,43 @@ class CheckoutRequest(BaseModel):
 async def options_checkout_session():
     return {}
 
-import urllib.parse
-
-SUBY_LINKS = {
-    "starter": os.getenv("SUBY_LINK_STARTER", "[INSERT_STARTER_URL_HERE]"),
-    "pro": os.getenv("SUBY_LINK_PRO", "[INSERT_PRO_URL_HERE]"),
-    "creator": os.getenv("SUBY_LINK_CREATOR", "[INSERT_CREATOR_URL_HERE]"),
-}
-
 @router.post("/checkout")
 @router.post("/checkout/")
 async def create_checkout_session(req: CheckoutRequest, user: AuthenticatedUser = Depends(require_user)):
-    """Return a static Suby checkout URL for the requested tier."""
+    """Generate a Suby checkout URL for the requested tier."""
     if req.tier not in TIERS:
         raise HTTPException(status_code=400, detail="Invalid tier")
         
-    static_link = SUBY_LINKS.get(req.tier)
-    if not static_link or static_link == "[INSERT_" + req.tier.upper() + "_URL_HERE]":
-        raise HTTPException(status_code=500, detail=f"No static checkout link configured for {req.tier}")
-
-    # Safe Client Reference Encoding using _ as requested
-    client_ref = f"{user.user_id}_{user.workspace_id}_{req.tier}"
-    encoded_ref = urllib.parse.quote(client_ref)
+    tier_info = TIERS[req.tier]
     
-    checkout_url = f"{static_link}?clientReferenceId={encoded_ref}"
-    return {"checkoutUrl": checkout_url}
+    try:
+        import os
+        import json
+        import base64
+        import urllib.parse
+        
+        tier_link = os.getenv(f"SUBY_LINK_{req.tier.upper()}")
+        if not tier_link:
+            raise HTTPException(status_code=400, detail=f"No static checkout link available for tier {req.tier}")
+
+        # Build Composite Tracking ID
+        composite_data = {
+            "user_id": user.user_id,
+            "workspace_id": user.workspace_id,
+            "tier_id": req.tier
+        }
+        
+        # Safely URL-safe Base64 encode the JSON
+        json_str = json.dumps(composite_data)
+        encoded_b64 = base64.urlsafe_b64encode(json_str.encode('utf-8')).decode('utf-8')
+        
+        # The encode doesn't need quote if it's urlsafe, but it's fine
+        checkout_url = f"{tier_link}?clientReferenceId={encoded_b64}"
+        
+        return {"checkoutUrl": checkout_url}
+    except Exception as e:
+        logger.exception("Checkout URL generation failed")
+        raise HTTPException(status_code=500, detail=str(e))
 
 from fastapi.responses import RedirectResponse
 import uuid
@@ -131,58 +143,63 @@ async def suby_webhook(request: Request):
         raise HTTPException(status_code=401, detail="Invalid signature")
         
     try:
+        import base64
+        import json
+        
         event = await request.json()
         event_id = event.get("id") or f"evt_{uuid.uuid4().hex[:12]}"
         event_type = event.get("type") or request.headers.get("x-webhook-event", "PAYMENT_SUCCESS")
         
-        # Parse clientReferenceId instead of metadata
+        # Strict Event Validation
+        if event_type not in ("checkout.success", "payment.success", "PAYMENT_SUCCESS"):
+            logger.info(f"Ignoring non-success event type: {event_type}")
+            return {"status": "ignored", "reason": "not a success event"}
+        
         data = event.get("data", event)
         client_ref = data.get("clientReferenceId")
         if not client_ref:
-            raise ValueError("Webhook missing clientReferenceId")
+            raise HTTPException(status_code=400, detail="Missing clientReferenceId")
             
-        parts = client_ref.split("_")
-        # Ensure we can reconstruct IDs like user_xxxx and org_yyyy
-        if len(parts) >= 5:
-            user_id = f"{parts[0]}_{parts[1]}"
-            workspace_id = f"{parts[2]}_{parts[3]}"
-            tier_id = "_".join(parts[4:])
-        elif len(parts) == 3:
-            # Fallback if IDs didn't contain underscores
-            user_id, workspace_id, tier_id = parts
-        else:
-            raise ValueError(f"Malformed clientReferenceId: {client_ref}")
-
-        if not user_id or not workspace_id or not tier_id:
-            raise ValueError("clientReferenceId missing required components")
+        try:
+            # Base64-decode the JSON
+            decoded_bytes = base64.urlsafe_b64decode(client_ref.encode('utf-8'))
+            composite_data = json.loads(decoded_bytes.decode('utf-8'))
+        except Exception as parse_e:
+            logger.error(f"Failed to parse clientReferenceId: {parse_e}")
+            raise HTTPException(status_code=400, detail="Invalid clientReferenceId format")
+            
+        workspace_id = composite_data.get("workspace_id")
+        tier_id = composite_data.get("tier_id")
+        user_id = composite_data.get("user_id")
+        transaction_id = event_id # Use event ID or transaction ID for idempotency
         
-        if tier_id not in TIERS:
-            raise ValueError(f"Invalid tier_id in clientReferenceId: {tier_id}")
-
+        if not workspace_id or not tier_id:
+             raise HTTPException(status_code=400, detail="Missing required IDs in payload")
+             
+        tier_info = TIERS.get(tier_id)
+        if not tier_info:
+            raise HTTPException(status_code=400, detail="Invalid tier_id in payload")
+            
+        minutes_added = tier_info["minutes"]
+        amount_usd = tier_info["price_usd"]
+        
         from app.core import db as database
         from app.core.db import _get_service_role_client
         client = _get_service_role_client()
         
-        # DURABLE INGESTION: Writes raw webhook to webhookEvents table in Convex before returning 200 OK
-        # We also pass the extracted user_id, workspace_id, tier_id to the durable ingestion or handle it there
-        # Wait, the durable ingestion currently might rely on event.data.metadata. Let's make sure it has what it needs.
-        # It just passes payload=event to Convex. The convex mutation must handle the parsing, OR we modify the payload here.
-        if "metadata" not in event["data"]:
-            event["data"]["metadata"] = {}
-        event["data"]["metadata"].update({
-            "user_id": user_id,
-            "workspace_id": workspace_id,
-            "tier_id": tier_id
-        })
-
-        res = await database.record_and_process_webhook_durable(
+        # Atomic Idempotency & Credit
+        # Calls the Convex transaction that checks if event exists, and if not, adds minutes.
+        res = await database.process_payment_success_atomic(
             client,
-            event_id=event_id,
-            event_type=event_type,
-            payload=event
+            transaction_id=transaction_id,
+            workspace_id=workspace_id,
+            tier=tier_id,
+            amount_usd=amount_usd,
+            minutes_added=minutes_added
         )
-        logger.info(f"[DURABLE_WEBHOOK] Persisted and processed event {event_id}: {res}")
+        
+        logger.info(f"[ATOMIC_WEBHOOK] Processed event {event_id}: {res}")
         return {"status": "ok", "persisted": True, "result": res}
     except Exception as e:
-        logger.exception("Webhook durable processing failed")
+        logger.exception("Webhook atomic processing failed")
         raise HTTPException(status_code=400, detail=f"Webhook error: {str(e)}")
