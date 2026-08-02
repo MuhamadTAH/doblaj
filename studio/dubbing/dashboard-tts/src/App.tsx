@@ -12,18 +12,22 @@ import BillingPage from "@/pages/BillingPage";
 import PrivacyPolicyPage from "@/pages/PrivacyPolicyPage";
 import TermsOfServicePage from "@/pages/TermsOfServicePage";
 import SettingsPage from "@/pages/SettingsPage";
-import { ClerkProvider, SignedIn, SignedOut, SignIn } from "@clerk/clerk-react";
+import { ClerkProvider, SignedIn, SignedOut, SignIn, useAuth } from "@clerk/clerk-react";
+import { ConvexProviderWithClerk } from "convex/react-clerk";
+import { ConvexReactClient } from "convex/react";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_test_ZGVjaWRpbmctcXVhZ2dhLTcwLmNsZXJrLmFjY291bnRzLmRldiQ";
+const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
 export default function App() {
   return (
     <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
-      <SignedOut>
-        <div className="flex h-screen w-screen items-center justify-center bg-[#0b1220]">
-          <SignIn routing="hash" />
-        </div>
-      </SignedOut>
+      <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+        <SignedOut>
+          <div className="flex h-screen w-screen items-center justify-center bg-[#0b1220]">
+            <SignIn routing="hash" />
+          </div>
+        </SignedOut>
       <SignedIn>
         <div className="flex h-screen overflow-hidden">
           <Sidebar />
@@ -47,6 +51,7 @@ export default function App() {
           <GlobalPlayer />
         </div>
       </SignedIn>
+      </ConvexProviderWithClerk>
     </ClerkProvider>
   );
 }
