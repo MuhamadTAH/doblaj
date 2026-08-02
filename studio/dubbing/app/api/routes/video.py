@@ -448,8 +448,8 @@ class TranslateSingleRequest(BaseModel):
 @router.get("/translate-dashboard")
 async def get_translate_dashboard():
     # Legacy route — supersede by /tts/* React dashboard. Hard-ridirect so
-    # old bookmarks and inbound links land on the new UI.
-    return RedirectResponse(url="/tts/voices", status_code=301)
+    # old links still work.
+    return RedirectResponse(url="/voices", status_code=301)
 
 
 @router.get("/translate-dashboard-legacy", response_class=HTMLResponse, include_in_schema=False)
@@ -469,7 +469,7 @@ async def get_translate_dashboard_legacy(request: Request, user: AuthenticatedUs
 @router.get("/dubbing")
 async def get_dubbing_page():
     # Legacy Jinja dubbing workspace — supersede by /tts/dubbing React page.
-    return RedirectResponse(url="/tts/dubbing", status_code=301)
+    return RedirectResponse(url="/dubbing", status_code=301)
 
 
 @router.get("/dubbing-legacy", response_class=HTMLResponse, include_in_schema=False)

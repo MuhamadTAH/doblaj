@@ -74,7 +74,7 @@ async def mock_checkout_success(user_id: str, workspace_id: str, tier_id: str):
         await database.add_workspace_minutes(client, workspace_id=workspace_id, minutes=minutes)
         logger.info(f"[MOCK_PAYMENT] Added {minutes} minutes to workspace {safe_ws(workspace_id)}")
         
-    return RedirectResponse(url="/tts/billing?payment=success")
+    return RedirectResponse(url="/billing?payment=success")
 
 @router.post("/test-webhook")
 async def test_suby_webhook(request: Request):

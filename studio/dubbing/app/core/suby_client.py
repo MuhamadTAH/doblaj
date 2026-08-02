@@ -16,7 +16,7 @@ class SubyClient:
         import re
         if os.getenv("PIRD_ENV", "").lower() == "prod":
             # Strict regex validation for Suby API keys (sk_live_, mk_live_) and webhook secrets (whsec_)
-            API_KEY_REGEX = r"^(sk_live_|mk_live_|sk_test_|mk_test_)[a-zA-Z0-9_-]{24,80}$"
+            API_KEY_REGEX = r"^(sk_live_|mk_live_)[a-zA-Z0-9_-]{24,80}$"
             WEBHOOK_SECRET_REGEX = r"^(whsec_)?[a-zA-Z0-9_-]{24,128}$"
 
             if not re.match(API_KEY_REGEX, self.api_key):
