@@ -92,13 +92,17 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
 
 
 def _bearer_token(authorization: Optional[str]) -> str:
+    import logging
+    logging.getLogger(__name__).error(f"[DEBUG_AUTH] Received authorization header: {authorization}")
+    
     if authorization:
         scheme, _, token = authorization.partition(" ")
-        if scheme.lower() == "bearer" and token:
+        if scheme.lower() == "bearer" and token and token != "null":
             return token
+            
     raise HTTPException(
         401, 
-        "Authentication required", 
+        f"Authentication required. Header received: {authorization}", 
         headers={"WWW-Authenticate": 'Bearer error="invalid_request", error_description="Missing or invalid Authorization header"'}
     )
 
