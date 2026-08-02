@@ -1,21 +1,25 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import PricingCard from "@/components/PricingCard";
+import { useAuth } from "@clerk/clerk-react";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 
 export default function PricingPage() {
   const [loadingTier, setLoadingTier] = useState<string | null>(null);
+  const { getToken } = useAuth();
 
   const handleCheckout = async (tierId: string) => {
     setLoadingTier(tierId);
     try {
+      const token = await getToken();
       const res = await fetch(`${API_BASE}/api/payments/checkout`, {
         method: 'POST',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ tier: tierId })
       });
