@@ -56,15 +56,20 @@ class SubyClient:
             try:
                 # Call Suby.fi API endpoint: /payment/create
                 url = f"{self.base_url}/payment/create"
+                logger.info(f"[SUBY_CHECKOUT_REQ] POST {url} with payload: {payload} and headers (API Key omitted)")
                 res = await client.post(url, json=payload, headers=headers, timeout=10.0)
+                if not res.is_success:
+                    logger.error(f"[SUBY_CHECKOUT_ERR] Suby API returned {res.status_code}: {res.text}")
                 res.raise_for_status()
                 data = res.json()
+                logger.info(f"[SUBY_CHECKOUT_RES] Suby API response: {data}")
                 payment_url = data.get("data", {}).get("paymentUrl") or data.get("url")
                 if payment_url:
                     return payment_url
+                logger.warning(f"[SUBY_CHECKOUT_WARN] No payment URL in response. Falling back to mock-success.")
                 return f"/api/payments/mock-success?user_id={user_id}&workspace_id={workspace_id}&tier_id={tier_id}"
             except Exception as e:
-                logger.error(f"Failed to create Suby checkout: {e}")
+                logger.exception(f"[SUBY_CHECKOUT_FAIL] Failed to create Suby checkout: {e}")
                 # Fallback to local mock checkout for testing when API key is unconfigured
                 return f"/api/payments/mock-success?user_id={user_id}&workspace_id={workspace_id}&tier_id={tier_id}"
 
