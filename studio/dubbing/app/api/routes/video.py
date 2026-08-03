@@ -22,7 +22,7 @@ async def _check_voice_recording_consent(user) -> None:
 logger = logging.getLogger(__name__)
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Request, Depends
-from app.auth.clerk_auth import require_user, AuthenticatedUser
+from app.auth.clerk_auth import require_user, require_user_or_internal, AuthenticatedUser
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from typing import List, Optional
 from pydantic import BaseModel
@@ -122,7 +122,7 @@ def get_video_duration(path: str) -> float:
 async def create_job(
     request: Request,
     file: UploadFile = File(...),
-    user: AuthenticatedUser = Depends(require_user),
+    user: AuthenticatedUser = Depends(require_user_or_internal),
     voice_id: Optional[str] = Form(None),
     category: Optional[str] = Form(None),
     entity: Optional[str] = Form(None),

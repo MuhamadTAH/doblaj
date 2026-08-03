@@ -1,0 +1,22 @@
+[Unit]
+Description=Telegram Thin Dubbing Bot
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+# Replace /home/ubuntu/doblaj with the actual path to your repository on the VM
+WorkingDirectory=/home/ubuntu/doblaj/studio/telegram-dubbing-bot
+EnvironmentFile=/home/ubuntu/doblaj/studio/telegram-dubbing-bot/.env
+
+# Use the virtual environment's python if you have one, or global python3
+ExecStart=/usr/bin/python3 bot_thin.py
+
+Restart=always
+RestartSec=5
+# If your environment needs specific variables injected, you can add them here:
+# Environment=TELEGRAM_DATA_HOST_DIR=/home/ubuntu/doblaj/studio/telegram-dubbing-bot/telegram-data
+
+[Install]
+WantedBy=multi-user.target

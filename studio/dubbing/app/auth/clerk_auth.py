@@ -234,3 +234,30 @@ async def require_user_optional(
     if not auth_header:
         return None
     return await require_user(request=request, authorization=auth_header)
+
+
+async def require_user_or_internal(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_internal_key: Optional[str] = Header(None)
+) -> AuthenticatedUser:
+    import os
+    import hmac
+    internal_key = os.getenv("INTERNAL_API_KEY", "")
+    
+    # Use request.headers fallback in case FastAPI Depends misses it
+    actual_internal_key = x_internal_key or request.headers.get("x-internal-key")
+    
+    if actual_internal_key and internal_key and hmac.compare_digest(actual_internal_key, internal_key):
+        bot_user_id = os.getenv("BOT_SERVICE_USER_ID", "telegram-bot")
+        bot_workspace_id = os.getenv("BOT_SERVICE_WORKSPACE_ID", "telegram-bot-ws")
+        return AuthenticatedUser(
+            user_id=bot_user_id,
+            email="bot@internal.doblaj.com",
+            workspace_id=bot_workspace_id,
+            role="org:admin",
+            raw_claims={"sub": bot_user_id, "workspace_id": bot_workspace_id, "azp": "https://api.doblaj.com"},
+            access_token="internal-bot-token"
+        )
+        
+    return await require_user(request=request, authorization=authorization)

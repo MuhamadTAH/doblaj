@@ -193,21 +193,88 @@ async def get_internal_job_status(
     x_internal_key: Optional[str] = Header(None),
 ):
     _check_internal_key(x_internal_key)
-    job = _JOB_STORE.get(job_id)
+    
+    bot_workspace_id = os.getenv("BOT_SERVICE_WORKSPACE_ID", "telegram-bot-ws")
+    from app.core import db as database
+    
+    admin_client = database._get_service_role_client()
+    job = await database.get_job(admin_client, workspace_id=bot_workspace_id, job_id=job_id)
+    
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    # ponytail: only the status fields are exposed; webhook_url / chat_id
-    # stay server-side so callers can't fish other tenants' chat ids.
+
+    status = job.get("status", "pending")
+    status_str = "completed" if status in ("done", "completed") else status
+    
     base = os.getenv("DUBBING_URL", "http://localhost:8002").rstrip("/")
-    video_url = job.get("video_url") or (
-        f"{base}/static/outputs/manual_job_f356502b.mp4" if job["status"] == "completed" else None
-    )
+    video_url = f"{base}/api/video/internal/jobs/{job_id}/download" if status_str == "completed" else None
+
     return InternalJobStatusResponse(
         id=job_id,
-        status=job["status"],
-        progress=job.get("progress", 0),
+        status=status_str,
+        progress=int(job.get("progress", 0)),
         video_url=video_url,
         error=job.get("error"),
+    )
+
+
+@router.get("/internal/jobs/{job_id}/download")
+async def download_internal_job(
+    job_id: str,
+    x_internal_key: Optional[str] = Header(None),
+):
+    from fastapi.responses import FileResponse, RedirectResponse
+    _check_internal_key(x_internal_key)
+    
+    bot_workspace_id = os.getenv("BOT_SERVICE_WORKSPACE_ID", "telegram-bot-ws")
+    from app.core import db as database
+    
+    admin_client = database._get_service_role_client()
+    job = await database.get_job(admin_client, workspace_id=bot_workspace_id, job_id=job_id)
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    status = job.get("status", "pending")
+    if status not in ("completed", "done"):
+        raise HTTPException(status_code=400, detail="Job not completed")
+
+    output_path = job.get("result_video_r2_key") or job.get("resultVideoR2Key") or ""
+
+    from app.services import r2
+    if r2.R2_ENDPOINT and output_path and output_path.startswith("dubbing/"):
+        try:
+            url = r2.signed_url(output_path)
+            return RedirectResponse(url)
+        except Exception as e:
+            logger.error(f"Failed to generate signed URL for R2 key {output_path}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to generate download URL")
+
+    if output_path and output_path.startswith("/static"):
+        output_path = output_path.lstrip("/")
+        
+    if output_path and "data/jobs/sessions" in output_path.replace("\\", "/"):
+        output_path = "data/jobs/sessions" + output_path.replace("\\", "/").split("data/jobs/sessions")[1]
+
+    if not output_path:
+        raise HTTPException(status_code=404, detail="Output file not found")
+
+    static_root = Path("static").resolve()
+    data_root = Path("data").resolve()
+    try:
+        resolved = Path(output_path).resolve()
+    except (OSError, RuntimeError):
+        raise HTTPException(status_code=404, detail="Output file not found")
+        
+    is_safe_path = resolved.is_relative_to(static_root) or resolved.is_relative_to(data_root)
+    
+    if not is_safe_path or not resolved.is_file():
+        raise HTTPException(status_code=404, detail="Output file not found")
+
+    return FileResponse(
+        path=str(resolved),
+        filename=resolved.name,
+        media_type="video/mp4"
     )
 
 
