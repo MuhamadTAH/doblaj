@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
-import { requireWorkspace } from "./lib/auth";
+import { requireWorkspace, requireInternalApiKey } from "./lib/auth";
 
 async function resolveWorkspaceId(
   ctx: { db: { query: any; get: any; normalizeId: any } },
@@ -136,8 +136,12 @@ export const processPaymentSuccessInternal = mutation({
 });
 
 export const listInternal = query({
-  args: { workspaceId: v.string() },
+  args: { 
+    workspaceId: v.string(),
+    __internalApiKey: v.string(),
+  },
   handler: async (ctx, args) => {
+    requireInternalApiKey(args.__internalApiKey);
     const workspaceId = await resolveWorkspaceId(ctx, args.workspaceId);
     return await ctx.db
       .query("transactions")
