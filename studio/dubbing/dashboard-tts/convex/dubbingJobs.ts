@@ -152,6 +152,9 @@ export const createInternal = mutation({
     sourceLang: v.optional(v.string()),
     targetLang: v.optional(v.string()),
     ttsProvider: v.optional(v.string()),
+    consentVersion: v.optional(v.string()),
+    userIpAddress: v.optional(v.string()),
+    consentTimestamp: v.optional(v.string()),
     __internalApiKey: v.string(),},
   handler: async (ctx, args) => {
     requireInternalApiKey(args.__internalApiKey);
@@ -170,6 +173,9 @@ export const createInternal = mutation({
       sourceLang: args.sourceLang ?? "ku",
       targetLang: args.targetLang ?? "ar-IQ",
       ttsProvider: args.ttsProvider ?? "minimax",
+      consentVersion: args.consentVersion,
+      userIpAddress: args.userIpAddress,
+      consentTimestamp: args.consentTimestamp,
       status: "pending",
       progress: 0,
       chunksCount: 0,
