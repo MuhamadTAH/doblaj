@@ -13,8 +13,10 @@ export default function SoraniqLandingPage() {
     let interval: any;
     if (isPlaying) {
       interval = setInterval(() => {
-        setProgress((prev) => (prev >= 100 ? 0 : prev + 2));
-      }, 200);
+        setProgress((prev) => (prev >= 110 ? 0 : prev + 2));
+      }, 100);
+    } else {
+      setProgress(0);
     }
     return () => clearInterval(interval);
   }, [isPlaying]);
@@ -23,7 +25,7 @@ export default function SoraniqLandingPage() {
 
   const t = {
     en: {
-      badge: "New: Iraqi Arabic Model V2.0",
+      badge: "Dubbing Iraqi Arabic First Version",
       title: "Bring Your Stories to Every Iraqi Screen",
       subtitle:
         "Instant, dialect-accurate AI dubbing from Kurdish Sorani to Iraqi Arabic. Preserve original emotion, cadence, and timing with our synthetic precision engine.",
@@ -35,10 +37,10 @@ export default function SoraniqLandingPage() {
       pricingTitle: "Transparent Pricing",
       pricingSubtitle: "Choose the plan that fits your production volume.",
       startTrial: "Start",
-      dashboard: "Dashboard",
+      dashboard: "Start",
     },
     ckb: {
-      badge: "نوێ: مۆدێلی عەرەبی عێراقی ڤێرژنی ٢.٠",
+      badge: "دۆبلاژی عەرەبی عێراقی وەشانی یەکەم",
       title: "چیرۆکەکانت بگەیەنە هەموو شاشەیەکی عێراقی",
       subtitle:
         "دۆبلاژی زیرەکی دەستکرد لە کوردی سۆرانییەوە بۆ عەرەبی عێراقی بە ڕاستیی شێوەزار و هەستی ڕەسەن.",
@@ -52,7 +54,7 @@ export default function SoraniqLandingPage() {
       dashboard: "داشبۆرد",
     },
     ar: {
-      badge: "جديد: نموذج اللهجة العراقية V2.0",
+      badge: "دبلجة اللهجة العراقية الإصدار الأول",
       title: "انقل قصصك إلى كل شاشة عراقية",
       subtitle:
         "دبلجة فورية بالذكاء الاصطناعي من الكردية السورانية إلى اللهجة العراقية بدقة وبدون فقدان المشاعر والسرعة الأصلية.",
@@ -78,16 +80,16 @@ export default function SoraniqLandingPage() {
           <Link to="/" className="flex items-center gap-3 group">
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#38bdf8] to-[#1a237e] p-0.5 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
               <div className="w-full h-full bg-[#0a0a0b] rounded-[7px] flex items-center justify-center">
-                <span className="text-[#38bdf8] font-bold text-xl tracking-tighter">SQ</span>
+                <span className="text-[#38bdf8] font-bold text-xl tracking-tighter">DB</span>
               </div>
             </div>
             <span className="text-2xl font-bold text-[#fafafa] tracking-tight group-hover:opacity-90 transition-opacity">
-              SoranIQ
+              Doblaj
             </span>
           </Link>
 
           <div className="hidden md:flex items-center gap-8 text-sm font-medium">
-            <a href="#features" className="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors">
+            <a href="#use-cases" className="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors">
               Features
             </a>
             <a href="#how-it-works" className="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors">
@@ -121,7 +123,7 @@ export default function SoraniqLandingPage() {
             </div>
 
             <Link
-              to={isSignedIn ? "/tts" : "/sign-up"}
+              to={isSignedIn ? "/dubbing" : `/sign-up?redirect_url=${encodeURIComponent('/dubbing')}`}
               className="inline-flex items-center justify-center px-6 py-2.5 rounded-lg bg-[#38bdf8] text-[#0a0a0b] text-sm font-semibold hover:opacity-90 transition-all shadow-sm"
             >
               {isSignedIn ? t.dashboard : t.startTrial}
@@ -141,7 +143,7 @@ export default function SoraniqLandingPage() {
 
         {mobileMenu && (
           <div className="md:hidden bg-[#0a0a0b] border-b border-[rgba(255,255,255,0.08)] px-6 py-6 space-y-4">
-            <a href="#features" className="block text-base font-medium text-[#cfcfd3]">
+            <a href="#use-cases" className="block text-base font-medium text-[#cfcfd3]">
               Features
             </a>
             <a href="#how-it-works" className="block text-base font-medium text-[#cfcfd3]">
@@ -151,7 +153,7 @@ export default function SoraniqLandingPage() {
               Pricing
             </a>
             <Link
-              to={isSignedIn ? "/tts" : "/sign-up"}
+              to={isSignedIn ? "/dubbing" : `/sign-up?redirect_url=${encodeURIComponent('/dubbing')}`}
               className="block w-full text-center px-6 py-3 rounded-lg bg-[#38bdf8] text-[#0a0a0b] font-semibold text-sm"
             >
               {isSignedIn ? t.dashboard : t.startTrial}
@@ -180,25 +182,19 @@ export default function SoraniqLandingPage() {
 
               <div className="flex flex-col sm:flex-row gap-4 pt-2">
                 <Link
-                  to={isSignedIn ? "/tts" : "/sign-up"}
+                  to={isSignedIn ? "/dubbing" : `/sign-up?redirect_url=${encodeURIComponent('/dubbing')}`}
                   className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-[#38bdf8] text-[#0a0a0b] font-semibold text-base hover:opacity-90 transition-all shadow-lg"
                 >
                   {t.ctaPrimary}
                 </Link>
-                <button
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-transparent border border-[rgba(255,255,255,0.08)] text-[#fafafa] font-semibold text-base hover:border-[#38bdf8] transition-all"
-                >
-                  {t.ctaSecondary}
-                </button>
               </div>
             </div>
 
-            {/* Faux UI Overlay Card */}
+            {/* Faux UI Overlay Card - Mind Map */}
             <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl border border-[rgba(255,255,255,0.08)] bg-[#111114] p-8 flex flex-col justify-between">
               <div className="flex justify-between items-center z-10">
                 <span className="text-xs font-mono text-[#38bdf8] bg-[#38bdf8]/10 border border-[#38bdf8]/20 px-3 py-1 rounded-full">
-                  AI Pipeline Live
+                  AI Pipeline
                 </span>
                 <div className="flex gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80"></span>
@@ -207,20 +203,54 @@ export default function SoraniqLandingPage() {
                 </div>
               </div>
 
-              <div className="my-auto flex items-center justify-center gap-1.5 h-32 px-4">
-                {[40, 65, 30, 85, 95, 45, 75, 60, 90, 100, 70, 50, 80, 60, 40, 90, 75, 55, 35, 80].map(
-                  (height, i) => (
-                    <div
-                      key={i}
-                      className={`w-1.5 rounded-full bg-gradient-to-t from-[#1a237e] via-[#38bdf8] to-[#9cf0ff] transition-all duration-300 ${
-                        isPlaying ? "animate-pulse" : "opacity-70"
-                      }`}
-                      style={{
-                        height: isPlaying ? `${Math.max(20, (height * ((i % 3) + 1)) % 100)}%` : `${height}%`,
-                      }}
-                    />
-                  )
-                )}
+              <div className="flex-1 flex items-center justify-center">
+                <div className="relative w-full max-w-sm flex flex-col gap-6">
+                  {/* Step 1 */}
+                  <div className={`relative z-10 flex items-center gap-4 p-4 rounded-xl border transition-all duration-500 ${isPlaying && progress > 5 ? 'bg-[#38bdf8]/10 border-[#38bdf8]/50 shadow-[0_0_20px_rgba(56,189,248,0.2)]' : 'bg-[#0a0a0b] border-[rgba(255,255,255,0.05)] opacity-60'}`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold transition-colors ${isPlaying && progress > 5 ? 'bg-[#38bdf8] text-[#0a0a0b]' : 'bg-[#111114] text-[#cfcfd3]'}`}>
+                      1
+                    </div>
+                    <div>
+                      <h4 className="text-[#fafafa] font-bold text-sm">Upload Video</h4>
+                      <p className="text-[#cfcfd3] text-xs">Original Kurdish Sorani video</p>
+                    </div>
+                  </div>
+
+                  {/* Connecting Line 1 */}
+                  <div className="absolute left-[34px] top-14 w-0.5 h-6 bg-[rgba(255,255,255,0.05)] z-0">
+                    <div className="w-full bg-[#38bdf8] transition-all duration-500 ease-linear" style={{ height: isPlaying ? (progress > 30 ? '100%' : progress > 5 ? `${(progress - 5) * 4}%` : '0%') : '0%' }} />
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className={`relative z-10 flex items-center gap-4 p-4 rounded-xl border transition-all duration-500 ${isPlaying && progress > 40 ? 'bg-[#38bdf8]/10 border-[#38bdf8]/50 shadow-[0_0_20px_rgba(56,189,248,0.2)]' : 'bg-[#0a0a0b] border-[rgba(255,255,255,0.05)] opacity-60'}`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold transition-colors ${isPlaying && progress > 40 ? 'bg-[#38bdf8] text-[#0a0a0b]' : 'bg-[#111114] text-[#cfcfd3]'}`}>
+                      2
+                    </div>
+                    <div>
+                      <h4 className="text-[#fafafa] font-bold text-sm">Dubbing Iraqi Arabic</h4>
+                      <p className="text-[#cfcfd3] text-xs">AI Translation & Sync</p>
+                    </div>
+                  </div>
+
+                  {/* Connecting Line 2 */}
+                  <div className="absolute left-[34px] top-[136px] w-0.5 h-6 bg-[rgba(255,255,255,0.05)] z-0 hidden sm:block">
+                    <div className="w-full bg-[#38bdf8] transition-all duration-500 ease-linear" style={{ height: isPlaying ? (progress > 65 ? '100%' : progress > 40 ? `${(progress - 40) * 4}%` : '0%') : '0%' }} />
+                  </div>
+                  <div className="absolute left-[34px] top-[148px] w-0.5 h-6 bg-[rgba(255,255,255,0.05)] z-0 sm:hidden">
+                    <div className="w-full bg-[#38bdf8] transition-all duration-500 ease-linear" style={{ height: isPlaying ? (progress > 65 ? '100%' : progress > 40 ? `${(progress - 40) * 4}%` : '0%') : '0%' }} />
+                  </div>
+
+                  {/* Step 3 */}
+                  <div className={`relative z-10 flex items-center gap-4 p-4 rounded-xl border transition-all duration-500 ${isPlaying && progress > 75 ? 'bg-[#38bdf8]/10 border-[#38bdf8]/50 shadow-[0_0_20px_rgba(56,189,248,0.2)]' : 'bg-[#0a0a0b] border-[rgba(255,255,255,0.05)] opacity-60'}`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold transition-colors ${isPlaying && progress > 75 ? 'bg-[#38bdf8] text-[#0a0a0b]' : 'bg-[#111114] text-[#cfcfd3]'}`}>
+                      3
+                    </div>
+                    <div>
+                      <h4 className="text-[#fafafa] font-bold text-sm">Download</h4>
+                      <p className="text-[#cfcfd3] text-xs">Ready for broadcast</p>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="bg-[#0a0a0b]/90 backdrop-blur-md border border-[rgba(255,255,255,0.08)] rounded-xl p-4 flex items-center justify-between shadow-xl">
@@ -233,7 +263,7 @@ export default function SoraniqLandingPage() {
                   </button>
                   <div>
                     <div className="text-xs font-medium text-[#fafafa] mb-1">
-                      {isPlaying ? "Processing Dubbing..." : "Dubbing Ready (1080p)"}
+                      {isPlaying ? (progress > 75 ? "Complete!" : progress > 40 ? "Processing Dubbing..." : "Uploading...") : "Ready to Start"}
                     </div>
                     <div className="w-36 h-1.5 bg-[#111114] rounded-full overflow-hidden">
                       <div
@@ -249,7 +279,7 @@ export default function SoraniqLandingPage() {
                   <span className="px-2 py-1 rounded bg-[#38bdf8]/10 text-[#38bdf8] font-semibold">Iraqi</span>
                 </div>
               </div>
-            </div>
+            </div></div>
           </div>
         </section>
 
@@ -288,74 +318,14 @@ export default function SoraniqLandingPage() {
           </div>
         </section>
 
-        {/* Pricing */}
-        <section className="py-24 px-4 sm:px-6 lg:px-10 bg-[#0a0a0b]" id="pricing">
-          <div className="max-w-7xl mx-auto text-center">
-            <h2 className="text-3xl sm:text-4xl font-bold text-[#fafafa] mb-4">{t.pricingTitle}</h2>
-            <p className="text-base sm:text-lg text-[#cfcfd3] mb-12">{t.pricingSubtitle}</p>
-            <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-              <div className="bg-[#111114] rounded-2xl p-8 border border-[rgba(255,255,255,0.06)] text-left flex flex-col justify-between">
-                <div>
-                  <h3 className="text-xl font-bold text-[#fafafa] mb-2">Starter</h3>
-                  <div className="text-4xl font-extrabold text-[#fafafa] mb-4">$10 <span className="text-sm text-[#cfcfd3]">/mo</span></div>
-                  <p className="text-xs text-[#cfcfd3] mb-4">5 Minutes ($2.00/min)</p>
-                  <ul className="text-sm text-[#cfcfd3] space-y-3 mb-6">
-                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Standard processing speed</li>
-                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> 1080p export resolution</li>
-                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Basic voices included</li>
-                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Up to 2 speakers</li>
-                  </ul>
-                </div>
-                <Link to="/pricing?plan=starter" className="w-full py-3 rounded-xl border border-[rgba(255,255,255,0.08)] text-center text-sm font-semibold text-[#fafafa] hover:bg-[rgba(255,255,255,0.02)] transition-colors block">
-                  Get 5 Minutes
-                </Link>
-              </div>
-              <div className="bg-[#111114] rounded-2xl p-8 border border-[#38bdf8]/40 text-left flex flex-col justify-between relative bg-gradient-to-b from-[#111114] to-[#1a237e]/20 shadow-[0_0_30px_rgba(56,189,248,0.1)]">
-                <div className="absolute top-0 right-8 -translate-y-1/2 px-3 py-1 bg-[#38bdf8] text-[#0a0a0b] text-xs font-bold uppercase rounded-full">Most Popular</div>
-                <div>
-                  <h3 className="text-xl font-bold text-[#fafafa] mb-2">Pro</h3>
-                  <div className="text-4xl font-extrabold text-[#fafafa] mb-4">$20 <span className="text-sm text-[#cfcfd3]">/mo</span></div>
-                  <p className="text-xs text-[#cfcfd3] mb-4">15 Minutes ($1.33/min)</p>
-                  <ul className="text-sm text-[#cfcfd3] space-y-3 mb-6">
-                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Priority processing speed</li>
-                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> 4K export resolution</li>
-                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Premium emotional voices</li>
-                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Up to 5 speakers</li>
-                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Advanced timeline editor</li>
-                  </ul>
-                </div>
-                <Link to="/pricing?plan=pro" className="w-full py-3 rounded-xl bg-[#38bdf8] text-[#0a0a0b] text-center text-sm font-bold hover:bg-[#38bdf8]/90 transition-colors block shadow-lg">
-                  Get 15 Minutes
-                </Link>
-              </div>
-              <div className="bg-[#111114] rounded-2xl p-8 border border-[rgba(255,255,255,0.06)] text-left flex flex-col justify-between">
-                <div>
-                  <h3 className="text-xl font-bold text-[#fafafa] mb-2">Creator</h3>
-                  <div className="text-4xl font-extrabold text-[#fafafa] mb-4">$99 <span className="text-sm text-[#cfcfd3]">/mo</span></div>
-                  <p className="text-xs text-[#cfcfd3] mb-4">120 Minutes ($0.82/min)</p>
-                  <ul className="text-sm text-[#cfcfd3] space-y-3 mb-6">
-                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Highest priority queue</li>
-                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> 4K lossless export</li>
-                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> All premium voices included</li>
-                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Unlimited speakers</li>
-                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Custom voice cloning</li>
-                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> API Access</li>
-                  </ul>
-                </div>
-                <Link to="/pricing?plan=creator" className="w-full py-3 rounded-xl border border-[rgba(255,255,255,0.08)] text-center text-sm font-semibold text-[#fafafa] hover:bg-[rgba(255,255,255,0.02)] transition-colors block">
-                  Get 120 Minutes
-                </Link>
-              </div>
-            </div>
-          </div>
-        </section>
+        
       </main>
 
       {/* Use Cases Section */}
       <section className="py-24 px-4 sm:px-6 lg:px-10 bg-[#111114] border-y border-[rgba(255,255,255,0.06)]" id="use-cases">
         <div className="max-w-7xl mx-auto">
           <div className="text-center max-w-2xl mx-auto mb-16 space-y-4">
-            <h2 className="text-3xl sm:text-4xl font-bold text-[#fafafa]">Who is SoranIQ For?</h2>
+            <h2 className="text-3xl sm:text-4xl font-bold text-[#fafafa]">Who is Doblaj For?</h2>
             <p className="text-base sm:text-lg text-[#cfcfd3]">
               Empowering creators and businesses to break language barriers.
             </p>
@@ -418,21 +388,92 @@ export default function SoraniqLandingPage() {
         </div>
       </section>
 
+      {/* Pricing */}
+        <section className="py-24 px-4 sm:px-6 lg:px-10 bg-[#0a0a0b]" id="pricing">
+          <div className="max-w-7xl mx-auto text-center">
+            <h2 className="text-3xl sm:text-4xl font-bold text-[#fafafa] mb-4">{t.pricingTitle}</h2>
+            <p className="text-base sm:text-lg text-[#cfcfd3] mb-12">{t.pricingSubtitle}</p>
+            <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+              <div className="bg-[#111114] rounded-2xl p-8 border border-[rgba(255,255,255,0.06)] text-left flex flex-col justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-[#fafafa] mb-2">Starter</h3>
+                  <div className="text-4xl font-extrabold text-[#fafafa] mb-4">$10 <span className="text-sm text-[#cfcfd3]">/mo</span></div>
+                  <p className="text-xs text-[#cfcfd3] mb-4">5 Minutes ($2.00/min)</p>
+                  <ul className="text-sm text-[#cfcfd3] space-y-3 mb-6">
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Standard processing speed</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> 1080p export resolution</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Basic voices included</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Up to 2 speakers</li>
+                  </ul>
+                </div>
+                <Link to={isSignedIn ? "/pricing?plan=starter" : `/sign-up?redirect_url=${encodeURIComponent('/pricing?plan=starter')}`} className="w-full py-3 rounded-xl border border-[rgba(255,255,255,0.08)] text-center text-sm font-semibold text-[#fafafa] hover:bg-[rgba(255,255,255,0.02)] transition-colors block">
+                  Get 5 Minutes
+                </Link>
+              </div>
+              <div className="bg-[#111114] rounded-2xl p-8 border border-[#38bdf8]/40 text-left flex flex-col justify-between relative bg-gradient-to-b from-[#111114] to-[#1a237e]/20 shadow-[0_0_30px_rgba(56,189,248,0.1)]">
+                <div className="absolute top-0 right-8 -translate-y-1/2 px-3 py-1 bg-[#38bdf8] text-[#0a0a0b] text-xs font-bold uppercase rounded-full">Most Popular</div>
+                <div>
+                  <h3 className="text-xl font-bold text-[#fafafa] mb-2">Pro</h3>
+                  <div className="text-4xl font-extrabold text-[#fafafa] mb-4">$20 <span className="text-sm text-[#cfcfd3]">/mo</span></div>
+                  <p className="text-xs text-[#cfcfd3] mb-4">15 Minutes ($1.33/min)</p>
+                  <ul className="text-sm text-[#cfcfd3] space-y-3 mb-6">
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Priority processing speed</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> 4K export resolution</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Premium emotional voices</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Up to 5 speakers</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Advanced timeline editor</li>
+                  </ul>
+                </div>
+                <Link to={isSignedIn ? "/pricing?plan=pro" : `/sign-up?redirect_url=${encodeURIComponent('/pricing?plan=pro')}`} className="w-full py-3 rounded-xl bg-[#38bdf8] text-[#0a0a0b] text-center text-sm font-bold hover:bg-[#38bdf8]/90 transition-colors block shadow-lg">
+                  Get 15 Minutes
+                </Link>
+              </div>
+              <div className="bg-[#111114] rounded-2xl p-8 border border-[rgba(255,255,255,0.06)] text-left flex flex-col justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-[#fafafa] mb-2">Creator</h3>
+                  <div className="text-4xl font-extrabold text-[#fafafa] mb-4">$99 <span className="text-sm text-[#cfcfd3]">/mo</span></div>
+                  <p className="text-xs text-[#cfcfd3] mb-4">120 Minutes ($0.82/min)</p>
+                  <ul className="text-sm text-[#cfcfd3] space-y-3 mb-6">
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Highest priority queue</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> 4K lossless export</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> All premium voices included</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Unlimited speakers</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Custom voice cloning</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> API Access</li>
+                  </ul>
+                </div>
+                <Link to={isSignedIn ? "/pricing?plan=creator" : `/sign-up?redirect_url=${encodeURIComponent('/pricing?plan=creator')}`} className="w-full py-3 rounded-xl border border-[rgba(255,255,255,0.08)] text-center text-sm font-semibold text-[#fafafa] hover:bg-[rgba(255,255,255,0.02)] transition-colors block">
+                  Get 120 Minutes
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+
       <footer className="bg-[#0a0a0b] border-t border-[rgba(255,255,255,0.06)] w-full py-16 px-4 sm:px-6 lg:px-10" id="contact">
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
-          <div className="col-span-1 md:col-span-2 space-y-4">
+          <div className="col-span-1 md:col-span-2 space-y-4 pr-8">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#38bdf8] to-[#1a237e] p-0.5 flex items-center justify-center shadow-lg">
                 <div className="w-full h-full bg-[#0a0a0b] rounded-[6px] flex items-center justify-center">
-                  <span className="text-[#38bdf8] font-bold text-sm tracking-tighter">SQ</span>
+                  <span className="text-[#38bdf8] font-bold text-sm tracking-tighter">DB</span>
                 </div>
               </div>
-              <span className="text-xl font-bold text-[#fafafa]">SoranIQ</span>
+              <span className="text-xl font-bold text-[#fafafa]">Doblaj</span>
             </div>
             <p className="text-sm sm:text-base text-[#cfcfd3] max-w-sm leading-relaxed">
               Synthesizing communication across dialects. Precision AI dubbing for Kurdish and Arabic media.
             </p>
-            <p className="text-xs text-[#cfcfd3] pt-4">© 2026 FIXDAI LLC d/b/a Doblaj. Precision Kurdish-Arabic Synthesis.</p>
+            <div className="pt-4 text-xs text-[#cfcfd3] space-y-1">
+              <p className="font-semibold text-white">FIXDAI LLC (d/b/a Doblaj)</p>
+              <p>3801 N Capital of Texas Hwy, Ste E240 #3958</p>
+              <p>Austin, TX 78746, Travis County, Texas, USA</p>
+            </div>
+            <div className="pt-2 text-xs text-[#cfcfd3] space-y-1">
+              <p>Support: <a href="mailto:support@doblaj.com" className="text-[#38bdf8] hover:underline">support@doblaj.com</a></p>
+              <p>DMCA: <a href="mailto:copyright@doblaj.com" className="text-[#38bdf8] hover:underline">copyright@doblaj.com</a></p>
+            </div>
+            <p className="text-xs text-[rgba(255,255,255,0.4)] pt-4">© 2026 FIXDAI LLC d/b/a Doblaj. All rights reserved.</p>
           </div>
           <div className="col-span-1 space-y-4">
             <h4 className="text-xs font-bold text-[#fafafa] uppercase tracking-wider">Product</h4>

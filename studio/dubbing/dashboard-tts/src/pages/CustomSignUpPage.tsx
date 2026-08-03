@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { SignUp } from "@clerk/clerk-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 export default function CustomSignUpPage() {
   const [agreed, setAgreed] = useState(false);
   const [showSignUp, setShowSignUp] = useState(false);
+  const [searchParams] = useSearchParams();
+  const redirectUrl = searchParams.get("redirect_url") || "/tts";
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-[#0b1220] py-12 px-4 sm:px-6 lg:px-8">
@@ -13,7 +15,7 @@ export default function CustomSignUpPage() {
           <div className="text-center">
             <div className="mx-auto w-12 h-12 rounded-xl bg-gradient-to-br from-[#38bdf8] to-[#1a237e] p-0.5 flex items-center justify-center shadow-lg mb-4">
               <div className="w-full h-full bg-[#0a0a0b] rounded-[10px] flex items-center justify-center">
-                <span className="text-[#38bdf8] font-bold text-xl tracking-tighter">SQ</span>
+                <span className="text-[#38bdf8] font-bold text-xl tracking-tighter">DB</span>
               </div>
             </div>
             <h2 className="mt-2 text-3xl font-extrabold text-[#fafafa]">
@@ -72,7 +74,7 @@ export default function CustomSignUpPage() {
             <div className="text-center">
               <p className="text-sm text-[#cfcfd3]">
                 Already have an account?{" "}
-                <Link to="/sign-in" className="font-medium text-[#38bdf8] hover:underline">
+                <Link to={`/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`} className="font-medium text-[#38bdf8] hover:underline">
                   Sign in
                 </Link>
               </p>
@@ -81,7 +83,7 @@ export default function CustomSignUpPage() {
         </div>
       ) : (
         <div className="w-full max-w-md flex justify-center animate-in fade-in zoom-in duration-300">
-          <SignUp routing="hash" signInUrl="/sign-in" fallbackRedirectUrl="/tts" />
+          <SignUp routing="hash" signInUrl={`/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`} fallbackRedirectUrl={redirectUrl} forceRedirectUrl={redirectUrl} />
         </div>
       )}
     </div>

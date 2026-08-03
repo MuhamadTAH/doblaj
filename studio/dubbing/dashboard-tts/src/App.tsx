@@ -22,6 +22,16 @@ import { ConvexReactClient } from "convex/react";
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_test_ZGVjaWRpbmctcXVhZ2dhLTcwLmNsZXJrLmFjY291bnRzLmRldiQ";
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
+const SignInWithRedirect = () => {
+  const params = new URLSearchParams(window.location.search);
+  const redirectUrl = params.get('redirect_url') || '/tts';
+  return (
+    <div className="flex h-screen w-screen items-center justify-center bg-[#0b1220]">
+      <SignIn routing="hash" signUpUrl={`/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`} fallbackRedirectUrl={redirectUrl} forceRedirectUrl={redirectUrl} />
+    </div>
+  );
+};
+
 export default function App() {
   return (
     <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
@@ -46,9 +56,7 @@ export default function App() {
                     <Route 
                       path="/sign-in/*" 
                       element={
-                        <div className="flex h-screen w-screen items-center justify-center bg-[#0b1220]">
-                          <SignIn routing="hash" signUpUrl="/sign-up" fallbackRedirectUrl="/tts" />
-                        </div>
+                        <SignInWithRedirect />
                       } 
                     />
                     <Route path="/sign-up/*" element={<CustomSignUpPage />} />
@@ -58,7 +66,7 @@ export default function App() {
                         <div className="flex h-screen w-screen items-center justify-center bg-[#0b1220]">
                           <SignIn 
                             routing="hash" 
-                            signUpUrl="/sign-up" 
+                            signUpUrl={`/sign-up?redirect_url=${encodeURIComponent(window.location.pathname + window.location.search)}`} 
                             fallbackRedirectUrl={window.location.pathname + window.location.search} 
                           />
                         </div>
