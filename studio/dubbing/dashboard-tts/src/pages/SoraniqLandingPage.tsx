@@ -279,7 +279,7 @@ export default function SoraniqLandingPage() {
                   <span className="px-2 py-1 rounded bg-[#38bdf8]/10 text-[#38bdf8] font-semibold">Iraqi</span>
                 </div>
               </div>
-            </div></div>
+            </div>
           </div>
         </section>
 
