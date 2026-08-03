@@ -34,7 +34,7 @@ export const useApi = () => {
   const authFetch = useCallback(async (url: string | URL | globalThis.Request, options: RequestInit = {}): Promise<Response> => {
     let token: string | null = null;
     try {
-      token = await getToken({ template: 'pird-dubbing' });
+      token = await getToken({ template: 'convex' });
     } catch (sdkError: any) {
       console.error("Clerk getToken error:", sdkError);
       
