@@ -6,6 +6,7 @@ so the rest of the codebase does not need to change.
 import os
 import json
 import logging
+import secrets
 import aiosqlite
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,6 +32,19 @@ async def init_db():
                 error TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS telegram_nonces (
+                nonce TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS telegram_accounts (
+                telegram_chat_id TEXT PRIMARY KEY,
+                workspace_id TEXT UNIQUE NOT NULL
             )
         """)
         await db.commit()
@@ -107,3 +121,79 @@ async def update_job_status(
             )
         await db.commit()
     return True
+
+
+async def create_telegram_nonce(workspace_id: str, expires_in_minutes: int = 10) -> str:
+    """Create a short-lived nonce for Telegram account linking."""
+    nonce = secrets.token_urlsafe(16)
+    expires_at = datetime.fromtimestamp(
+        datetime.now(timezone.utc).timestamp() + (expires_in_minutes * 60), 
+        timezone.utc
+    ).isoformat()
+    
+    async with aiosqlite.connect(str(DB_PATH)) as db:
+        await db.execute(
+            "INSERT INTO telegram_nonces (nonce, workspace_id, expires_at) VALUES (?, ?, ?)",
+            (nonce, workspace_id, expires_at)
+        )
+        await db.commit()
+    return nonce
+
+
+async def consume_telegram_nonce(nonce: str) -> Optional[str]:
+    """Consume a nonce and return the workspace_id if valid."""
+    now = datetime.now(timezone.utc).isoformat()
+    workspace_id = None
+    
+    async with aiosqlite.connect(str(DB_PATH)) as db:
+        db.row_factory = aiosqlite.Row
+        # Get the nonce if it hasn't expired
+        cursor = await db.execute(
+            "SELECT workspace_id FROM telegram_nonces WHERE nonce = ? AND expires_at > ?", 
+            (nonce, now)
+        )
+        row = await cursor.fetchone()
+        if row:
+            workspace_id = row["workspace_id"]
+            
+            # Immediately invalidate the nonce by deleting it
+            await db.execute("DELETE FROM telegram_nonces WHERE nonce = ?", (nonce,))
+            await db.commit()
+            
+    return workspace_id
+
+
+async def link_telegram_account(telegram_chat_id: str, workspace_id: str) -> bool:
+    """
+    Link a Telegram chat ID to a workspace.
+    Enforces a strict 1:1 unique mapping.
+    """
+    async with aiosqlite.connect(str(DB_PATH)) as db:
+        try:
+            # UPSERT: If telegram_chat_id exists, we update the workspace_id.
+            # The UNIQUE constraint on workspace_id prevents a workspace from linking multiple telegram_chat_ids.
+            await db.execute("""
+                INSERT INTO telegram_accounts (telegram_chat_id, workspace_id)
+                VALUES (?, ?)
+                ON CONFLICT(telegram_chat_id) DO UPDATE SET workspace_id=excluded.workspace_id
+            """, (telegram_chat_id, workspace_id))
+            await db.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            # This happens if the workspace_id is already linked to a different telegram_chat_id
+            logger.error(f"[DATABASE] Integrity error: Workspace {workspace_id} is already linked to another Telegram account.")
+            return False
+
+
+async def get_workspace_by_telegram_id(telegram_chat_id: str) -> Optional[str]:
+    """Retrieve the linked workspace ID for a given Telegram chat ID."""
+    async with aiosqlite.connect(str(DB_PATH)) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT workspace_id FROM telegram_accounts WHERE telegram_chat_id = ?", 
+            (telegram_chat_id,)
+        )
+        row = await cursor.fetchone()
+        if row:
+            return row["workspace_id"]
+    return None

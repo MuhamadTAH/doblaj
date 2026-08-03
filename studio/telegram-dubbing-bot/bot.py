@@ -250,6 +250,27 @@ router = Router()
 @router.message(CommandStart())
 async def handle_start(message: Message, state: FSMContext):
     await state.clear()
+    
+    args = message.text.split()
+    if len(args) > 1:
+        nonce = args[1]
+        logger.info({"service": "auth", "message": f"Received link nonce {nonce}"})
+        headers = {"x-internal-key": INTERNAL_API_KEY} if INTERNAL_API_KEY else {}
+        verify_url = f"{DUBBING_BACKEND_URL.rstrip('/')}/api/telegram/link-verify"
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(verify_url, json={"nonce": nonce, "telegram_chat_id": str(message.chat.id)}, headers=headers)
+                if resp.status_code == 200:
+                    await message.answer("✅ Your Telegram account has been successfully linked to your Doblaj workspace!\nYou can now upload videos here to dub them.")
+                elif resp.status_code == 409:
+                    await message.answer("⚠️ This workspace is already linked to another Telegram account.")
+                else:
+                    await message.answer("⚠️ Invalid or expired link token. Please generate a new one from the dashboard.")
+        except Exception as e:
+            logger.error({"service": "auth", "message": f"Error linking account: {e}"})
+            await message.answer("⚠️ Error communicating with the server. Please try again later.")
+        return
+
     await state.set_state(DubbingConfig.waiting_for_video)
     
     welcome_text = (
@@ -275,8 +296,49 @@ async def handle_video_upload(message: Message, state: FSMContext):
         await message.reply("⚠️ File too large (max 2000 MB).")
         return
 
+    duration_seconds = getattr(video_obj, 'duration', 0)
+    if duration_seconds <= 0:
+        # Fallback for documents: assume 1 minute per 15MB
+        duration_seconds = int((video_obj.file_size / (15 * 1024 * 1024)) * 60)
+        if duration_seconds <= 0:
+            duration_seconds = 60
+
     await state.clear()
-    await message.answer("⏳ Processing... submitting to dubbing pipeline.")
+    await message.answer("⏳ Checking account balance...")
+    
+    # Pre-flight reservation
+    headers = {"x-internal-key": INTERNAL_API_KEY} if INTERNAL_API_KEY else {}
+    reserve_url = f"{DUBBING_BACKEND_URL.rstrip('/')}/api/telegram/jobs/reserve"
+    reservation_id = None
+    minutes_reserved = 0
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(reserve_url, json={
+                "telegram_chat_id": str(message.chat.id),
+                "video_duration_seconds": duration_seconds
+            }, headers=headers)
+            
+            if resp.status_code == 404:
+                await message.answer("⚠️ Your Telegram account is not linked to a workspace. Please link it from the Doblaj dashboard first.")
+                return
+            elif resp.status_code == 402:
+                err_detail = resp.json().get("detail", "Insufficient minutes.")
+                await message.answer(f"⚠️ {err_detail}\nPlease top up your balance on the dashboard.")
+                return
+            elif resp.status_code != 200:
+                await message.answer("⚠️ Error verifying account balance. Please try again later.")
+                return
+                
+            data = resp.json()
+            reservation_id = data.get("reservation_id")
+            minutes_reserved = data.get("minutes_reserved")
+            
+    except Exception as e:
+        logger.error({"service": "upload", "message": f"Error reserving minutes: {e}"})
+        await message.answer("⚠️ Error verifying account balance. Please try again later.")
+        return
+
+    await message.answer("✅ Balance verified. Processing... submitting to dubbing pipeline.")
     
     # 1. Submit to Backend
     try:
@@ -329,6 +391,19 @@ async def handle_video_upload(message: Message, state: FSMContext):
     except Exception as e:
         logger.error({"service": "upload", "message": "Error submitting job", "error": str(e)})
         await message.answer("⚠️ Error submitting your video. Please try again.")
+        # Refund minutes if reserved
+        if reservation_id and minutes_reserved > 0:
+            try:
+                refund_url = f"{DUBBING_BACKEND_URL.rstrip('/')}/api/telegram/jobs/refund"
+                async with httpx.AsyncClient() as client:
+                    await client.post(refund_url, json={
+                        "reservation_id": reservation_id,
+                        "telegram_chat_id": str(message.chat.id),
+                        "minutes_to_refund": minutes_reserved
+                    }, headers=headers)
+                logger.info({"service": "upload", "message": f"Refunded {minutes_reserved} minutes for failed job."})
+            except Exception as refund_e:
+                logger.error({"service": "upload", "message": f"Failed to refund minutes: {refund_e}"})
 
 # =====================================================================
 # 8. SHUTDOWN SEQUENCE

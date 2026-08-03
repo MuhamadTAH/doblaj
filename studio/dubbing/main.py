@@ -398,6 +398,13 @@ try:
     except Exception as e:
         logger.exception("[STARTUP] Payments router failed to load: %s", e)
         
+    try:
+        from app.api.routes import telegram
+        app.include_router(telegram.router, prefix="/api/telegram", tags=["telegram"])
+        logger.info("[STARTUP] Telegram router loaded OK")
+    except Exception as e:
+        logger.exception("[STARTUP] Telegram router failed to load: %s", e)
+        
     logger.info("[STARTUP] Routers loaded OK")
 except Exception as e:
     logger.exception("Failed to import routers: %s", e)
