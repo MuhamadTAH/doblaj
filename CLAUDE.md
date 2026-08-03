@@ -16,6 +16,20 @@ shared/             Docs + translation extractor (no build)
 tools/SkillSpector/ NVIDIA security scanner (Python venv)
 ```
 
+## Production platform (live)
+
+**Read `studio/dubbing/PRODUCTION.md` before any change that touches the
+production dubbing platform.** It documents the live stack: which services
+run where (Cloudflare Pages / Azure VM / RunPod / Convex / R2 / Clerk / Suby),
+how to verify each layer with curl, how to deploy (`pirdupdate` on the VM),
+and the list of leaked secrets that need rotation.
+
+Key facts as of `ab3ba7b`:
+- Frontend: `https://doblaj.com` (Cloudflare Pages)
+- Backend: `https://api.doblaj.com` → Azure VM `dubbing-bot-vps` (FastAPI on `127.0.0.1:8002`)
+- Convex: `https://upbeat-scorpion-447.convex.cloud` (deployment hash `20260728T224050Z-a42e7a9c8375`)
+- RunPod GPU: endpoint `3wz0kfi2xnbkxx`, image `muhammadtarq/pird-dubbing-worker:v6`
+
 ## Architecture & skills
 
 Read `.claude/skills/project-architecture/SKILL.md` before touching anything
