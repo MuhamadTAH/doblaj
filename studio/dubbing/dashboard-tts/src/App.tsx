@@ -25,19 +25,24 @@ export default function App() {
     <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
       <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
         <Routes>
-          {/* Public Landing Page Routes */}
-          <Route path="/soraniq" element={<SoraniqLandingPage />} />
-          <Route path="/:countryCode/soraniq" element={<SoraniqLandingPage />} />
-          
-          {/* App Dashboard Routes */}
           <Route
             path="*"
             element={
               <>
                 <SignedOut>
-                  <div className="flex h-screen w-screen items-center justify-center bg-[#0b1220]">
-                    <SignIn routing="hash" />
-                  </div>
+                  <Routes>
+                    <Route path="/" element={<SoraniqLandingPage />} />
+                    <Route path="/soraniq" element={<SoraniqLandingPage />} />
+                    <Route path="/:countryCode/soraniq" element={<SoraniqLandingPage />} />
+                    <Route
+                      path="*"
+                      element={
+                        <div className="flex h-screen w-screen items-center justify-center bg-[#0b1220]">
+                          <SignIn routing="hash" />
+                        </div>
+                      }
+                    />
+                  </Routes>
                 </SignedOut>
                 <SignedIn>
                   <div className="flex h-screen overflow-hidden">
