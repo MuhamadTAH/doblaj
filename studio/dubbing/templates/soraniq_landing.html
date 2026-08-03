@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SoranIQ - AI Dubbing Platform | Kurdish Sorani to Iraqi Arabic</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<style>
+    .material-symbols-outlined {
+        font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+</style>
+<script id="tailwind-config">
+    tailwind.config = {
+        darkMode: "class",
+        theme: {
+            extend: {
+                colors: {
+                    primary: "#38bdf8",
+                    "primary-dark": "#1a237e",
+                    bg: "#0a0a0b",
+                    card: "#111114",
+                    text: "#cfcfd3",
+                    headline: "#fafafa"
+                },
+                fontFamily: {
+                    sans: ["Inter", "sans-serif"],
+                    mono: ["JetBrains Mono", "monospace"]
+                }
+            }
+        }
+    }
+</script>
+</head>
+<body class="bg-[#0a0a0b] text-[#cfcfd3] font-sans antialiased selection:bg-[#38bdf8]/20 selection:text-[#38bdf8]">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 bg-[#0a0a0b]/80 backdrop-blur-xl border-b border-[rgba(255,255,255,0.06)] shadow-sm transition-all duration-300" id="navbar">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 flex justify-between items-center h-20">
+<!-- Brand -->
+<a class="flex items-center gap-3 group" href="#">
+<div class="w-10 h-10 rounded-lg bg-gradient-to-br from-[#38bdf8] to-[#1a237e] p-0.5 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
+    <div class="w-full h-full bg-[#0a0a0b] rounded-[7px] flex items-center justify-center">
+        <span class="text-[#38bdf8] font-bold text-xl tracking-tighter">SQ</span>
+    </div>
+</div>
+<span class="text-2xl font-bold text-[#fafafa] tracking-tight group-hover:opacity-90 transition-opacity">SoranIQ</span>
+</a>
+<!-- Desktop Nav -->
+<div class="hidden md:flex items-center gap-8 text-sm font-medium">
+<a class="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors" href="#features">Features</a>
+<a class="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors" href="#how-it-works">How it Works</a>
+<a class="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors" href="#pricing">Pricing</a>
+<a class="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors" href="#contact">Contact</a>
+</div>
+<!-- CTA -->
+<div class="hidden md:flex items-center gap-4">
+<a class="inline-flex items-center justify-center px-6 py-2.5 rounded-lg bg-[#38bdf8] text-[#0a0a0b] text-sm font-semibold hover:opacity-90 hover:scale-[0.98] transition-all duration-150 active:scale-95 shadow-sm" href="/tts/dubbing">
+    Start Free Trial
+</a>
+</div>
+<!-- Mobile Menu Toggle -->
+<button id="mobile-toggle" aria-label="Toggle menu" class="md:hidden text-[#cfcfd3] hover:text-[#38bdf8] transition-colors p-2 rounded-lg">
+<span class="material-symbols-outlined text-[28px]">menu</span>
+</button>
+</div>
+
+<!-- Mobile Drawer -->
+<div id="mobile-menu" class="hidden md:hidden bg-[#0a0a0b] border-b border-[rgba(255,255,255,0.08)] px-6 py-6 space-y-4">
+<a class="block text-base font-medium text-[#cfcfd3] hover:text-[#38bdf8]" href="#features">Features</a>
+<a class="block text-base font-medium text-[#cfcfd3] hover:text-[#38bdf8]" href="#how-it-works">How it Works</a>
+<a class="block text-base font-medium text-[#cfcfd3] hover:text-[#38bdf8]" href="#pricing">Pricing</a>
+<a class="block text-base font-medium text-[#cfcfd3] hover:text-[#38bdf8]" href="#contact">Contact</a>
+<a class="block w-full text-center px-6 py-3 rounded-lg bg-[#38bdf8] text-[#0a0a0b] font-semibold text-sm" href="/tts/dubbing">Start Free Trial</a>
+</div>
+</nav>
+
+<main class="pt-24 pb-16">
+<!-- Hero Section -->
+<section class="relative overflow-hidden pt-12 pb-24 lg:pt-24 lg:pb-32 px-4 sm:px-6 lg:px-10 max-w-7xl mx-auto">
+<div class="grid lg:grid-cols-2 gap-12 lg:gap-24 items-center">
+<div class="space-y-8 max-w-2xl">
+<div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#38bdf8]/10 border border-[#38bdf8]/30 text-[#38bdf8] font-mono text-xs sm:text-sm">
+<span class="w-2 h-2 rounded-full bg-[#38bdf8] animate-pulse"></span>
+    New: Iraqi Arabic Model V2.0
+</div>
+<h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-[#fafafa] tracking-tight leading-[1.15]">
+    Bring Your Stories to <br class="hidden md:block"/> Every Iraqi Screen
+</h1>
+<p class="text-lg sm:text-xl text-[#cfcfd3] leading-relaxed">
+    Instant, dialect-accurate AI dubbing from Kurdish Sorani to Iraqi Arabic. Preserve the original emotion and timing with our synthetic precision engine.
+</p>
+<div class="flex flex-col sm:flex-row gap-4 pt-2">
+<a class="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-[#38bdf8] text-[#0a0a0b] font-semibold text-base hover:opacity-90 transition-all shadow-lg group" href="/tts/dubbing">
+    Upload Your First Video
+    <span class="material-symbols-outlined ml-2 group-hover:translate-x-1 transition-transform">arrow_forward</span>
+</a>
+<a class="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-transparent border border-[rgba(255,255,255,0.08)] text-[#fafafa] font-semibold text-base hover:border-[#38bdf8] hover:bg-[#111114] transition-all" href="#how-it-works">
+<span class="material-symbols-outlined mr-2">play_circle</span>
+    Watch Demo
+</a>
+</div>
+</div>
+
+<!-- Faux UI Overlay -->
+<div class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl border border-[rgba(255,255,255,0.08)] bg-[#111114] p-8 flex flex-col justify-between">
+    <div class="flex justify-between items-center z-10">
+        <span class="text-xs font-mono text-[#38bdf8] bg-[#38bdf8]/10 border border-[#38bdf8]/20 px-3 py-1 rounded-full">
+            AI Pipeline Live
+        </span>
+        <div class="flex gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-rose-500/80"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-500/80"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500/80"></span>
+        </div>
+    </div>
+    
+    <!-- Animated Soundbars -->
+    <div class="my-auto flex items-center justify-center gap-1.5 h-32 px-4" id="soundwave">
+        <div class="w-1.5 h-20 bg-gradient-to-t from-[#1a237e] to-[#38bdf8] rounded-full animate-pulse"></div>
+        <div class="w-1.5 h-28 bg-gradient-to-t from-[#1a237e] to-[#38bdf8] rounded-full animate-pulse delay-75"></div>
+        <div class="w-1.5 h-16 bg-gradient-to-t from-[#1a237e] to-[#38bdf8] rounded-full animate-pulse delay-100"></div>
+        <div class="w-1.5 h-32 bg-gradient-to-t from-[#1a237e] to-[#38bdf8] rounded-full animate-pulse delay-150"></div>
+        <div class="w-1.5 h-24 bg-gradient-to-t from-[#1a237e] to-[#38bdf8] rounded-full animate-pulse delay-200"></div>
+    </div>
+
+    <div class="bg-[#0a0a0b]/90 backdrop-blur-md border border-[rgba(255,255,255,0.08)] rounded-xl p-4 flex items-center justify-between shadow-xl">
+        <div class="flex items-center gap-3">
+            <button id="hero-play-btn" class="w-10 h-10 rounded-full bg-[#38bdf8] text-[#0a0a0b] flex items-center justify-center hover:scale-105 transition-transform">
+                <span class="material-symbols-outlined text-[20px]">pause</span>
+            </button>
+            <div>
+                <div className="text-xs font-medium text-[#fafafa] mb-1" id="hero-status">Processing Dubbing...</div>
+                <div class="w-36 h-1.5 bg-[#111114] rounded-full overflow-hidden">
+                    <div class="w-[65%] h-full bg-[#38bdf8] rounded-full transition-all duration-300" id="hero-progress"></div>
+                </div>
+            </div>
+        </div>
+        <div class="flex items-center gap-1.5 text-xs font-mono">
+            <span class="px-2 py-1 rounded bg-[#111114] text-[#cfcfd3] border border-[rgba(255,255,255,0.08)]">Sorani</span>
+            <span class="text-[#38bdf8]">→</span>
+            <span class="px-2 py-1 rounded bg-[#38bdf8]/10 text-[#38bdf8] border border-[#38bdf8]/30 font-semibold">Iraqi</span>
+        </div>
+    </div>
+</div>
+</div>
+</section>
+
+<!-- How it Works -->
+<section class="py-24 px-4 sm:px-6 lg:px-10 bg-[#0a0a0b]" id="how-it-works">
+<div class="max-w-7xl mx-auto">
+<div class="text-center max-w-2xl mx-auto mb-16 space-y-4">
+<h2 class="text-3xl sm:text-4xl font-bold text-[#fafafa] tracking-tight">Seamless Translation Pipeline</h2>
+<p class="text-base sm:text-lg text-[#cfcfd3]">Three simple steps to transform your content for a wider audience, powered by advanced neural networking.</p>
+</div>
+<div class="grid md:grid-cols-3 gap-8">
+<div class="bg-[#111114] rounded-2xl p-8 border border-[rgba(255,255,255,0.06)] hover:border-[rgba(255,255,255,0.15)] transition-all duration-300 relative overflow-hidden group shadow-lg">
+    <div class="w-14 h-14 rounded-xl bg-[#0a0a0b] flex items-center justify-center mb-6 border border-[rgba(255,255,255,0.08)]">
+        <span class="material-symbols-outlined text-[#38bdf8] text-[28px]">upload_file</span>
+    </div>
+    <h3 class="text-xl font-bold text-[#fafafa] mb-3">1. Upload Video</h3>
+    <p class="text-sm sm:text-base text-[#cfcfd3]">Upload your raw Kurdish Sorani video file. We support all major formats up to 4K resolution.</p>
+</div>
+<div class="bg-[#111114] rounded-2xl p-8 border border-[rgba(255,255,255,0.06)] hover:border-[rgba(255,255,255,0.15)] transition-all duration-300 relative overflow-hidden group shadow-lg">
+    <div class="w-14 h-14 rounded-xl bg-[#0a0a0b] flex items-center justify-center mb-6 border border-[rgba(255,255,255,0.08)]">
+        <span class="material-symbols-outlined text-[#38bdf8] text-[28px]">graphic_eq</span>
+    </div>
+    <h3 class="text-xl font-bold text-[#fafafa] mb-3">2. AI Processing</h3>
+    <p class="text-sm sm:text-base text-[#cfcfd3]">Our engine isolates dialogue, translates nuance, and synthesizes Iraqi Arabic while preserving vocal identity.</p>
+</div>
+<div class="bg-[#111114] rounded-2xl p-8 border border-[rgba(255,255,255,0.06)] hover:border-[rgba(255,255,255,0.15)] transition-all duration-300 relative overflow-hidden group shadow-lg">
+    <div class="w-14 h-14 rounded-xl bg-[#0a0a0b] flex items-center justify-center mb-6 border border-[rgba(255,255,255,0.08)]">
+        <span class="material-symbols-outlined text-[#38bdf8] text-[28px]">download_done</span>
+    </div>
+    <h3 class="text-xl font-bold text-[#fafafa] mb-3">3. Download</h3>
+    <p class="text-sm sm:text-base text-[#cfcfd3]">Receive a perfectly synced, high-quality video ready for broadcast or social media distribution.</p>
+</div>
+</div>
+</div>
+</section>
+
+<!-- Key Features -->
+<section class="py-24 px-4 sm:px-6 lg:px-10 max-w-7xl mx-auto" id="features">
+<div class="text-center max-w-2xl mx-auto mb-16 space-y-4">
+<h2 class="text-3xl sm:text-4xl font-bold text-[#fafafa] tracking-tight">Precision Engineered for Media</h2>
+<p class="text-base sm:text-lg text-[#cfcfd3]">Built for professional creators who demand high-fidelity audio and cultural accuracy.</p>
+</div>
+<div class="grid lg:grid-cols-12 gap-6 auto-rows-[minmax(180px,auto)]">
+<div class="lg:col-span-8 bg-[#111114] rounded-2xl p-8 border border-[rgba(255,255,255,0.06)] flex flex-col md:flex-row gap-8 items-center shadow-lg relative overflow-hidden">
+    <div class="flex-1 space-y-4">
+        <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#0a0a0b] text-[#38bdf8] border border-[rgba(255,255,255,0.08)]">
+            <span class="material-symbols-outlined text-[24px]">translate</span>
+        </div>
+        <h3 class="text-2xl font-bold text-[#fafafa]">Dialect Precision</h3>
+        <p class="text-sm sm:text-base text-[#cfcfd3]">We don't just translate to MSA. Our models are explicitly trained on regional Iraqi Arabic dialects to capture idioms, slang, and cultural context that general AI misses.</p>
+    </div>
+    <div class="flex-1 w-full bg-[#0a0a0b] rounded-xl border border-[rgba(255,255,255,0.08)] p-4 flex flex-col gap-4">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-[#111114] border border-[rgba(255,255,255,0.08)] flex-shrink-0 flex items-center justify-center text-xs text-[#38bdf8] font-bold">CKB</div>
+            <div class="h-10 bg-[#111114] border border-[rgba(255,255,255,0.06)] rounded-lg w-full relative overflow-hidden flex items-center px-3 text-xs text-[#cfcfd3]">
+                <div class="absolute inset-y-0 left-0 bg-[#38bdf8]/20 w-[80%] rounded-lg"></div>
+                <span class="relative z-10 font-mono">چۆنی باشیت براکم؟</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-3 justify-end">
+            <div class="h-10 bg-[#111114] border border-[rgba(255,255,255,0.06)] rounded-lg w-full relative overflow-hidden flex items-center justify-end px-3 text-xs text-[#38bdf8]">
+                <div class="absolute inset-y-0 right-0 bg-[#38bdf8]/40 w-[85%] rounded-lg"></div>
+                <span class="relative z-10 font-mono">شلونك عيوني أخوي؟</span>
+            </div>
+            <div class="w-8 h-8 rounded-full bg-[#38bdf8]/10 border border-[#38bdf8]/30 flex-shrink-0 flex items-center justify-center text-xs text-[#38bdf8] font-bold">IRQ</div>
+        </div>
+    </div>
+</div>
+
+<div class="lg:col-span-4 bg-[#111114] border border-[rgba(255,255,255,0.06)] rounded-2xl p-8 flex flex-col justify-between shadow-lg">
+    <div class="space-y-4">
+        <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#0a0a0b] text-[#38bdf8] border border-[rgba(255,255,255,0.08)]">
+            <span class="material-symbols-outlined text-[24px]">record_voice_over</span>
+        </div>
+        <h3 class="text-2xl font-bold text-[#fafafa]">Voice Cloning</h3>
+        <p class="text-sm sm:text-base text-[#cfcfd3]">Retain the original speaker's timbre, emotion, and pacing across languages.</p>
+    </div>
+</div>
+
+<div class="lg:col-span-12 bg-[#111114] border border-[rgba(255,255,255,0.06)] rounded-2xl p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-lg">
+    <div class="flex items-center gap-6 max-w-2xl">
+        <div class="w-16 h-16 rounded-2xl bg-[#0a0a0b] border border-[rgba(255,255,255,0.08)] text-[#38bdf8] flex items-center justify-center flex-shrink-0">
+            <span class="material-symbols-outlined text-[32px]">bolt</span>
+        </div>
+        <div class="space-y-1">
+            <h3 class="text-2xl font-bold text-[#fafafa]">Cloud Speed Rendering</h3>
+            <p class="text-sm sm:text-base text-[#cfcfd3]">Process 1 hour of 1080p video in under 15 minutes utilizing our distributed GPU clusters.</p>
+        </div>
+    </div>
+    <div class="flex gap-3">
+        <span class="px-4 py-2 rounded-lg bg-[#0a0a0b] text-xs sm:text-sm font-semibold border border-[rgba(255,255,255,0.08)] text-[#cfcfd3]">4K Support</span>
+        <span class="px-4 py-2 rounded-lg bg-[#0a0a0b] text-xs sm:text-sm font-semibold border border-[rgba(255,255,255,0.08)] text-[#cfcfd3]">Auto-Sync</span>
+    </div>
+</div>
+</div>
+</section>
+
+<!-- Pricing -->
+<section class="py-24 px-4 sm:px-6 lg:px-10 bg-[#0a0a0b]" id="pricing">
+<div class="max-w-7xl mx-auto">
+<div class="text-center max-w-2xl mx-auto mb-16 space-y-4">
+<h2 class="text-3xl sm:text-4xl font-bold text-[#fafafa] tracking-tight">Transparent Pricing</h2>
+<p class="text-base sm:text-lg text-[#cfcfd3]">Choose the plan that fits your production volume.</p>
+</div>
+<div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto items-stretch">
+<div class="bg-[#111114] rounded-2xl p-8 border border-[rgba(255,255,255,0.06)] flex flex-col justify-between shadow-lg">
+    <div>
+        <div class="mb-6 space-y-1">
+            <h3 class="text-xl font-bold text-[#fafafa]">Starter</h3>
+            <div class="flex items-baseline gap-1">
+                <span class="text-4xl font-extrabold text-[#fafafa]">$10</span>
+                <span class="text-sm text-[#cfcfd3]">/mo</span>
+            </div>
+            <p class="text-xs text-[#cfcfd3] pt-1">for 5 Minutes ($2.00/min)</p>
+        </div>
+        <ul class="space-y-4 mb-8 text-sm text-[#cfcfd3]">
+            <li class="flex items-center gap-3"><span class="material-symbols-outlined text-[#38bdf8] text-[20px]">check_circle</span> HD Audio Exports</li>
+            <li class="flex items-center gap-3"><span class="material-symbols-outlined text-[#38bdf8] text-[20px]">check_circle</span> Standard Voices</li>
+            <li class="flex items-center gap-3"><span class="material-symbols-outlined text-[#38bdf8] text-[20px]">check_circle</span> Email Support</li>
+        </ul>
+    </div>
+    <a href="/tts/dubbing" class="block w-full py-3 text-center rounded-xl border border-[rgba(255,255,255,0.08)] text-[#fafafa] font-semibold text-sm hover:bg-[#0a0a0b] hover:border-[#38bdf8] transition-colors">Get 5 Minutes</a>
+</div>
+
+<div class="bg-[#111114] rounded-2xl p-8 border border-[#38bdf8]/40 flex flex-col justify-between relative transform md:-translate-y-4 shadow-2xl bg-gradient-to-b from-[#111114] to-[#1a237e]/20">
+    <div class="absolute top-0 right-8 -translate-y-1/2 px-3 py-1 bg-[#38bdf8] text-[#0a0a0b] text-xs font-bold uppercase tracking-wider rounded-full shadow-md">Most Popular</div>
+    <div>
+        <div class="mb-6 space-y-1">
+            <h3 class="text-xl font-bold text-[#fafafa]">Pro</h3>
+            <div class="flex items-baseline gap-1">
+                <span class="text-4xl font-extrabold text-[#fafafa]">$20</span>
+                <span class="text-sm text-[#cfcfd3]">/mo</span>
+            </div>
+            <p class="text-xs text-[#cfcfd3] pt-1">for 15 Minutes ($1.33/min)</p>
+        </div>
+        <ul class="space-y-4 mb-8 text-sm text-[#cfcfd3]">
+            <li class="flex items-center gap-3"><span class="material-symbols-outlined text-[#38bdf8] text-[20px]">check_circle</span> Everything in Starter</li>
+            <li class="flex items-center gap-3"><span class="material-symbols-outlined text-[#38bdf8] text-[20px]">check_circle</span> Premium Voices</li>
+            <li class="flex items-center gap-3"><span class="material-symbols-outlined text-[#38bdf8] text-[20px]">check_circle</span> Priority Queue</li>
+            <li class="flex items-center gap-3"><span class="material-symbols-outlined text-[#38bdf8] text-[20px]">check_circle</span> Commercial Rights</li>
+        </ul>
+    </div>
+    <a href="/tts/dubbing" class="block w-full py-3 text-center rounded-xl bg-[#38bdf8] text-[#0a0a0b] font-bold text-sm hover:opacity-90 transition-all shadow-lg">Get 15 Minutes</a>
+</div>
+
+<div class="bg-[#111114] rounded-2xl p-8 border border-[rgba(255,255,255,0.06)] flex flex-col justify-between shadow-lg">
+    <div>
+        <div class="mb-6 space-y-1">
+            <h3 class="text-xl font-bold text-[#fafafa]">Creator</h3>
+            <div class="flex items-baseline gap-1">
+                <span class="text-4xl font-extrabold text-[#fafafa]">$99</span>
+                <span class="text-sm text-[#cfcfd3]">/mo</span>
+            </div>
+            <p class="text-xs text-[#cfcfd3] pt-1">for 120 Minutes ($0.82/min)</p>
+        </div>
+        <ul class="space-y-4 mb-8 text-sm text-[#cfcfd3]">
+            <li class="flex items-center gap-3"><span class="material-symbols-outlined text-[#38bdf8] text-[20px]">check_circle</span> Everything in Pro</li>
+            <li class="flex items-center gap-3"><span class="material-symbols-outlined text-[#38bdf8] text-[20px]">check_circle</span> 4K Video Exports</li>
+            <li class="flex items-center gap-3"><span class="material-symbols-outlined text-[#38bdf8] text-[20px]">check_circle</span> API Access</li>
+            <li class="flex items-center gap-3"><span class="material-symbols-outlined text-[#38bdf8] text-[20px]">check_circle</span> Dedicated 24/7 Support</li>
+        </ul>
+    </div>
+    <a href="/tts/dubbing" class="block w-full py-3 text-center rounded-xl border border-[rgba(255,255,255,0.08)] text-[#fafafa] font-semibold text-sm hover:bg-[#0a0a0b] hover:border-[#38bdf8] transition-colors">Get 120 Minutes</a>
+</div>
+</div>
+</div>
+</section>
+</main>
+
+<footer class="bg-[#0a0a0b] border-t border-[rgba(255,255,255,0.06)] w-full py-16 px-4 sm:px-6 lg:px-10" id="contact">
+<div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
+<div class="col-span-1 md:col-span-2 space-y-4">
+    <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#38bdf8] to-[#1a237e] p-0.5 flex items-center justify-center shadow-lg">
+            <div class="w-full h-full bg-[#0a0a0b] rounded-[6px] flex items-center justify-center">
+                <span class="text-[#38bdf8] font-bold text-sm tracking-tighter">SQ</span>
+            </div>
+        </div>
+        <span class="text-xl font-bold text-[#fafafa]">SoranIQ</span>
+    </div>
+    <p class="text-sm sm:text-base text-[#cfcfd3] max-w-sm leading-relaxed">Synthesizing communication across dialects. Precision AI dubbing for Kurdish and Arabic media.</p>
+    <p class="text-xs text-[#cfcfd3] pt-4">© 2026 DengAI / Pird Technologies. Precision Kurdish-Arabic Synthesis.</p>
+</div>
+<div class="col-span-1 space-y-4">
+    <h4 class="text-xs font-bold text-[#fafafa] uppercase tracking-wider">Product</h4>
+    <ul class="space-y-3 text-sm">
+        <li><a class="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors" href="#pricing">Pricing</a></li>
+        <li><a class="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors" href="#">API Documentation</a></li>
+        <li><a class="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors" href="#">Help Center</a></li>
+    </ul>
+</div>
+<div class="col-span-1 space-y-4">
+    <h4 class="text-xs font-bold text-[#fafafa] uppercase tracking-wider">Legal &amp; Social</h4>
+    <ul class="space-y-3 text-sm">
+        <li><a class="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors" href="#">Privacy Policy</a></li>
+        <li><a class="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors" href="#">Terms of Service</a></li>
+    </ul>
+</div>
+</div>
+</footer>
+
+<script>
+    document.getElementById('mobile-toggle').addEventListener('click', function() {
+        document.getElementById('mobile-menu').classList.toggle('hidden');
+    });
+</script>
+</body>
+</html>

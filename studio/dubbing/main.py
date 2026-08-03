@@ -475,6 +475,17 @@ async def on_shutdown():
         logger.info("[SHUTDOWN] Azure CPU polling worker cancelled")
 
 
+@app.get("/soraniq", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/{country_code}/soraniq", response_class=HTMLResponse, include_in_schema=False)
+async def soraniq_landing(request: Request, country_code: str = "iq"):
+    from pathlib import Path
+    from fastapi.responses import HTMLResponse
+    template_path = Path(__file__).parent / "templates" / "soraniq_landing.html"
+    if template_path.is_file():
+        return HTMLResponse(template_path.read_text(encoding="utf-8"))
+    return HTMLResponse("<h1>SoranIQ Landing Page</h1>", status_code=200)
+
+
 @app.get("/")
 async def index():
     return RedirectResponse(url="/tts/dubbing", status_code=302)
