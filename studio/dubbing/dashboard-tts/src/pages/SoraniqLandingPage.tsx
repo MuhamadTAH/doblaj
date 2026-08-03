@@ -1,0 +1,333 @@
+import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+
+export default function SoraniqLandingPage() {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(65);
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const [lang, setLang] = useState<"en" | "ckb" | "ar">("en");
+
+  useEffect(() => {
+    let interval: any;
+    if (isPlaying) {
+      interval = setInterval(() => {
+        setProgress((prev) => (prev >= 100 ? 0 : prev + 2));
+      }, 200);
+    }
+    return () => clearInterval(interval);
+  }, [isPlaying]);
+
+  const isRTL = lang === "ckb" || lang === "ar";
+
+  const t = {
+    en: {
+      badge: "New: Iraqi Arabic Model V2.0",
+      title: "Bring Your Stories to Every Iraqi Screen",
+      subtitle:
+        "Instant, dialect-accurate AI dubbing from Kurdish Sorani to Iraqi Arabic. Preserve original emotion, cadence, and timing with our synthetic precision engine.",
+      ctaPrimary: "Upload Your First Video",
+      ctaSecondary: "Watch Demo",
+      featuresTitle: "Precision Engineered for Media",
+      featuresSubtitle:
+        "Built for professional creators who demand high-fidelity audio and cultural accuracy.",
+      pricingTitle: "Transparent Pricing",
+      pricingSubtitle: "Choose the plan that fits your production volume.",
+      startTrial: "Start Free Trial",
+    },
+    ckb: {
+      badge: "نوێ: مۆدێلی عەرەبی عێراقی ڤێرژنی ٢.٠",
+      title: "چیرۆکەکانت بگەیەنە هەموو شاشەیەکی عێراقی",
+      subtitle:
+        "دۆبلاژی زیرەکی دەستکرد لە کوردی سۆرانییەوە بۆ عەرەبی عێراقی بە ڕاستیی شێوەزار و هەستی ڕەسەن.",
+      ctaPrimary: "یەکەم ڤیدیۆت باربکە",
+      ctaSecondary: "سەیری دیمۆ بکە",
+      featuresTitle: "تایبەتمەندییە دروستکراوەکان بۆ میدیا",
+      featuresSubtitle: "دروستکراوە بۆ دروستکەرانی ناوەڕۆک کە داوای بەرزیی کواڵێتی دەنگ دەکەن.",
+      pricingTitle: "نرخی ئاشکرا و گونجاو",
+      pricingSubtitle: "ئەو پلانە هەڵبژێره کە گونجاوە لەگەڵ بڕی بەرهەمهێنانت.",
+      startTrial: "دەستپێکردنی تاقیکردنەوەی خۆڕایی",
+    },
+    ar: {
+      badge: "جديد: نموذج اللهجة العراقية V2.0",
+      title: "انقل قصصك إلى كل شاشة عراقية",
+      subtitle:
+        "دبلجة فورية بالذكاء الاصطناعي من الكردية السورانية إلى اللهجة العراقية بدقة وبدون فقدان المشاعر والسرعة الأصلية.",
+      ctaPrimary: "ارفع أول فيديو",
+      ctaSecondary: "شاهد العرض التجريبي",
+      featuresTitle: "دقة متناهية لصناع المحتوى",
+      featuresSubtitle: "صُمم خصيصاً للمحترفين الذين يبحثون عن أعلى جودة صوتية ودقة ثقافة محلية.",
+      pricingTitle: "أسعار واضحة ومناسبة",
+      pricingSubtitle: "اختر الخطة المناسبة لحجم إنتاجك الصوتي والفيديو.",
+      startTrial: "ابدأ التجربة المجانية",
+    },
+  }[lang];
+
+  return (
+    <div
+      dir={isRTL ? "rtl" : "ltr"}
+      className="min-h-screen bg-[#0a0a0b] text-[#cfcfd3] font-sans antialiased selection:bg-[#38bdf8]/20 selection:text-[#38bdf8]"
+    >
+      {/* TopNavBar */}
+      <nav className="fixed top-0 w-full z-50 bg-[#0a0a0b]/80 backdrop-blur-xl border-b border-[rgba(255,255,255,0.06)] shadow-sm transition-all duration-300">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 flex justify-between items-center h-20">
+          <Link to="/" className="flex items-center gap-3 group">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#38bdf8] to-[#1a237e] p-0.5 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
+              <div className="w-full h-full bg-[#0a0a0b] rounded-[7px] flex items-center justify-center">
+                <span className="text-[#38bdf8] font-bold text-xl tracking-tighter">SQ</span>
+              </div>
+            </div>
+            <span className="text-2xl font-bold text-[#fafafa] tracking-tight group-hover:opacity-90 transition-opacity">
+              SoranIQ
+            </span>
+          </Link>
+
+          <div className="hidden md:flex items-center gap-8 text-sm font-medium">
+            <a href="#features" className="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors">
+              Features
+            </a>
+            <a href="#how-it-works" className="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors">
+              How it Works
+            </a>
+            <a href="#pricing" className="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors">
+              Pricing
+            </a>
+          </div>
+
+          <div className="hidden md:flex items-center gap-4">
+            <div className="flex items-center bg-[#111114] border border-[rgba(255,255,255,0.08)] rounded-lg p-1 text-xs text-[#cfcfd3]">
+              <button
+                onClick={() => setLang("en")}
+                className={`px-2 py-1 rounded font-medium ${lang === "en" ? "bg-[#38bdf8] text-[#0a0a0b]" : ""}`}
+              >
+                EN
+              </button>
+              <button
+                onClick={() => setLang("ckb")}
+                className={`px-2 py-1 rounded font-medium ${lang === "ckb" ? "bg-[#38bdf8] text-[#0a0a0b]" : ""}`}
+              >
+                کوردی
+              </button>
+              <button
+                onClick={() => setLang("ar")}
+                className={`px-2 py-1 rounded font-medium ${lang === "ar" ? "bg-[#38bdf8] text-[#0a0a0b]" : ""}`}
+              >
+                عربي
+              </button>
+            </div>
+
+            <Link
+              to="/dubbing"
+              className="inline-flex items-center justify-center px-6 py-2.5 rounded-lg bg-[#38bdf8] text-[#0a0a0b] text-sm font-semibold hover:opacity-90 transition-all shadow-sm"
+            >
+              {t.startTrial}
+            </Link>
+          </div>
+
+          <button
+            onClick={() => setMobileMenu(!mobileMenu)}
+            aria-label="Toggle menu"
+            className="md:hidden text-[#cfcfd3] hover:text-[#38bdf8] p-2"
+          >
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        </div>
+
+        {mobileMenu && (
+          <div className="md:hidden bg-[#0a0a0b] border-b border-[rgba(255,255,255,0.08)] px-6 py-6 space-y-4">
+            <a href="#features" className="block text-base font-medium text-[#cfcfd3]">
+              Features
+            </a>
+            <a href="#how-it-works" className="block text-base font-medium text-[#cfcfd3]">
+              How it Works
+            </a>
+            <a href="#pricing" className="block text-base font-medium text-[#cfcfd3]">
+              Pricing
+            </a>
+            <Link
+              to="/dubbing"
+              className="block w-full text-center px-6 py-3 rounded-lg bg-[#38bdf8] text-[#0a0a0b] font-semibold text-sm"
+            >
+              {t.startTrial}
+            </Link>
+          </div>
+        )}
+      </nav>
+
+      {/* Hero Section */}
+      <main className="pt-24 pb-16">
+        <section className="relative overflow-hidden pt-12 pb-24 lg:pt-24 lg:pb-32 px-4 sm:px-6 lg:px-10 max-w-7xl mx-auto">
+          <div className="grid lg:grid-cols-2 gap-12 lg:gap-24 items-center">
+            <div className="space-y-8 max-w-2xl">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#38bdf8]/10 border border-[#38bdf8]/30 text-[#38bdf8] font-mono text-xs sm:text-sm">
+                <span className="w-2 h-2 rounded-full bg-[#38bdf8] animate-pulse"></span>
+                {t.badge}
+              </div>
+
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-[#fafafa] tracking-tight leading-[1.15]">
+                {t.title}
+              </h1>
+
+              <p className="text-lg sm:text-xl text-[#cfcfd3] leading-relaxed">
+                {t.subtitle}
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-4 pt-2">
+                <Link
+                  to="/dubbing"
+                  className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-[#38bdf8] text-[#0a0a0b] font-semibold text-base hover:opacity-90 transition-all shadow-lg"
+                >
+                  {t.ctaPrimary}
+                </Link>
+                <button
+                  onClick={() => setIsPlaying(!isPlaying)}
+                  className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-transparent border border-[rgba(255,255,255,0.08)] text-[#fafafa] font-semibold text-base hover:border-[#38bdf8] transition-all"
+                >
+                  {t.ctaSecondary}
+                </button>
+              </div>
+            </div>
+
+            {/* Faux UI Overlay Card */}
+            <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl border border-[rgba(255,255,255,0.08)] bg-[#111114] p-8 flex flex-col justify-between">
+              <div className="flex justify-between items-center z-10">
+                <span className="text-xs font-mono text-[#38bdf8] bg-[#38bdf8]/10 border border-[#38bdf8]/20 px-3 py-1 rounded-full">
+                  AI Pipeline Live
+                </span>
+                <div className="flex gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80"></span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80"></span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80"></span>
+                </div>
+              </div>
+
+              <div className="my-auto flex items-center justify-center gap-1.5 h-32 px-4">
+                {[40, 65, 30, 85, 95, 45, 75, 60, 90, 100, 70, 50, 80, 60, 40, 90, 75, 55, 35, 80].map(
+                  (height, i) => (
+                    <div
+                      key={i}
+                      className={`w-1.5 rounded-full bg-gradient-to-t from-[#1a237e] via-[#38bdf8] to-[#9cf0ff] transition-all duration-300 ${
+                        isPlaying ? "animate-pulse" : "opacity-70"
+                      }`}
+                      style={{
+                        height: isPlaying ? `${Math.max(20, (height * ((i % 3) + 1)) % 100)}%` : `${height}%`,
+                      }}
+                    />
+                  )
+                )}
+              </div>
+
+              <div className="bg-[#0a0a0b]/90 backdrop-blur-md border border-[rgba(255,255,255,0.08)] rounded-xl p-4 flex items-center justify-between shadow-xl">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setIsPlaying(!isPlaying)}
+                    className="w-10 h-10 rounded-full bg-[#38bdf8] text-[#0a0a0b] flex items-center justify-center hover:scale-105 transition-transform"
+                  >
+                    {isPlaying ? "⏸" : "▶"}
+                  </button>
+                  <div>
+                    <div className="text-xs font-medium text-[#fafafa] mb-1">
+                      {isPlaying ? "Processing Dubbing..." : "Dubbing Ready (1080p)"}
+                    </div>
+                    <div className="w-36 h-1.5 bg-[#111114] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-[#38bdf8] rounded-full transition-all duration-300"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs font-mono">
+                  <span className="px-2 py-1 rounded bg-[#111114] text-[#cfcfd3]">Sorani</span>
+                  <span className="text-[#38bdf8]">→</span>
+                  <span className="px-2 py-1 rounded bg-[#38bdf8]/10 text-[#38bdf8] font-semibold">Iraqi</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* How it Works */}
+        <section className="py-24 px-4 sm:px-6 lg:px-10 bg-[#0a0a0b]" id="how-it-works">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-center max-w-2xl mx-auto mb-16 space-y-4">
+              <h2 className="text-3xl sm:text-4xl font-bold text-[#fafafa]">Seamless Translation Pipeline</h2>
+              <p className="text-base sm:text-lg text-[#cfcfd3]">
+                Three simple steps to transform your content for a wider audience.
+              </p>
+            </div>
+            <div className="grid md:grid-cols-3 gap-8">
+              <div className="bg-[#111114] rounded-2xl p-8 border border-[rgba(255,255,255,0.06)] shadow-lg">
+                <div className="w-14 h-14 rounded-xl bg-[#0a0a0b] flex items-center justify-center mb-6 text-[#38bdf8] font-bold text-xl">
+                  1
+                </div>
+                <h3 className="text-xl font-bold text-[#fafafa] mb-3">1. Upload Video</h3>
+                <p className="text-sm text-[#cfcfd3]">Upload raw Kurdish Sorani video up to 4K resolution.</p>
+              </div>
+              <div className="bg-[#111114] rounded-2xl p-8 border border-[rgba(255,255,255,0.06)] shadow-lg">
+                <div className="w-14 h-14 rounded-xl bg-[#0a0a0b] flex items-center justify-center mb-6 text-[#38bdf8] font-bold text-xl">
+                  2
+                </div>
+                <h3 className="text-xl font-bold text-[#fafafa] mb-3">2. AI Processing</h3>
+                <p className="text-sm text-[#cfcfd3]">Translates nuance and synthesizes natural Iraqi Arabic.</p>
+              </div>
+              <div className="bg-[#111114] rounded-2xl p-8 border border-[rgba(255,255,255,0.06)] shadow-lg">
+                <div className="w-14 h-14 rounded-xl bg-[#0a0a0b] flex items-center justify-center mb-6 text-[#38bdf8] font-bold text-xl">
+                  3
+                </div>
+                <h3 className="text-xl font-bold text-[#fafafa] mb-3">3. Download</h3>
+                <p className="text-sm text-[#cfcfd3]">Receive perfectly synced high-quality video ready for broadcast.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Pricing */}
+        <section className="py-24 px-4 sm:px-6 lg:px-10 bg-[#0a0a0b]" id="pricing">
+          <div className="max-w-7xl mx-auto text-center">
+            <h2 className="text-3xl sm:text-4xl font-bold text-[#fafafa] mb-4">{t.pricingTitle}</h2>
+            <p className="text-base sm:text-lg text-[#cfcfd3] mb-12">{t.pricingSubtitle}</p>
+            <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+              <div className="bg-[#111114] rounded-2xl p-8 border border-[rgba(255,255,255,0.06)] text-left flex flex-col justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-[#fafafa] mb-2">Starter</h3>
+                  <div className="text-4xl font-extrabold text-[#fafafa] mb-4">$10 <span className="text-sm text-[#cfcfd3]">/mo</span></div>
+                  <p className="text-xs text-[#cfcfd3] mb-6">5 Minutes ($2.00/min)</p>
+                </div>
+                <Link to="/dubbing" className="w-full py-3 rounded-xl border border-[rgba(255,255,255,0.08)] text-center text-sm font-semibold text-[#fafafa] block">
+                  Get 5 Minutes
+                </Link>
+              </div>
+              <div className="bg-[#111114] rounded-2xl p-8 border border-[#38bdf8]/40 text-left flex flex-col justify-between relative bg-gradient-to-b from-[#111114] to-[#1a237e]/20">
+                <div className="absolute top-0 right-8 -translate-y-1/2 px-3 py-1 bg-[#38bdf8] text-[#0a0a0b] text-xs font-bold uppercase rounded-full">Most Popular</div>
+                <div>
+                  <h3 className="text-xl font-bold text-[#fafafa] mb-2">Pro</h3>
+                  <div className="text-4xl font-extrabold text-[#fafafa] mb-4">$20 <span className="text-sm text-[#cfcfd3]">/mo</span></div>
+                  <p className="text-xs text-[#cfcfd3] mb-6">15 Minutes ($1.33/min)</p>
+                </div>
+                <Link to="/dubbing" className="w-full py-3 rounded-xl bg-[#38bdf8] text-[#0a0a0b] text-center text-sm font-bold block">
+                  Get 15 Minutes
+                </Link>
+              </div>
+              <div className="bg-[#111114] rounded-2xl p-8 border border-[rgba(255,255,255,0.06)] text-left flex flex-col justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-[#fafafa] mb-2">Creator</h3>
+                  <div className="text-4xl font-extrabold text-[#fafafa] mb-4">$99 <span className="text-sm text-[#cfcfd3]">/mo</span></div>
+                  <p className="text-xs text-[#cfcfd3] mb-6">120 Minutes ($0.82/min)</p>
+                </div>
+                <Link to="/dubbing" className="w-full py-3 rounded-xl border border-[rgba(255,255,255,0.08)] text-center text-sm font-semibold text-[#fafafa] block">
+                  Get 120 Minutes
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer className="bg-[#0a0a0b] border-t border-[rgba(255,255,255,0.06)] py-12 px-4 text-center text-xs text-[#cfcfd3]">
+        © 2026 DengAI / Pird Technologies. Precision Kurdish-Arabic Synthesis.
+      </footer>
+    </div>
+  );
+}
