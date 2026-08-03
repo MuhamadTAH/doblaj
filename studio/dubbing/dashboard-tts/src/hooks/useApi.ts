@@ -35,7 +35,18 @@ export const useApi = () => {
     let token: string | null = null;
     try {
       token = await getToken({ template: 'pird-dubbing' });
-    } catch (sdkError) {
+    } catch (sdkError: any) {
+      console.error("Clerk getToken error:", sdkError);
+      // If the session is invalid or not found (404/401), sign out
+      const errorStr = String(sdkError).toLowerCase();
+      if (errorStr.includes('404') || errorStr.includes('401') || errorStr.includes('not found') || sdkError?.status === 401 || sdkError?.status === 404) {
+        if (!isSigningOut) {
+          isSigningOut = true;
+          await signOut();
+          isSigningOut = false;
+        }
+        throw new AuthFailedError();
+      }
       throw new AuthNetworkError();
     }
 
