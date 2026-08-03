@@ -6,16 +6,14 @@ from app.core import database_convex
 
 async def main():
     c = database_convex._get_client()
-    jid = "jh71dt5t0vvdjhdpnq3prp0f7s8bhxv2"
+    jid = "b548575c-0eee-4080-b687-56d0f3722708"
     
     args = {
-        "jobId": jid,
-        "status": "completed",
-        "resultVideoR2Key": "/static/outputs/dubbed_14.mp4"
+        "legacyId": jid
     }
     
     try:
-        res = c.mutation("dubbingJobs:updateStatusInternal", database_convex._internal_args(args))
+        res = c.mutation("tempQuery:forceUpdate", args)
         print("Update response:", res)
     except Exception as e:
         print(f"Error: {e}")

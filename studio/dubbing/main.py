@@ -523,16 +523,20 @@ async def auth_me(request: Request):
         # Fetch transactions
         transactions = await database.list_transactions(user_client, workspace_id=user.workspace_id)
         
+        total_purchased_minutes = sum(tx.get("minutesAdded", 0) for tx in transactions)
+        total_minutes = max(remaining_minutes, total_purchased_minutes)
+        if total_minutes == 0 and remaining_minutes > 0:
+            total_minutes = remaining_minutes # Fallback if they were manually granted minutes without a transaction
+            
+        used_minutes = max(0, total_minutes - remaining_minutes)
+        
+        plan_expiry = "None"
         if remaining_minutes >= 100000:
             plan_type = "Enterprise"
-        else:
-            plan_type = "Creator" if remaining_minutes > 15 else ("Pro" if remaining_minutes > 5 else "Free")
-            
-        # Find most recent transaction date
-        plan_expiry = "None"
-        if transactions:
-            # Assuming transactions have createdAt which is an ISO string
+        elif transactions:
+            # Find most recent transaction date and tier
             recent_tx = max(transactions, key=lambda x: x.get("createdAt", ""))
+            plan_type = str(recent_tx.get("tier", "Starter")).capitalize()
             created_at_str = recent_tx.get("createdAt")
             if created_at_str:
                 try:
@@ -542,9 +546,14 @@ async def auth_me(request: Request):
                     plan_expiry = expiry_dt.isoformat()
                 except Exception as e:
                     logger.warning(f"Failed to parse transaction date: {e}")
+        else:
+            plan_type = "Free"
+            
     except Exception as e:
         logger.warning(f"Failed to query workspace metrics: {e}")
         remaining_minutes = 999999
+        total_minutes = 999999
+        used_minutes = 0
         transactions = []
         plan_type = "Enterprise"
         plan_expiry = "Unlimited"
@@ -553,6 +562,8 @@ async def auth_me(request: Request):
         "id": user.user_id,
         "workspace_id": user.workspace_id,
         "remaining_minutes": remaining_minutes,
+        "total_minutes": total_minutes,
+        "used_minutes": used_minutes,
         "plan": plan_type,
         "plan_expiry": plan_expiry,
         "transactions": transactions,

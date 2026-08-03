@@ -25,22 +25,23 @@ const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
 const clerkAppearance = {
   elements: {
-    card: 'bg-transparent shadow-none px-0',
+    card: 'bg-transparent shadow-none px-0 w-full max-w-none',
     headerTitle: 'hidden',
     headerSubtitle: 'hidden',
-    socialButtonsBlockButton: 'border border-white/[0.08] hover:bg-white/[0.04] text-white',
-    formButtonPrimary: 'bg-brand-400 hover:bg-brand-500 text-ink-950 font-bold',
-    formFieldInput: 'bg-ink-900 border-white/[0.1] text-white focus:border-brand-400 focus:ring-brand-400',
-    formFieldLabel: 'text-ink-200',
-    footerActionLink: 'text-brand-400 hover:text-brand-300',
-    dividerLine: 'bg-white/[0.08]',
-    dividerText: 'text-ink-400 bg-transparent',
-    identityPreviewText: 'text-white',
-    identityPreviewEditButton: 'text-brand-400 hover:text-brand-300',
-    formFieldInputShowPasswordButton: 'text-ink-400 hover:text-white',
+    socialButtonsBlockButton: 'w-12 h-12 flex items-center justify-center rounded-full border border-brand-border hover:bg-brand-surface-bright transition-colors',
+    formButtonPrimary: 'w-full bg-brand-sky hover:bg-opacity-90 text-brand-surface font-bold py-4 rounded-lg transition-all transform active:scale-[0.98]',
+    formFieldInput: 'input-field w-full px-4 py-3 rounded-lg text-brand-text',
+    formFieldLabel: 'block text-sm font-medium text-brand-text-muted mb-2',
+    footerActionLink: 'text-brand-sky hover:underline font-medium',
+    dividerLine: 'bg-brand-border',
+    dividerText: 'text-brand-text-muted bg-transparent uppercase tracking-widest text-xs',
+    identityPreviewText: 'text-brand-text',
+    identityPreviewEditButton: 'text-brand-sky hover:text-opacity-80',
+    formFieldInputShowPasswordButton: 'text-brand-text-muted hover:text-brand-text',
   },
   layout: {
     socialButtonsPlacement: 'bottom' as const,
+    socialButtonsVariant: 'iconButton' as const,
   }
 };
 

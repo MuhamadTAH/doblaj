@@ -26,6 +26,13 @@ export default {
           400: "#38bdf8",
           500: "#0ea5e9",
           600: "#0284c7",
+          sky: '#38bdf8',
+          surface: '#0a0a0b',
+          'surface-low': '#131314',
+          'surface-bright': '#3a393a',
+          text: '#fafafa',
+          'text-muted': '#cfcfd3',
+          border: 'rgba(255, 255, 255, 0.08)',
         },
         accent: {
           400: "#c084fc",

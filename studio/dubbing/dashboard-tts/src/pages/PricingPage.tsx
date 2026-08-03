@@ -1,14 +1,38 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import PricingCard from "@/components/PricingCard";
 import { useAuth } from "@clerk/clerk-react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
 
 export default function PricingPage() {
   const [loadingTier, setLoadingTier] = useState<string | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<string | null>(null);
   const { getToken } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const hasTriggeredCheckout = useRef(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    async function fetchUserPlan() {
+      try {
+        const token = await getToken();
+        if (!token) return;
+        const res = await fetch(`${API_BASE}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setCurrentPlan(data?.plan?.toLowerCase() || null);
+        }
+      } catch (err) {
+        console.error("Failed to fetch user plan", err);
+      }
+    }
+    fetchUserPlan();
+  }, [getToken]);
 
   const handleCheckout = async (tierId: string) => {
     setLoadingTier(tierId);
@@ -51,6 +75,17 @@ export default function PricingPage() {
     }
   };
 
+  useEffect(() => {
+    const plan = searchParams.get("plan");
+    if (plan && !hasTriggeredCheckout.current) {
+      hasTriggeredCheckout.current = true;
+      // Remove the search param so it doesn't re-trigger if they go back
+      setSearchParams({});
+      handleCheckout(plan);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, setSearchParams]);
+
   return (
     <div className="flex flex-col items-center min-h-[calc(100vh-4rem)] p-6 bg-ink-900/10">
       <div className="max-w-6xl w-full space-y-8 mb-12 flex flex-col">
@@ -87,6 +122,7 @@ export default function PricingPage() {
             onCheckout={() => handleCheckout("starter")}
             isLoading={loadingTier === "starter"}
             delay={0.1}
+            isCurrentPlan={currentPlan === "starter"}
           />
           
           <PricingCard
@@ -101,6 +137,7 @@ export default function PricingPage() {
             onCheckout={() => handleCheckout("pro")}
             isLoading={loadingTier === "pro"}
             delay={0.2}
+            isCurrentPlan={currentPlan === "pro"}
           />
           
           <PricingCard
@@ -114,6 +151,7 @@ export default function PricingPage() {
             onCheckout={() => handleCheckout("creator")}
             isLoading={loadingTier === "creator"}
             delay={0.3}
+            isCurrentPlan={currentPlan === "creator"}
           />
         </div>
         

@@ -13,6 +13,7 @@ interface PricingCardProps {
   onCheckout: () => void;
   isLoading: boolean;
   delay: number;
+  isCurrentPlan?: boolean;
 }
 
 export default function PricingCard({
@@ -26,7 +27,8 @@ export default function PricingCard({
   isPopular,
   onCheckout,
   isLoading,
-  delay
+  delay,
+  isCurrentPlan
 }: PricingCardProps) {
   return (
     <motion.div
@@ -40,9 +42,9 @@ export default function PricingCard({
         }
       `}
     >
-      {isPopular && (
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 bg-gradient-to-r from-brand-400 to-accent-500 text-white text-xs font-bold uppercase tracking-widest rounded-full shadow-lg">
-          Most Popular
+      {(isPopular || isCurrentPlan) && (
+        <div className={`absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 text-white text-xs font-bold uppercase tracking-widest rounded-full shadow-lg ${isCurrentPlan ? 'bg-gradient-to-r from-emerald-500 to-emerald-400' : 'bg-gradient-to-r from-brand-400 to-accent-500'}`}>
+          {isCurrentPlan ? "Current Plan" : "Most Popular"}
         </div>
       )}
 
@@ -79,9 +81,11 @@ export default function PricingCard({
           onClick={onCheckout}
           disabled={isLoading}
           className={`w-full py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2
-            ${isPopular
-              ? "bg-gradient-to-r from-brand-500 to-accent-600 text-white shadow-lg hover:shadow-brand-500/25"
-              : "bg-white/[0.08] text-white hover:bg-white/[0.12]"
+            ${isCurrentPlan
+              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+              : isPopular
+                ? "bg-gradient-to-r from-brand-500 to-accent-600 text-white shadow-lg hover:shadow-brand-500/25"
+                : "bg-white/[0.08] text-white hover:bg-white/[0.12]"
             }
             ${isLoading ? "opacity-75 cursor-not-allowed" : ""}
           `}
@@ -94,6 +98,8 @@ export default function PricingCard({
               </svg>
               Processing...
             </span>
+          ) : isCurrentPlan ? (
+            `Current Plan (Buy More)`
           ) : (
             `Get ${minutes}`
           )}

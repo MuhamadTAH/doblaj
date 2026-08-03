@@ -340,9 +340,20 @@ async def process_video_cpu_phase(zip_path: str):
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         zip_ref.extractall(str(jobs_base))
         
-    # Find the extracted folder
-    basename = os.path.basename(zip_path).replace(".zip", "")
-    work_dir = jobs_base / basename
+        # Determine the extracted folder name by looking at the zip contents
+        extracted_top_level = None
+        for name in zip_ref.namelist():
+            parts = Path(name).parts
+            if parts:
+                extracted_top_level = parts[0]
+                break
+                
+    if extracted_top_level:
+        work_dir = jobs_base / extracted_top_level
+    else:
+        # Fallback if zip is empty or flat
+        basename = os.path.basename(zip_path).replace(".zip", "")
+        work_dir = jobs_base / basename
     
     state_file = work_dir / "gpu_state.json"
     if not state_file.exists():
@@ -364,7 +375,17 @@ async def process_video_cpu_phase(zip_path: str):
     bg_wav = state["bg_wav"]
     video_path = state["video_path"]
     
+    dir_sep = work_dir / "1-separation"
+    dir_chunks = work_dir / "2-chunks"
     dir_transcription = work_dir / "3-transcription"
+    dir_translation = work_dir / "4-translation"
+    dir_side = work_dir / "5-side_by_side"
+    dir_arabic = work_dir / "6-arabic_audio_chunks"
+    dir_full_video = work_dir / "7-full_arabic_video_no_noise"
+    dir_final = work_dir / "8-final_dubbed_video"
+    
+    for d in [dir_sep, dir_chunks, dir_transcription, dir_translation, dir_side, dir_arabic, dir_full_video, dir_final]:
+        d.mkdir(parents=True, exist_ok=True)
     
     try:
         # STAGE 1 & 4 Parallel Execution
@@ -583,7 +604,6 @@ async def process_video_cpu_phase(zip_path: str):
                     "kurdish_syllable_count": count_syllables_approx(k_raw),
                     "final_arabic_syllable_count": count_syllables_approx(a_text),
                     "speaker": chunk.get("speaker", "speaker_0"),
-                    "status": chunk.get("status", "approved"),
                 }
                 
                 await database.create_chunk(

@@ -199,7 +199,7 @@ async def create_job(
         logger.warning(f"Failed to query workspace minutes balance: {e}")
         remaining_minutes = 999999
 
-    if False and remaining_minutes < duration_minutes:
+    if remaining_minutes < duration_minutes:
         if input_path.exists():
             input_path.unlink()
         raise HTTPException(
@@ -209,8 +209,8 @@ async def create_job(
 
     # 3. Deduct minutes from balance (reserved for this job)
     try:
-        # await database.deduct_workspace_minutes(user_client, workspace_id=user.workspace_id, minutes=duration_minutes)
-        logger.info(f"Reserved {duration_minutes} minutes from workspace {safe_ws(user.workspace_id)} (remaining: {remaining_minutes - duration_minutes}) - DISABLED FOR LOCAL TESTING")
+        await database.deduct_workspace_minutes(user_client, workspace_id=user.workspace_id, minutes=duration_minutes)
+        logger.info(f"Reserved {duration_minutes} minutes from workspace {safe_ws(user.workspace_id)} (remaining: {remaining_minutes - duration_minutes})")
     except Exception as e:
         if input_path.exists():
             input_path.unlink()

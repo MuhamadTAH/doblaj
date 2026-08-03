@@ -9,6 +9,7 @@
  */
 
 import type * as admin from "../admin.js";
+import type * as adminQuery from "../adminQuery.js";
 import type * as adminTasks from "../adminTasks.js";
 import type * as aggregates from "../aggregates.js";
 import type * as baseline from "../baseline.js";
@@ -24,6 +25,7 @@ import type * as lib_auth from "../lib/auth.js";
 import type * as relink from "../relink.js";
 import type * as seedVoices from "../seedVoices.js";
 import type * as stepTelemetry from "../stepTelemetry.js";
+import type * as tempQuery from "../tempQuery.js";
 import type * as transactions from "../transactions.js";
 import type * as usageLogs from "../usageLogs.js";
 import type * as users from "../users.js";
@@ -40,6 +42,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
+  adminQuery: typeof adminQuery;
   adminTasks: typeof adminTasks;
   aggregates: typeof aggregates;
   baseline: typeof baseline;
@@ -55,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   relink: typeof relink;
   seedVoices: typeof seedVoices;
   stepTelemetry: typeof stepTelemetry;
+  tempQuery: typeof tempQuery;
   transactions: typeof transactions;
   usageLogs: typeof usageLogs;
   users: typeof users;

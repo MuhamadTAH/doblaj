@@ -14,6 +14,8 @@ interface Transaction {
 interface UserData {
   plan?: string;
   remaining_minutes?: number;
+  total_minutes?: number;
+  used_minutes?: number;
   plan_expiry?: string;
   transactions?: Transaction[];
 }
@@ -103,13 +105,13 @@ export default function BillingPage() {
                     </div>
                   ) : (
                     <div className="w-full h-3 bg-ink-800 rounded-full overflow-hidden">
-                      <div className="h-full bg-brand-500 rounded-full" style={{ width: userData.remaining_minutes && userData.remaining_minutes > 0 ? '100%' : '0%' }}></div>
+                      <div className="h-full bg-brand-500 rounded-full" style={{ width: userData.total_minutes && userData.total_minutes > 0 ? `${Math.min(100, Math.max(0, ((userData.used_minutes ?? 0) / userData.total_minutes) * 100))}%` : '0%' }}></div>
                     </div>
                   )}
                   
                   <div className="flex justify-between text-xs text-ink-400 mt-2">
-                    <span>Used: 0 min</span>
-                    <span>Total: {userData.remaining_minutes || 0} min</span>
+                    <span>Used: {userData.used_minutes ?? 0} min</span>
+                    <span>Total: {userData.total_minutes ?? userData.remaining_minutes ?? 0} min</span>
                   </div>
                 </div>
               </div>

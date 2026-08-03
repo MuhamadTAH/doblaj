@@ -113,6 +113,20 @@ export const insertInternal = mutation({
         speaker: v.optional(v.string()),
         pipelineDetails: v.optional(v.string()),
         error: v.optional(v.string()),
+        kurdish_raw_audio_url: v.optional(v.string()),
+        kurdish_word_count: v.optional(v.number()),
+        kurdish_wps: v.optional(v.number()),
+        baseline_wps_used: v.optional(v.number()),
+        speed_multiplier: v.optional(v.number()),
+        target_ratio_applied: v.optional(v.number()),
+        was_clamped: v.optional(v.boolean()),
+        final_arabic_word_count: v.optional(v.number()),
+        semantic_ratio: v.optional(v.number()),
+        kurdish_syllable_count: v.optional(v.number()),
+        final_arabic_syllable_count: v.optional(v.number()),
+        ffmpeg_warp_factor: v.optional(v.number()),
+        vad_duration_sec: v.optional(v.number()),
+        speechDuration: v.optional(v.number()),
       }),
     ),
     __internalApiKey: v.string(),
@@ -140,7 +154,12 @@ export const insertInternal = mutation({
     // typed object schema.
     const { transcriptSrc, transcriptTgt, audioPath, kurdishRaw,
             kurdishCorrected, arabicText, arabicLocked, ttsAudioR2Key,
-            assembledAudioR2Key, speaker, pipelineDetails, error } =
+            assembledAudioR2Key, speaker, pipelineDetails, error,
+            kurdish_raw_audio_url, kurdish_word_count, kurdish_wps,
+            baseline_wps_used, speed_multiplier, target_ratio_applied, was_clamped,
+            final_arabic_word_count, semantic_ratio, kurdish_syllable_count,
+            final_arabic_syllable_count, ffmpeg_warp_factor, vad_duration_sec,
+            speechDuration } =
             args.patch ?? {};
     const docData: any = {
       legacyId: args.legacyId,
@@ -165,6 +184,21 @@ export const insertInternal = mutation({
     if (speaker !== undefined) docData.speaker = speaker;
     if (pipelineDetails !== undefined) docData.pipelineDetails = pipelineDetails;
     if (error !== undefined) docData.error = error;
+    if (kurdish_raw_audio_url !== undefined) docData.kurdish_raw_audio_url = kurdish_raw_audio_url;
+    if (kurdish_word_count !== undefined) docData.kurdish_word_count = kurdish_word_count;
+    if (kurdish_wps !== undefined) docData.kurdish_wps = kurdish_wps;
+    if (baseline_wps_used !== undefined) docData.baseline_wps_used = baseline_wps_used;
+    if (speed_multiplier !== undefined) docData.speed_multiplier = speed_multiplier;
+    if (target_ratio_applied !== undefined) docData.target_ratio_applied = target_ratio_applied;
+    if (was_clamped !== undefined) docData.was_clamped = was_clamped;
+    if (final_arabic_word_count !== undefined) docData.final_arabic_word_count = final_arabic_word_count;
+    if (semantic_ratio !== undefined) docData.semantic_ratio = semantic_ratio;
+    if (kurdish_syllable_count !== undefined) docData.kurdish_syllable_count = kurdish_syllable_count;
+    if (final_arabic_syllable_count !== undefined) docData.final_arabic_syllable_count = final_arabic_syllable_count;
+    if (ffmpeg_warp_factor !== undefined) docData.ffmpeg_warp_factor = ffmpeg_warp_factor;
+    if (vad_duration_sec !== undefined) docData.vad_duration_sec = vad_duration_sec;
+    if (speechDuration !== undefined) docData.speechDuration = speechDuration;
+    
     return await ctx.db.insert("dubbingChunks", docData);
   },
 });
