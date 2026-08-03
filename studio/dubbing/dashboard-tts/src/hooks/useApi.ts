@@ -37,9 +37,11 @@ export const useApi = () => {
       token = await getToken({ template: 'pird-dubbing' });
     } catch (sdkError: any) {
       console.error("Clerk getToken error:", sdkError);
-      // If the session is invalid or not found (404/401), sign out
+      
       const errorStr = String(sdkError).toLowerCase();
-      if (errorStr.includes('404') || errorStr.includes('401') || errorStr.includes('not found') || sdkError?.status === 401 || sdkError?.status === 404) {
+      // Only sign out if it's explicitly an unauthorized (401) session error.
+      // A 404 here usually means the JWT template 'pird-dubbing' is missing in the Clerk dashboard.
+      if (errorStr.includes('401') || sdkError?.status === 401) {
         if (!isSigningOut) {
           isSigningOut = true;
           await signOut();
