@@ -30,6 +30,12 @@ const titles: Record<string, RouteTitle> = {
     titleFallback: "History",
     subFallback: "Everything you've generated, with playback",
   },
+  "/settings": {
+    titleKey: "nav_settings",
+    subKey: "nav_settings_sub",
+    titleFallback: "Settings",
+    subFallback: "Manage your account and preferences",
+  },
 };
 
 export default function TopNav() {
