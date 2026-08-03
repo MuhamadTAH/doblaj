@@ -12,6 +12,7 @@ import SoraniqLandingPage from "@/pages/SoraniqLandingPage";
 
 import PrivacyPolicyPage from "@/pages/PrivacyPolicyPage";
 import TermsOfServicePage from "@/pages/TermsOfServicePage";
+import RefundPolicyPage from "@/pages/RefundPolicyPage";
 import SettingsPage from "@/pages/SettingsPage";
 import { ClerkProvider, SignedIn, SignedOut, SignIn, useAuth } from "@clerk/clerk-react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
@@ -34,6 +35,11 @@ export default function App() {
                     <Route path="/" element={<SoraniqLandingPage />} />
                     <Route path="/soraniq" element={<SoraniqLandingPage />} />
                     <Route path="/:countryCode/soraniq" element={<SoraniqLandingPage />} />
+                    <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+                    <Route path="/privacy" element={<PrivacyPolicyPage />} />
+                    <Route path="/terms-of-service" element={<TermsOfServicePage />} />
+                    <Route path="/terms" element={<TermsOfServicePage />} />
+                    <Route path="/refund-policy" element={<RefundPolicyPage />} />
                     <Route
                       path="*"
                       element={
@@ -58,7 +64,10 @@ export default function App() {
                           <Route path="/pricing" element={<PricingPage />} />
                           <Route path="/billing" element={<BillingPage />} />
                           <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+                          <Route path="/privacy" element={<PrivacyPolicyPage />} />
                           <Route path="/terms-of-service" element={<TermsOfServicePage />} />
+                          <Route path="/terms" element={<TermsOfServicePage />} />
+                          <Route path="/refund-policy" element={<RefundPolicyPage />} />
                           <Route path="/settings" element={<SettingsPage />} />
                           <Route path="*" element={<TextToSpeechPage />} />
                         </Routes>

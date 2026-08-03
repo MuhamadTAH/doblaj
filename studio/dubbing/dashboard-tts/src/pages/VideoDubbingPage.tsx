@@ -94,6 +94,7 @@ export default function VideoDubbingPage() {
   const [customCategory, setCustomCategory] = useState<string>("");
   const [customEntity, setCustomEntity] = useState<string>("");
   const [entity, setEntity] = useState<string>("");
+  const [consent, setConsent] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pollRef = useRef<number | null>(null);
@@ -120,7 +121,7 @@ export default function VideoDubbingPage() {
   const resolvedEntity =
     entity === "_custom_" ? customEntity.trim() : entity;
   const canSubmit =
-    !!file && resolvedCategory !== "" && resolvedEntity !== "" && !isBusy;
+    !!file && resolvedCategory !== "" && resolvedEntity !== "" && !isBusy && consent;
 
   useEffect(() => {
     return () => {
@@ -142,6 +143,7 @@ export default function VideoDubbingPage() {
     setError(null);
     setCategory("");
     setEntity("");
+    setConsent(false);
   };
 
   const onPickFile = (f: File | null) => {
@@ -189,6 +191,7 @@ export default function VideoDubbingPage() {
       const job = await api.submitDubJob(file, {
         category: resolvedCategory || undefined,
         entity: resolvedEntity || undefined,
+        consent_text_version: "v1.0_2026",
       });
       setJobId(job.id);
       setPhase("processing");
@@ -616,6 +619,30 @@ export default function VideoDubbingPage() {
               )}
             </AnimatePresence>
 
+            {/* Consent Checkbox */}
+            <AnimatePresence>
+              {file && (phase === "ready" || phase === "failed") && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.25 }}
+                  className="mt-6 flex items-center gap-3 max-w-2xl w-full px-2"
+                >
+                  <input 
+                    type="checkbox" 
+                    id="consent" 
+                    checked={consent} 
+                    onChange={(e) => setConsent(e.target.checked)} 
+                    className="rounded bg-[#0a0f1c] border-cyan-400/30 text-blue-500 focus:ring-blue-500/50 cursor-pointer flex-shrink-0" 
+                  />
+                  <label htmlFor="consent" className="text-xs text-ink-300 select-none cursor-pointer">
+                    {t("consent_warrant", "I warrant and represent that I possess all legal rights, permissions, and authorizations to process and clone the audio/voice in this media. I agree to the AI Acceptable Use Policy.")}
+                  </label>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Dub Now CTA */}
             <motion.button
               whileHover={
@@ -637,6 +664,8 @@ export default function VideoDubbingPage() {
                   ? t("cta_hint_category", "Choose a category")
                   : !entity.trim()
                   ? t("cta_hint_entity", "Pick or type a model")
+                  : !consent
+                  ? t("cta_hint_consent", "Please accept the legal terms")
                   : t("dub_now", "Dub Now")
               }
               className="mt-10 px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-lg font-semibold shadow-lg shadow-blue-600/40 disabled:opacity-30 disabled:cursor-not-allowed disabled:grayscale transition-colors"

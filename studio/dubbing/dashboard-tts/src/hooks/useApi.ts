@@ -81,7 +81,7 @@ export const useApi = () => {
   return useMemo(() => ({
     getDubJobs: (signal?: AbortSignal) => getDubJobs(authFetch, signal),
     getDubStatus: (jobId: string, signal?: AbortSignal) => getDubStatus(authFetch, jobId, signal),
-    submitDubJob: (file: File, meta?: { category?: string; entity?: string }, signal?: AbortSignal) => submitDubJob(authFetch, file, meta, signal),
+    submitDubJob: (file: File, meta?: { category?: string; entity?: string; consent_text_version?: string }, signal?: AbortSignal) => submitDubJob(authFetch, file, meta, signal),
     fetchVoices: (signal?: AbortSignal) => fetchVoices(authFetch, signal),
     generateTts: (req: TtsRequest, signal?: AbortSignal) => generateTts(authFetch, req, signal),
     previewVoice: (voiceId: string, signal?: AbortSignal) => previewVoice(authFetch, voiceId, signal),

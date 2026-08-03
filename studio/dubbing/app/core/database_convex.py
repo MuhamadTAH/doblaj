@@ -100,8 +100,10 @@ async def init_db() -> None:
     logger.info("[DATABASE-CONVEX] Schema is managed by Convex deploys. init_db is a no-op.")
 
 
-async def create_job(client: Any = None, *, workspace_id: str = "", owner_user_id: str = "", job_id: Optional[str] = None, source_video_r2_key: str = ""):
+async def create_job(client: Any = None, *, workspace_id: str = "", owner_user_id: str = "", job_id: Optional[str] = None, source_video_r2_key: str = "", consent_version: str = "", user_ip_address: str = ""):
     actual_job_id = job_id or str(uuid.uuid4())
+    import datetime
+    server_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
     job_doc = {
         "id": actual_job_id,
         "legacyId": actual_job_id,
@@ -110,7 +112,10 @@ async def create_job(client: Any = None, *, workspace_id: str = "", owner_user_i
         "status": "pending",
         "progress": 0,
         "source_video_r2_key": source_video_r2_key,
-        "result_video_r2_key": ""
+        "result_video_r2_key": "",
+        "consent_version": consent_version,
+        "user_ip_address": user_ip_address,
+        "consent_timestamp": server_timestamp
     }
     _in_memory_jobs[actual_job_id] = job_doc
 
@@ -124,6 +129,9 @@ async def create_job(client: Any = None, *, workspace_id: str = "", owner_user_i
             "sourceLang": "ku",
             "targetLang": "ar-IQ",
             "ttsProvider": "minimax",
+            "consentVersion": consent_version,
+            "userIpAddress": user_ip_address,
+            "consentTimestamp": server_timestamp,
         }
         def _do():
             res = c.mutation("dubbingJobs:createInternal", _internal_args(args))
@@ -574,3 +582,53 @@ def _fallback_to_s3(table: str, payload: dict, error_msg: str):
         s3.put_object(Bucket=bucket, Key=key, Body=json.dumps(dead_letter))
     except Exception as s3_err:
         logger.error(f"S3 fallback also failed: {s3_err}")
+
+
+async def log_consent(
+    client: Any = None,
+    *,
+    user_id: str = "",
+    workspace_id: str = "",
+    consent_version: str = "",
+    user_ip_address: str = "",
+    input_text_id: str = "",
+    target_audio_hash: str = ""
+) -> None:
+    """Log user consent for generating dubbing/TTS."""
+    import datetime
+    server_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    try:
+        c = client or _get_client()
+        payload = {
+            "userId": user_id,
+            "workspaceId": workspace_id,
+            "consentVersion": consent_version,
+            "userIpAddress": user_ip_address,
+            "inputTextId": input_text_id,
+            "targetAudioHash": target_audio_hash,
+            "consentTimestamp": server_timestamp
+        }
+        def _do():
+            return c.mutation("consentLogs:insertInternal", _internal_args(payload))
+        await asyncio.to_thread(_do)
+    except Exception as e:
+        logger.warning(f"[DATABASE-CONVEX] log_consent fallback: {e}")
+        # fallback to local file
+        import json
+        from pathlib import Path
+        log_dir = Path("data/logs/consent")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / "tts_consent.log"
+        try:
+            with open(log_file, "a") as f:
+                f.write(json.dumps({
+                    "user_id": user_id,
+                    "workspace_id": workspace_id,
+                    "consent_version": consent_version,
+                    "user_ip_address": user_ip_address,
+                    "input_text_id": input_text_id,
+                    "target_audio_hash": target_audio_hash,
+                    "consent_timestamp": server_timestamp
+                }) + "\n")
+        except Exception:
+            pass

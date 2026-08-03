@@ -126,6 +126,7 @@ async def create_job(
     voice_id: Optional[str] = Form(None),
     category: Optional[str] = Form(None),
     entity: Optional[str] = Form(None),
+    consent_text_version: Optional[str] = Form(None),
     background_tasks: BackgroundTasks = None,
 ) -> VideoJobResponse:
     if not file.filename:
@@ -136,8 +137,18 @@ async def create_job(
     # PIRD-006: enforce video content type.
     if not (file.content_type or "").startswith("video/"):
         raise HTTPException(status_code=400, detail=f"Expected video/* content type, got {file.content_type!r}")
+    
+    if not consent_text_version:
+        raise HTTPException(status_code=400, detail="Voice recording consent is required.")
+
     # PIRD-013: voice-recording consent gate.
     await _check_voice_recording_consent(user)
+
+    # Proxy IP Trap Fix: Extract true IP, bypassing Cloudflare/LoadBalancers
+    user_ip_address = request.headers.get("CF-Connecting-IP") or request.headers.get("X-Forwarded-For") or (request.client.host if request.client else "unknown")
+    # For multiple IPs in X-Forwarded-For, take the first one
+    if "," in user_ip_address:
+        user_ip_address = user_ip_address.split(",")[0].strip()
 
     upload_dir = Path("data/uploads")
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -230,7 +241,9 @@ async def create_job(
             workspace_id=user.workspace_id,
             owner_user_id=user.user_id,
             job_id=job_id,
-            source_video_r2_key=source_r2_key
+            source_video_r2_key=source_r2_key,
+            consent_version=consent_text_version,
+            user_ip_address=user_ip_address
         )
     except Exception as e:
         # Refund reserved minutes on failure to start/create

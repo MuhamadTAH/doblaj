@@ -325,8 +325,51 @@ export default function SoraniqLandingPage() {
         </section>
       </main>
 
-      <footer className="bg-[#0a0a0b] border-t border-[rgba(255,255,255,0.06)] py-12 px-4 text-center text-xs text-[#cfcfd3]">
-        © 2026 DengAI / Pird Technologies. Precision Kurdish-Arabic Synthesis.
+      <footer className="bg-[#0a0a0b] border-t border-[rgba(255,255,255,0.06)] w-full py-16 px-4 sm:px-6 lg:px-10" id="contact">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
+          <div className="col-span-1 md:col-span-2 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#38bdf8] to-[#1a237e] p-0.5 flex items-center justify-center shadow-lg">
+                <div className="w-full h-full bg-[#0a0a0b] rounded-[6px] flex items-center justify-center">
+                  <span className="text-[#38bdf8] font-bold text-sm tracking-tighter">SQ</span>
+                </div>
+              </div>
+              <span className="text-xl font-bold text-[#fafafa]">SoranIQ</span>
+            </div>
+            <p className="text-sm sm:text-base text-[#cfcfd3] max-w-sm leading-relaxed">
+              Synthesizing communication across dialects. Precision AI dubbing for Kurdish and Arabic media.
+            </p>
+            <p className="text-xs text-[#cfcfd3] pt-4">© 2026 FIXDAI LLC d/b/a Doblaj. Precision Kurdish-Arabic Synthesis.</p>
+          </div>
+          <div className="col-span-1 space-y-4">
+            <h4 className="text-xs font-bold text-[#fafafa] uppercase tracking-wider">Product</h4>
+            <ul className="space-y-3 text-sm">
+              <li>
+                <a href="#pricing" className="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors">Pricing</a>
+              </li>
+              <li>
+                <a href="#" className="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors">API Documentation</a>
+              </li>
+              <li>
+                <a href="#" className="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors">Help Center</a>
+              </li>
+            </ul>
+          </div>
+          <div className="col-span-1 space-y-4">
+            <h4 className="text-xs font-bold text-[#fafafa] uppercase tracking-wider">Legal & Social</h4>
+            <ul className="space-y-3 text-sm">
+              <li>
+                <Link to="/privacy" className="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors">Privacy Policy</Link>
+              </li>
+              <li>
+                <Link to="/terms" className="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors">Terms of Service</Link>
+              </li>
+              <li>
+                <Link to="/refund-policy" className="text-[#cfcfd3] hover:text-[#38bdf8] transition-colors">Refund Policy</Link>
+              </li>
+            </ul>
+          </div>
+        </div>
       </footer>
     </div>
   );

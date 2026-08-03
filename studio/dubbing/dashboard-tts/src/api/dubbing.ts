@@ -20,7 +20,7 @@ export type DubJob = {
 export async function submitDubJob(
   fetchClient: typeof fetch,
   file: File,
-  meta?: { category?: string; entity?: string },
+  meta?: { category?: string; entity?: string; consent_text_version?: string },
   signal?: AbortSignal
 ): Promise<{ id: string; status: DubJobStatus }> {
   const form = new FormData();
@@ -30,6 +30,7 @@ export async function submitDubJob(
   // are optional — backend falls back to "general" when missing.
   if (meta?.category) form.append("category", meta.category);
   if (meta?.entity) form.append("entity", meta.entity);
+  if (meta?.consent_text_version) form.append("consent_text_version", meta.consent_text_version);
   
   const r = await fetchClient(`${API_BASE}/video/jobs`, { 
     method: "POST", 

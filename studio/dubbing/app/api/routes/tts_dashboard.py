@@ -96,6 +96,7 @@ class VoiceOut(BaseModel):
 class TtsBody(BaseModel):
     text: str = Field(..., min_length=1, max_length=2000)
     voice_id: str
+    consent_text_version: str = Field(..., min_length=1)
     language: str = "ar-IQ"
     speed: float = Field(1.0, ge=0.5, le=2.0)
     pitch: int = 0
@@ -130,6 +131,26 @@ async def tts(
     voice = await voices_svc.get_voice_by_id(body.voice_id)
     if voice is None or not voice.get("provider_checkpoint"):
         raise HTTPException(status_code=404, detail="voice not found or missing checkpoint")
+
+    # Consent Logging
+    user_ip_address = request.headers.get("CF-Connecting-IP") or request.headers.get("X-Forwarded-For") or (request.client.host if request.client else "unknown")
+    if "," in user_ip_address:
+        user_ip_address = user_ip_address.split(",")[0].strip()
+
+    user_id = _user.user_id if _user else "internal"
+    workspace_id = _user.workspace_id if _user else "internal"
+
+    import hashlib
+    input_text_id = hashlib.sha256(body.text.encode("utf-8")).hexdigest()
+
+    from app.core import database_convex
+    await database_convex.log_consent(
+        user_id=user_id,
+        workspace_id=workspace_id,
+        consent_version=body.consent_text_version,
+        user_ip_address=user_ip_address,
+        input_text_id=input_text_id
+    )
 
     audio = await fish_audio.render_tts(
         body.text,

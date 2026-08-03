@@ -32,6 +32,7 @@ export default function TextToSpeechPage() {
   const [textNorm, setTextNorm] = useState(false);
   const [tagCompat, setTagCompat] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ speakerId: string } | null>(null);
+  const [consent, setConsent] = useState(false);
 
   const isGenerating = useTtsStore((s) => s.isGenerating);
   const setGenerating = useTtsStore((s) => s.setGenerating);
@@ -144,6 +145,7 @@ export default function TextToSpeechPage() {
           language: sp.voice.language,
           speed,
           pitch: volume,
+          consent_text_version: "v1.0_2026",
         });
 
         // Use Object URL for fast native audio loading
@@ -248,9 +250,15 @@ export default function TextToSpeechPage() {
               </svg>
               {t("auto_tag_all", "Auto Tag All")}
             </button>
+            <div className="flex items-center gap-2 ml-4 mr-2 max-w-sm">
+              <input type="checkbox" id="consent" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="rounded bg-ink-900 border-white/[0.1] text-blue-500 focus:ring-blue-500/50 cursor-pointer flex-shrink-0" />
+              <label htmlFor="consent" className="text-[10px] leading-tight text-ink-300 select-none cursor-pointer">
+                {t("consent_warrant", "I warrant and represent that I possess all legal rights, permissions, and authorizations to process and clone the audio/voice in this media. I agree to the AI Acceptable Use Policy.")}
+              </label>
+            </div>
             <button
               onClick={onGenerate}
-              disabled={isGenerating || totalChars === 0}
+              disabled={isGenerating || totalChars === 0 || !consent}
               className="btn-primary text-sm"
             >
               {isGenerating ? (

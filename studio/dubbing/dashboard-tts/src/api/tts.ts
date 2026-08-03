@@ -15,6 +15,7 @@ export type TtsRequest = {
   language: string;
   speed?: number;
   pitch?: number;
+  consent_text_version?: string;
 };
 
 export type TtsHistoryItem = {

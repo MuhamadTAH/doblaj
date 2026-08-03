@@ -30,7 +30,20 @@ export default function TermsOfServicePage() {
           <strong>Strict No-Refund Policy:</strong> Due to the immediate digital delivery of cloud compute resources, third-party AI model costs, and processing power, all subscription payments, credit purchases, and usage fees are strictly non-refundable. We do not provide refunds or credits for partial subscription cycles, unused credits, or unconsumed plan allocations.
         </p>
         <p className="mb-4">
-          <strong>Statutory Rights & Exceptions:</strong> Nothing in this section limits any mandatory statutory rights available under applicable law where non-excludable consumer protections apply. Refund requests resulting from technical billing errors verified by FIXDAI LLC will be evaluated on a case-by-case basis at our sole discretion.
+          <strong>Statutory Rights & Exceptions:</strong> Nothing in this section limits any mandatory statutory rights available under applicable law where non-excludable consumer protections apply. Refund requests resulting from technical billing errors verified by FIXDAI LLC will be evaluated on a case-by-case basis at our sole discretion. Please review our full <a href="/refund-policy" className="text-brand-400 underline">Refund Policy</a> for further details.
+        </p>
+
+        <h3 className="text-xl font-semibold mt-6 mb-3">1.2 KYC, Limits & Anti-Fraud</h3>
+        <p className="mb-4">
+          <strong>Account Verification:</strong> To ensure platform security and comply with applicable anti-money laundering (AML) and "Know Your Customer" (KYC) requirements, we may enforce transaction limits or require identity verification (such as government-issued ID or business registration) for high-volume accounts or suspicious payment patterns. Failure to comply with KYC requests may result in account suspension without refund.
+        </p>
+
+        <h3 className="text-xl font-semibold mt-6 mb-3">1.3 Chargeback & Payment Disputes</h3>
+        <p className="mb-4">
+          <strong>Dispute Mechanisms:</strong> If you believe there is a billing error, you must contact our support team at <a href="mailto:billing@doblaj.com" className="text-brand-400 underline">billing@doblaj.com</a> within 30 days of the charge. We will investigate and resolve legitimate errors.
+        </p>
+        <p className="mb-4">
+          <strong>Fraudulent Chargebacks:</strong> Initiating a chargeback or payment dispute with your bank or credit card issuer for a valid charge without first attempting to resolve the issue with our support team constitutes a breach of these Terms. We reserve the right to immediately suspend or permanently terminate your account and dispute the chargeback with your financial institution by providing transaction logs, IP addresses, and records of service delivery.
         </p>
 
         <h2 className="text-2xl font-semibold mt-8 mb-4">2. Account Security & User Responsibility</h2>
