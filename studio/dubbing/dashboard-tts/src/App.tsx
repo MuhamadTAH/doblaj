@@ -9,6 +9,7 @@ import HistoryPage from "@/pages/HistoryPage";
 import PricingPage from "@/pages/PricingPage";
 import BillingPage from "@/pages/BillingPage";
 import SoraniqLandingPage from "@/pages/SoraniqLandingPage";
+import CustomSignUpPage from "@/pages/CustomSignUpPage";
 
 import PrivacyPolicyPage from "@/pages/PrivacyPolicyPage";
 import TermsOfServicePage from "@/pages/TermsOfServicePage";
@@ -26,25 +27,40 @@ export default function App() {
     <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
       <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
         <Routes>
+          {/* Public routes available to everyone */}
+          <Route path="/" element={<SoraniqLandingPage />} />
+          <Route path="/soraniq" element={<SoraniqLandingPage />} />
+          <Route path="/:countryCode/soraniq" element={<SoraniqLandingPage />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+          <Route path="/privacy" element={<PrivacyPolicyPage />} />
+          <Route path="/terms-of-service" element={<TermsOfServicePage />} />
+          <Route path="/terms" element={<TermsOfServicePage />} />
+          <Route path="/refund-policy" element={<RefundPolicyPage />} />
+
           <Route
             path="*"
             element={
               <>
                 <SignedOut>
                   <Routes>
-                    <Route path="/" element={<SoraniqLandingPage />} />
-                    <Route path="/soraniq" element={<SoraniqLandingPage />} />
-                    <Route path="/:countryCode/soraniq" element={<SoraniqLandingPage />} />
-                    <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
-                    <Route path="/privacy" element={<PrivacyPolicyPage />} />
-                    <Route path="/terms-of-service" element={<TermsOfServicePage />} />
-                    <Route path="/terms" element={<TermsOfServicePage />} />
-                    <Route path="/refund-policy" element={<RefundPolicyPage />} />
+                    <Route 
+                      path="/sign-in/*" 
+                      element={
+                        <div className="flex h-screen w-screen items-center justify-center bg-[#0b1220]">
+                          <SignIn routing="hash" signUpUrl="/sign-up" fallbackRedirectUrl="/tts" />
+                        </div>
+                      } 
+                    />
+                    <Route path="/sign-up/*" element={<CustomSignUpPage />} />
                     <Route
                       path="*"
                       element={
                         <div className="flex h-screen w-screen items-center justify-center bg-[#0b1220]">
-                          <SignIn routing="hash" />
+                          <SignIn 
+                            routing="hash" 
+                            signUpUrl="/sign-up" 
+                            fallbackRedirectUrl={window.location.pathname + window.location.search} 
+                          />
                         </div>
                       }
                     />
@@ -57,17 +73,12 @@ export default function App() {
                       <TopNav />
                       <main className="flex-1">
                         <Routes>
-                          <Route path="/" element={<TextToSpeechPage />} />
+                          <Route path="/tts" element={<TextToSpeechPage />} />
                           <Route path="/dubbing" element={<VideoDubbingPage />} />
                           <Route path="/voices" element={<VoiceLibraryPage />} />
                           <Route path="/history" element={<HistoryPage />} />
                           <Route path="/pricing" element={<PricingPage />} />
                           <Route path="/billing" element={<BillingPage />} />
-                          <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
-                          <Route path="/privacy" element={<PrivacyPolicyPage />} />
-                          <Route path="/terms-of-service" element={<TermsOfServicePage />} />
-                          <Route path="/terms" element={<TermsOfServicePage />} />
-                          <Route path="/refund-policy" element={<RefundPolicyPage />} />
                           <Route path="/settings" element={<SettingsPage />} />
                           <Route path="*" element={<TextToSpeechPage />} />
                         </Routes>

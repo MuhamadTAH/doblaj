@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "@clerk/clerk-react";
 
 export default function SoraniqLandingPage() {
+  const { isSignedIn } = useAuth();
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(65);
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -32,7 +34,8 @@ export default function SoraniqLandingPage() {
         "Built for professional creators who demand high-fidelity audio and cultural accuracy.",
       pricingTitle: "Transparent Pricing",
       pricingSubtitle: "Choose the plan that fits your production volume.",
-      startTrial: "Start Free Trial",
+      startTrial: "Start",
+      dashboard: "Dashboard",
     },
     ckb: {
       badge: "نوێ: مۆدێلی عەرەبی عێراقی ڤێرژنی ٢.٠",
@@ -45,7 +48,8 @@ export default function SoraniqLandingPage() {
       featuresSubtitle: "دروستکراوە بۆ دروستکەرانی ناوەڕۆک کە داوای بەرزیی کواڵێتی دەنگ دەکەن.",
       pricingTitle: "نرخی ئاشکرا و گونجاو",
       pricingSubtitle: "ئەو پلانە هەڵبژێره کە گونجاوە لەگەڵ بڕی بەرهەمهێنانت.",
-      startTrial: "دەستپێکردنی تاقیکردنەوەی خۆڕایی",
+      startTrial: "دەستپێکردن",
+      dashboard: "داشبۆرد",
     },
     ar: {
       badge: "جديد: نموذج اللهجة العراقية V2.0",
@@ -58,7 +62,8 @@ export default function SoraniqLandingPage() {
       featuresSubtitle: "صُمم خصيصاً للمحترفين الذين يبحثون عن أعلى جودة صوتية ودقة ثقافة محلية.",
       pricingTitle: "أسعار واضحة ومناسبة",
       pricingSubtitle: "اختر الخطة المناسبة لحجم إنتاجك الصوتي والفيديو.",
-      startTrial: "ابدأ التجربة المجانية",
+      startTrial: "ابدأ",
+      dashboard: "لوحة التحكم",
     },
   }[lang];
 
@@ -116,10 +121,10 @@ export default function SoraniqLandingPage() {
             </div>
 
             <Link
-              to="/dubbing"
+              to={isSignedIn ? "/tts" : "/sign-up"}
               className="inline-flex items-center justify-center px-6 py-2.5 rounded-lg bg-[#38bdf8] text-[#0a0a0b] text-sm font-semibold hover:opacity-90 transition-all shadow-sm"
             >
-              {t.startTrial}
+              {isSignedIn ? t.dashboard : t.startTrial}
             </Link>
           </div>
 
@@ -146,10 +151,10 @@ export default function SoraniqLandingPage() {
               Pricing
             </a>
             <Link
-              to="/dubbing"
+              to={isSignedIn ? "/tts" : "/sign-up"}
               className="block w-full text-center px-6 py-3 rounded-lg bg-[#38bdf8] text-[#0a0a0b] font-semibold text-sm"
             >
-              {t.startTrial}
+              {isSignedIn ? t.dashboard : t.startTrial}
             </Link>
           </div>
         )}
@@ -175,7 +180,7 @@ export default function SoraniqLandingPage() {
 
               <div className="flex flex-col sm:flex-row gap-4 pt-2">
                 <Link
-                  to="/dubbing"
+                  to={isSignedIn ? "/tts" : "/sign-up"}
                   className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-[#38bdf8] text-[#0a0a0b] font-semibold text-base hover:opacity-90 transition-all shadow-lg"
                 >
                   {t.ctaPrimary}
@@ -293,20 +298,33 @@ export default function SoraniqLandingPage() {
                 <div>
                   <h3 className="text-xl font-bold text-[#fafafa] mb-2">Starter</h3>
                   <div className="text-4xl font-extrabold text-[#fafafa] mb-4">$10 <span className="text-sm text-[#cfcfd3]">/mo</span></div>
-                  <p className="text-xs text-[#cfcfd3] mb-6">5 Minutes ($2.00/min)</p>
+                  <p className="text-xs text-[#cfcfd3] mb-4">5 Minutes ($2.00/min)</p>
+                  <ul className="text-sm text-[#cfcfd3] space-y-3 mb-6">
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Standard processing speed</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> 1080p export resolution</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Basic voices included</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Up to 2 speakers</li>
+                  </ul>
                 </div>
-                <Link to="/dubbing" className="w-full py-3 rounded-xl border border-[rgba(255,255,255,0.08)] text-center text-sm font-semibold text-[#fafafa] block">
+                <Link to="/pricing?plan=starter" className="w-full py-3 rounded-xl border border-[rgba(255,255,255,0.08)] text-center text-sm font-semibold text-[#fafafa] hover:bg-[rgba(255,255,255,0.02)] transition-colors block">
                   Get 5 Minutes
                 </Link>
               </div>
-              <div className="bg-[#111114] rounded-2xl p-8 border border-[#38bdf8]/40 text-left flex flex-col justify-between relative bg-gradient-to-b from-[#111114] to-[#1a237e]/20">
+              <div className="bg-[#111114] rounded-2xl p-8 border border-[#38bdf8]/40 text-left flex flex-col justify-between relative bg-gradient-to-b from-[#111114] to-[#1a237e]/20 shadow-[0_0_30px_rgba(56,189,248,0.1)]">
                 <div className="absolute top-0 right-8 -translate-y-1/2 px-3 py-1 bg-[#38bdf8] text-[#0a0a0b] text-xs font-bold uppercase rounded-full">Most Popular</div>
                 <div>
                   <h3 className="text-xl font-bold text-[#fafafa] mb-2">Pro</h3>
                   <div className="text-4xl font-extrabold text-[#fafafa] mb-4">$20 <span className="text-sm text-[#cfcfd3]">/mo</span></div>
-                  <p className="text-xs text-[#cfcfd3] mb-6">15 Minutes ($1.33/min)</p>
+                  <p className="text-xs text-[#cfcfd3] mb-4">15 Minutes ($1.33/min)</p>
+                  <ul className="text-sm text-[#cfcfd3] space-y-3 mb-6">
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Priority processing speed</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> 4K export resolution</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Premium emotional voices</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Up to 5 speakers</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Advanced timeline editor</li>
+                  </ul>
                 </div>
-                <Link to="/dubbing" className="w-full py-3 rounded-xl bg-[#38bdf8] text-[#0a0a0b] text-center text-sm font-bold block">
+                <Link to="/pricing?plan=pro" className="w-full py-3 rounded-xl bg-[#38bdf8] text-[#0a0a0b] text-center text-sm font-bold hover:bg-[#38bdf8]/90 transition-colors block shadow-lg">
                   Get 15 Minutes
                 </Link>
               </div>
@@ -314,9 +332,17 @@ export default function SoraniqLandingPage() {
                 <div>
                   <h3 className="text-xl font-bold text-[#fafafa] mb-2">Creator</h3>
                   <div className="text-4xl font-extrabold text-[#fafafa] mb-4">$99 <span className="text-sm text-[#cfcfd3]">/mo</span></div>
-                  <p className="text-xs text-[#cfcfd3] mb-6">120 Minutes ($0.82/min)</p>
+                  <p className="text-xs text-[#cfcfd3] mb-4">120 Minutes ($0.82/min)</p>
+                  <ul className="text-sm text-[#cfcfd3] space-y-3 mb-6">
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Highest priority queue</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> 4K lossless export</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> All premium voices included</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Unlimited speakers</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> Custom voice cloning</li>
+                    <li className="flex items-center gap-2"><span className="text-[#38bdf8]">✓</span> API Access</li>
+                  </ul>
                 </div>
-                <Link to="/dubbing" className="w-full py-3 rounded-xl border border-[rgba(255,255,255,0.08)] text-center text-sm font-semibold text-[#fafafa] block">
+                <Link to="/pricing?plan=creator" className="w-full py-3 rounded-xl border border-[rgba(255,255,255,0.08)] text-center text-sm font-semibold text-[#fafafa] hover:bg-[rgba(255,255,255,0.02)] transition-colors block">
                   Get 120 Minutes
                 </Link>
               </div>
@@ -324,6 +350,73 @@ export default function SoraniqLandingPage() {
           </div>
         </section>
       </main>
+
+      {/* Use Cases Section */}
+      <section className="py-24 px-4 sm:px-6 lg:px-10 bg-[#111114] border-y border-[rgba(255,255,255,0.06)]" id="use-cases">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center max-w-2xl mx-auto mb-16 space-y-4">
+            <h2 className="text-3xl sm:text-4xl font-bold text-[#fafafa]">Who is SoranIQ For?</h2>
+            <p className="text-base sm:text-lg text-[#cfcfd3]">
+              Empowering creators and businesses to break language barriers.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-8">
+            <div className="bg-[#0a0a0b] rounded-2xl p-8 border border-[rgba(255,255,255,0.04)] shadow-sm hover:border-[#38bdf8]/30 transition-all">
+              <h3 className="text-xl font-bold text-[#fafafa] mb-3 flex items-center gap-3">
+                <span className="text-2xl">🎥</span> Content Creators
+              </h3>
+              <p className="text-sm text-[#cfcfd3] leading-relaxed">
+                Grow your audience exponentially by dubbing your YouTube, TikTok, and Instagram videos into flawless Iraqi Arabic without losing your unique voice.
+              </p>
+            </div>
+            <div className="bg-[#0a0a0b] rounded-2xl p-8 border border-[rgba(255,255,255,0.04)] shadow-sm hover:border-[#38bdf8]/30 transition-all">
+              <h3 className="text-xl font-bold text-[#fafafa] mb-3 flex items-center gap-3">
+                <span className="text-2xl">📰</span> News & Media
+              </h3>
+              <p className="text-sm text-[#cfcfd3] leading-relaxed">
+                Broadcast breaking news across Kurdistan and Iraq simultaneously. Maintain journalistic integrity with culturally accurate dialect translation.
+              </p>
+            </div>
+            <div className="bg-[#0a0a0b] rounded-2xl p-8 border border-[rgba(255,255,255,0.04)] shadow-sm hover:border-[#38bdf8]/30 transition-all">
+              <h3 className="text-xl font-bold text-[#fafafa] mb-3 flex items-center gap-3">
+                <span className="text-2xl">🏢</span> Marketing Agencies
+              </h3>
+              <p className="text-sm text-[#cfcfd3] leading-relaxed">
+                Run unified campaigns across different regions. Save thousands on voice actors while keeping your brand messaging consistent in every dialect.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ Section */}
+      <section className="py-24 px-4 sm:px-6 lg:px-10 bg-[#0a0a0b]" id="faq">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-16 space-y-4">
+            <h2 className="text-3xl sm:text-4xl font-bold text-[#fafafa]">Frequently Asked Questions</h2>
+          </div>
+          <div className="space-y-6">
+            <div className="bg-[#111114] rounded-xl p-6 border border-[rgba(255,255,255,0.06)]">
+              <h4 className="text-lg font-bold text-[#fafafa] mb-2">How long does the dubbing process take?</h4>
+              <p className="text-sm text-[#cfcfd3]">
+                Our AI processes video at roughly 1/3 of the real-time length. A 3-minute video typically takes about 1 minute to translate, synthesize, and sync.
+              </p>
+            </div>
+            <div className="bg-[#111114] rounded-xl p-6 border border-[rgba(255,255,255,0.06)]">
+              <h4 className="text-lg font-bold text-[#fafafa] mb-2">Does it support multiple speakers?</h4>
+              <p className="text-sm text-[#cfcfd3]">
+                Yes, our advanced pipeline automatically detects multiple speakers in your video and assigns distinct AI voices to each person to maintain conversational flow.
+              </p>
+            </div>
+            <div className="bg-[#111114] rounded-xl p-6 border border-[rgba(255,255,255,0.06)]">
+              <h4 className="text-lg font-bold text-[#fafafa] mb-2">Can I keep the original background music and sound effects?</h4>
+              <p className="text-sm text-[#cfcfd3]">
+                Absolutely. Our AI isolates the vocal track, translates and replaces it, then seamlessly mixes it back with your original background audio.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <footer className="bg-[#0a0a0b] border-t border-[rgba(255,255,255,0.06)] w-full py-16 px-4 sm:px-6 lg:px-10" id="contact">
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
