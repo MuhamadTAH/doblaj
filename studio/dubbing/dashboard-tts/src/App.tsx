@@ -10,6 +10,7 @@ import PricingPage from "@/pages/PricingPage";
 import BillingPage from "@/pages/BillingPage";
 import SoraniqLandingPage from "@/pages/SoraniqLandingPage";
 import CustomSignUpPage from "@/pages/CustomSignUpPage";
+import AuthLayout from "@/components/AuthLayout";
 
 import PrivacyPolicyPage from "@/pages/PrivacyPolicyPage";
 import TermsOfServicePage from "@/pages/TermsOfServicePage";
@@ -22,13 +23,34 @@ import { ConvexReactClient } from "convex/react";
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_test_ZGVjaWRpbmctcXVhZ2dhLTcwLmNsZXJrLmFjY291bnRzLmRldiQ";
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
+const clerkAppearance = {
+  elements: {
+    card: 'bg-transparent shadow-none px-0',
+    headerTitle: 'hidden',
+    headerSubtitle: 'hidden',
+    socialButtonsBlockButton: 'border border-white/[0.08] hover:bg-white/[0.04] text-white',
+    formButtonPrimary: 'bg-brand-400 hover:bg-brand-500 text-ink-950 font-bold',
+    formFieldInput: 'bg-ink-900 border-white/[0.1] text-white focus:border-brand-400 focus:ring-brand-400',
+    formFieldLabel: 'text-ink-200',
+    footerActionLink: 'text-brand-400 hover:text-brand-300',
+    dividerLine: 'bg-white/[0.08]',
+    dividerText: 'text-ink-400 bg-transparent',
+    identityPreviewText: 'text-white',
+    identityPreviewEditButton: 'text-brand-400 hover:text-brand-300',
+    formFieldInputShowPasswordButton: 'text-ink-400 hover:text-white',
+  },
+  layout: {
+    socialButtonsPlacement: 'bottom' as const,
+  }
+};
+
 const SignInWithRedirect = () => {
   const params = new URLSearchParams(window.location.search);
   const redirectUrl = params.get('redirect_url') || '/tts';
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-[#0b1220]">
-      <SignIn routing="hash" signUpUrl={`/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`} fallbackRedirectUrl={redirectUrl} forceRedirectUrl={redirectUrl} />
-    </div>
+    <AuthLayout title="Welcome back" subtitle="Please enter your account details to continue.">
+      <SignIn appearance={clerkAppearance} routing="hash" signUpUrl={`/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`} fallbackRedirectUrl={redirectUrl} forceRedirectUrl={redirectUrl} />
+    </AuthLayout>
   );
 };
 
@@ -63,13 +85,14 @@ export default function App() {
                     <Route
                       path="*"
                       element={
-                        <div className="flex h-screen w-screen items-center justify-center bg-[#0b1220]">
+                        <AuthLayout title="Welcome back" subtitle="Please enter your account details to continue.">
                           <SignIn 
+                            appearance={clerkAppearance}
                             routing="hash" 
                             signUpUrl={`/sign-up?redirect_url=${encodeURIComponent(window.location.pathname + window.location.search)}`} 
                             fallbackRedirectUrl={window.location.pathname + window.location.search} 
                           />
-                        </div>
+                        </AuthLayout>
                       }
                     />
                   </Routes>
