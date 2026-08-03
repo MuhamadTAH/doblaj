@@ -40,9 +40,11 @@ useUiStore.subscribe((s) => {
   document.documentElement.classList.toggle("dark", s.theme === "dark");
 });
 
+const basename = window.location.pathname.startsWith("/tts") ? "/tts" : "/";
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <BrowserRouter basename="/tts">
+    <BrowserRouter basename={basename}>
       <App />
     </BrowserRouter>
   </React.StrictMode>
