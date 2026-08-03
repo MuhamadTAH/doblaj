@@ -9,7 +9,28 @@ services:
       - TELEGRAM_LOCAL=1
       - TELEGRAM_STAT=1
     volumes:
-      - ./telegram-data:/var/lib/telegram-bot-api
+      - telegram-data:/var/lib/telegram-bot-api
     command: --api-id=${TELEGRAM_API_ID} --api-hash=${TELEGRAM_API_HASH} --local --dir=/var/lib/telegram-bot-api
     expose:
       - "8081"
+
+  python-bot:
+    build: .
+    container_name: pird_python_bot
+    restart: unless-stopped
+    stop_grace_period: 35m
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - LOCAL_API_SERVER_URL=http://telegram-bot-api:8081
+      - DUBBING_BACKEND_URL=${DUBBING_BACKEND_URL}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+    volumes:
+      - telegram-data:/var/lib/telegram-bot-api
+      - ./bot-state:/app/state
+    expose:
+      - "8000"
+    depends_on:
+      - telegram-bot-api
+
+volumes:
+  telegram-data:
