@@ -287,7 +287,7 @@ async def _resolve_user_from_request(request: Request) -> Optional["Authenticate
         return None
 
     try:
-        return await require_user(authorization=auth)
+        return await require_user(request=request, authorization=auth)
     except HTTPException:
         return None
 

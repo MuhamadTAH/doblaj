@@ -227,8 +227,10 @@ async def require_user(
 
 
 async def require_user_optional(
+    request: Request,
     authorization: Optional[str] = Header(None)
 ) -> Optional[AuthenticatedUser]:
-    if not authorization:
+    auth_header = authorization or request.headers.get("authorization")
+    if not auth_header:
         return None
-    return await require_user(authorization)
+    return await require_user(request=request, authorization=auth_header)
