@@ -326,6 +326,11 @@ if TTS_DASHBOARD_DIR.is_dir():
         StaticFiles(directory=str(TTS_DASHBOARD_DIR / "assets")),
         name="tts_assets",
     )
+    app.mount(
+        "/assets",
+        StaticFiles(directory=str(TTS_DASHBOARD_DIR / "assets")),
+        name="assets",
+    )
 
     # Favicon: small public file the browser auto-requests. Must be
     # registered BEFORE the catch-all `/tts/{path:path}` or the shell
@@ -333,6 +338,7 @@ if TTS_DASHBOARD_DIR.is_dir():
     _favicon_path = TTS_DASHBOARD_DIR / "favicon.svg"
     if _favicon_path.is_file():
         @app.get("/tts/favicon.svg", include_in_schema=False)
+        @app.get("/favicon.svg", include_in_schema=False)
         async def tts_favicon():
             from fastapi.responses import FileResponse
             return FileResponse(str(_favicon_path), media_type="image/svg+xml")
@@ -347,6 +353,16 @@ if TTS_DASHBOARD_DIR.is_dir():
 
     @app.get("/tts/{path:path}", include_in_schema=False)
     async def tts_spa(request: Request, path: str):
+        return await _serve_tts_shell(request)
+
+    # Root-level SPA route fallbacks for deep links like /settings, /dubbing, etc.
+    @app.get("/settings", include_in_schema=False)
+    @app.get("/dubbing", include_in_schema=False)
+    @app.get("/voices", include_in_schema=False)
+    @app.get("/history", include_in_schema=False)
+    @app.get("/pricing", include_in_schema=False)
+    @app.get("/billing", include_in_schema=False)
+    async def root_spa_routes(request: Request):
         return await _serve_tts_shell(request)
 
     logger.info(
