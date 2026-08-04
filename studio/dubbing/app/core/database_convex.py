@@ -316,6 +316,8 @@ async def update_job_status(client: Any = None, *, workspace_id: str = "", job_i
             args["resultVideoR2Key"] = output_path
         if error:
             args["error"] = error
+        elif status == "completed":
+            args["error"] = ""
         def _do():
             return c.mutation("dubbingJobs:updateStatusInternal", _internal_args(args))
         return await asyncio.to_thread(_do)
