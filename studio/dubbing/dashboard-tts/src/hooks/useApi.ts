@@ -3,6 +3,7 @@ import { useAuth, useClerk } from '@clerk/clerk-react';
 import { getDubJobs, getDubStatus, submitDubJob } from '../api/dubbing';
 import { fetchVoices, generateTts, previewVoice, TtsRequest } from '../api/tts';
 import { deleteAccount } from '../api/user';
+import { getTelegramLinkNonce } from '../api/telegram';
 
 export class AuthFailedError extends Error {
   constructor(message = "Authentication failed") {
@@ -99,5 +100,6 @@ export const useApi = () => {
     generateTts: (req: TtsRequest, signal?: AbortSignal) => generateTts(authFetch, req, signal),
     previewVoice: (voiceId: string, signal?: AbortSignal) => previewVoice(authFetch, voiceId, signal),
     deleteAccount: (password: string, signal?: AbortSignal) => deleteAccount(authFetch, password, signal),
+    getTelegramLinkNonce: (signal?: AbortSignal) => getTelegramLinkNonce(authFetch, signal),
   }), [authFetch]);
 };
