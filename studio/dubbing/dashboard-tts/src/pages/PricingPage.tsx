@@ -10,6 +10,7 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_
 export default function PricingPage() {
   const [loadingTier, setLoadingTier] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<string | null>(null);
+  const [userData, setUserData] = useState<any>(null);
   const { getToken } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const hasTriggeredCheckout = useRef(false);
@@ -25,6 +26,7 @@ export default function PricingPage() {
         });
         if (res.ok) {
           const data = await res.json();
+          setUserData(data);
           setCurrentPlan(data?.plan?.toLowerCase() || null);
         }
       } catch (err) {
@@ -108,6 +110,29 @@ export default function PricingPage() {
             Pay securely with credit card. No hidden fees. Get access to premium AI dubbing minutes instantly.
           </motion.p>
         </div>
+
+        {/* Current Subscription Active Banner */}
+        {userData && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-full max-w-2xl mx-auto p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 backdrop-blur-md flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left shadow-lg"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <div>
+                <div className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Active Subscription</div>
+                <div className="text-lg font-bold text-white">
+                  You are currently on the <span className="text-emerald-400">{userData.plan || "Free"}</span> Plan
+                </div>
+              </div>
+            </div>
+            <div className="bg-ink-900/50 px-4 py-2 rounded-lg border border-white/5">
+              <span className="text-xs text-ink-300 block">Minutes Balance</span>
+              <span className="text-base font-extrabold text-white">{userData.remaining_minutes ?? 0} Min</span>
+            </div>
+          </motion.div>
+        )}
 
         {/* Pricing Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full mt-8">

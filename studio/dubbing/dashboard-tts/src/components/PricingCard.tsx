@@ -36,9 +36,11 @@ export default function PricingCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.4 }}
       className={`relative flex flex-col p-6 sm:p-8 rounded-2xl border bg-ink-900/60 backdrop-blur-xl
-        ${isPopular 
-          ? "border-brand-500 shadow-glow shadow-brand-500/20 transform md:-translate-y-2" 
-          : "border-white/[0.08]"
+        ${isCurrentPlan 
+          ? "border-emerald-500 shadow-glow shadow-emerald-500/20 transform md:-translate-y-2" 
+          : isPopular 
+            ? "border-brand-500 shadow-glow shadow-brand-500/20 transform md:-translate-y-2" 
+            : "border-white/[0.08]"
         }
       `}
     >
