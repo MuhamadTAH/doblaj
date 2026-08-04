@@ -45,20 +45,21 @@ async def assemble_final_video(
     for chunk in chunks:
         tts_file = chunk.get("tts_file", "")
         if not tts_file or not os.path.exists(tts_file):
-            assembled_atempo = work / "assembled" / f"tts_{chunk['chunk_id']}.wav"
-            mastered = work / "mastered_chunks" / f"chunk_{chunk.get('chunk_id')}_mastered.wav"
-            tts_dir = work / "tts" / f"tts_{chunk['chunk_id']}.wav"
-            raw_tts = work / "tts" / f"raw_tts_{chunk['chunk_id']}.wav"
+            chunk_id = chunk.get('chunk_id')
+            idx = chunk.get('chunk_index', 1)
+            
+            assembled_atempo = work / "assembled" / f"chunk_{chunk_id}_assembled.wav"
+            mastered = work / "mastered_chunks" / f"chunk_{idx}_mastered.wav"
+            raw_tts = work / "tts" / f"raw_tts_{chunk_id}.wav"
             
             if assembled_atempo.exists():
                 tts_file = str(assembled_atempo)
             elif mastered.exists():
                 tts_file = str(mastered)
-            elif tts_dir.exists():
-                tts_file = str(tts_dir)
             elif raw_tts.exists():
                 tts_file = str(raw_tts)
             else:
+                logger.warning(f"[ASSEMBLER] Could not find any TTS file for chunk {chunk_id}")
                 continue
 
         start_time = float(chunk.get("start_time", 0.0))

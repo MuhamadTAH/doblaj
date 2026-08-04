@@ -553,6 +553,7 @@ async def _async_process_tts_only(chunk: dict, session_id: str, session_state_di
                 
             shutil.copy(final_tts_wav, str(dir_arabic / f"chunk_{idx}_arabic.wav"))
             chunk["tts_url"] = f"/static/outputs/raw_tts_{chunk_id}.wav"
+            chunk["tts_file"] = final_tts_wav
             chunk["status"] = "tts_done"
         else:
             chunk["status"] = "failed"
