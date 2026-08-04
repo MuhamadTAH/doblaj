@@ -5,7 +5,7 @@ export async function getTelegramLinkNonce(
   signal?: AbortSignal
 ): Promise<{ nonce: string }> {
   const r = await fetchClient(`${API_BASE}/api/telegram/link-nonce`, {
-    method: "GET",
+    method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
