@@ -48,7 +48,7 @@ export default function SettingsPage() {
     try {
       const data = await api.getTelegramLinkNonce();
       if (data.nonce) {
-        window.open(`https://t.me/doblajbot?start=${data.nonce}`, "_blank");
+        window.open(`https://t.me/dolajbot?start=${data.nonce}`, "_blank");
       } else {
         setTelegramError("Invalid response from server.");
       }
@@ -150,7 +150,7 @@ export default function SettingsPage() {
               <div>
                 <h2 className="text-xl font-bold mb-2">Telegram Integration</h2>
                 <p className="text-ink-300 text-sm max-w-md mb-6">
-                  Connect your Telegram account to upload videos, receive dubbing updates, and manage your tasks directly through our official Telegram bot (@doblajbot).
+                  Connect your Telegram account to upload videos, receive dubbing updates, and manage your tasks directly through our official Telegram bot (@dolajbot).
                 </p>
                 {telegramError && (
                   <div className="mb-4 p-3 bg-red-900/50 border border-red-500/50 text-red-200 rounded text-sm max-w-md">
