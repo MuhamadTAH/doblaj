@@ -134,7 +134,20 @@ async def create_job(client: Any = None, *, workspace_id: str = "", owner_user_i
             "consentTimestamp": server_timestamp,
         }
         def _do():
-            res = c.mutation("dubbingJobs:createInternal", _internal_args(args))
+            try:
+                res = c.mutation("dubbingJobs:createInternal", _internal_args(args))
+            except Exception as e:
+                err_data = getattr(e, "data", "")
+                if "WORKSPACE_NOT_FOUND" in str(e) or err_data == "WORKSPACE_NOT_FOUND":
+                    logger.info(f"Workspace {workspace_id} not found in Convex. Auto-creating...")
+                    c.mutation("workspaces:createForOwnerInternal", _internal_args({
+                        "ownerUserId": owner_user_id,
+                        "orgId": workspace_id
+                    }))
+                    res = c.mutation("dubbingJobs:createInternal", _internal_args(args))
+                else:
+                    raise e
+            
             if isinstance(res, str):
                 job_doc["id"] = res
                 _in_memory_jobs[res] = job_doc
@@ -194,10 +207,11 @@ async def get_job(client: Any = None, *, workspace_id: str = "", job_id: str = "
                 args["expectedWorkspaceId"] = workspace_id
             raw = c.query("dubbingJobs:getInternal", _internal_args(args))
             return _normalize_job(raw)
-        result = _owned(await asyncio.to_thread(_do))
+        result = await asyncio.to_thread(_do)
         if result:
             return result
-    except Exception:
+    except Exception as e:
+        logger.warning(f"[DATABASE-CONVEX] get_job query failed: {e}")
         pass
 
     return _owned(_normalize_job(_in_memory_jobs.get(job_id)))
