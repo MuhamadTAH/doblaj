@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { useAuth } from "@clerk/clerk-react";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
@@ -22,17 +23,34 @@ interface UserData {
 
 export default function BillingPage() {
   const [userData, setUserData] = useState<UserData | null>(null);
+  const { getToken } = useAuth();
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
-      .then(res => res.json())
-      .then(data => {
-        if (data.id) {
+    let isMounted = true;
+    
+    async function fetchData() {
+      try {
+        const token = await getToken({ template: 'convex' });
+        const res = await fetch(`${API_BASE}/api/auth/me`, { 
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        const data = await res.json();
+        if (isMounted && data.id) {
           setUserData(data);
         }
-      })
-      .catch(console.error);
-  }, []);
+      } catch (err) {
+        console.error("Failed to fetch billing data:", err);
+      }
+    }
+    
+    fetchData();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [getToken]);
 
   const isInfinite = userData?.remaining_minutes !== undefined && userData.remaining_minutes >= 100000;
   

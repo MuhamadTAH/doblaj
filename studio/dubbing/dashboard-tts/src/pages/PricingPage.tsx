@@ -18,7 +18,7 @@ export default function PricingPage() {
   useEffect(() => {
     async function fetchUserPlan() {
       try {
-        const token = await getToken();
+        const token = await getToken({ template: 'convex' });
         if (!token) return;
         const res = await fetch(`${API_BASE}/api/auth/me`, {
           headers: { Authorization: `Bearer ${token}` }
@@ -37,7 +37,7 @@ export default function PricingPage() {
   const handleCheckout = async (tierId: string) => {
     setLoadingTier(tierId);
     try {
-      const token = await getToken();
+      const token = await getToken({ template: 'convex' });
       const res = await fetch(`${API_BASE}/api/payments/checkout`, {
         method: 'POST',
         credentials: 'include',
