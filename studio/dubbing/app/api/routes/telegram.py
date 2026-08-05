@@ -35,6 +35,7 @@ class JobRefundRequest(BaseModel):
 
 
 @router.post("/link-nonce", response_model=LinkNonceResponse)
+@router.post("/link-nonce/", response_model=LinkNonceResponse, include_in_schema=False)
 async def generate_link_nonce(user: AuthenticatedUser = Depends(require_user)):
     """Generate a short-lived nonce for linking a Telegram account to the user's workspace."""
     expires_in = 10
