@@ -43,8 +43,8 @@ logger.addHandler(logHandler)
 # 2. CONFIGURATION & SECRETS
 # =====================================================================
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-LOCAL_API_SERVER_URL = os.getenv("LOCAL_API_SERVER_URL", "http://telegram-bot-api:8081")
-DUBBING_BACKEND_URL = os.getenv("DUBBING_BACKEND_URL", "http://backend:8000")
+LOCAL_API_SERVER_URL = os.getenv("LOCAL_API_SERVER_URL")  # Optional: only if using custom local telegram-bot-api server
+DUBBING_BACKEND_URL = os.getenv("DUBBING_BACKEND_URL", "http://localhost:8002")
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "pird_internal_dubbing_key_2026")
 
 DB_PATH = "/app/state/jobs.db"
@@ -283,6 +283,22 @@ async def handle_start(message: Message, state: FSMContext):
     )
     await message.answer(welcome_text)
 
+@router.message(F.text)
+async def handle_text_messages(message: Message):
+    help_text = (
+        "👋 **Welcome to Doblaj Video Dubbing!**\n\n"
+        "To start dubbing:\n"
+        "1️⃣ Link your account from the dashboard (Settings -> Connections -> Connect Telegram).\n"
+        "2️⃣ Send or upload any video file (MP4, MOV, MKV) directly to this chat!\n\n"
+        "🇮🇶 **مرحباً بك في دبلجة الفيديو!**\n"
+        "1️⃣ يرجى ربط حسابك من الإعدادات في المنصة.\n"
+        "2️⃣ قم بإرسال أي ملف فيديو إلى هذا المحادثة لبدء الدبلجة.\n\n"
+        "☀️ **بەخێربێن بۆ دۆبلاژکردنی ڤیدیۆ!**\n"
+        "1️⃣ تکایە هەژمارەکەت ببەستەرەوە لە ڕێگەی بەشی ڕێکخستنەکان لە ماڵپەڕ.\n"
+        "2️⃣ ڤیدیۆیەک بنێرە بۆ ئەم چاتە بۆ دەستپێکردنی دۆبلاژکردن."
+    )
+    await message.answer(help_text)
+
 @router.message(DubbingConfig.waiting_for_video, F.video | F.document)
 async def handle_video_upload(message: Message, state: FSMContext):
     if is_shutting_down:
@@ -465,13 +481,17 @@ async def main():
     logger.info({"service": "devops", "message": "Internal Webhook Receiver started on 0.0.0.0:8000/callback"})
 
     # Start Aiogram Polling
-    api_server = TelegramAPIServer.from_base(LOCAL_API_SERVER_URL, is_local=True)
-    session = AiohttpSession(api=api_server, timeout=1800.0) # 30 mins
-    bot_instance = Bot(token=BOT_TOKEN, session=session)
+    if LOCAL_API_SERVER_URL:
+        api_server = TelegramAPIServer.from_base(LOCAL_API_SERVER_URL, is_local=True)
+        session = AiohttpSession(api=api_server, timeout=1800.0) # 30 mins
+        bot_instance = Bot(token=BOT_TOKEN, session=session)
+        logger.info({"service": "devops", "message": f"Starting Telegram Polling via local server {LOCAL_API_SERVER_URL}..."})
+    else:
+        bot_instance = Bot(token=BOT_TOKEN)
+        logger.info({"service": "devops", "message": "Starting Telegram Polling via official Telegram API..."})
+
     dispatcher_instance = Dispatcher(storage=MemoryStorage())
     dispatcher_instance.include_router(router)
-    
-    logger.info({"service": "devops", "message": f"Starting Telegram Polling via {LOCAL_API_SERVER_URL}..."})
     
     try:
         await bot_instance.delete_webhook(drop_pending_updates=True) # Ensure we aren't using webhooks for Telegram
