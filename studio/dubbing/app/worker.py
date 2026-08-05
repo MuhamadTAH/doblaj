@@ -628,4 +628,4 @@ async def _async_assemble_video(results, session_id: str, video_path: str, bg_wa
     except Exception as e:
         logger.error(f"Final assembly failed: {e}")
         await update_job_status(session_id, "failed", error=str(e))
-        return False
+        raise e

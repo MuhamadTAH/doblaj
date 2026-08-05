@@ -625,7 +625,7 @@ async def process_video_cpu_phase(zip_path: str):
         logger.info(f"[JOB {job_id}] Stage 8: Final Video Assembly")
         stage8_start = time.time()
         
-        success = await _async_assemble_video(
+        await _async_assemble_video(
             results=final_processed_chunks,
             session_id=str(next_id),
             video_path=str(video_path),
@@ -647,38 +647,35 @@ async def process_video_cpu_phase(zip_path: str):
             cost_usd=stage8_cost
         )
         
-        if success:
-            output_filename = f"dubbed_{str(next_id)}.mp4"
-            final_mp4 = work_dir / "assembled" / "final_dubbed.mp4"
-            public_path = Path(f"static/outputs/{output_filename}")
-            public_path.parent.mkdir(parents=True, exist_ok=True)
-            import shutil
-            if os.path.exists(final_mp4):
-                shutil.copy(final_mp4, str(public_path))
+        output_filename = f"dubbed_{str(next_id)}.mp4"
+        final_mp4 = work_dir / "assembled" / "final_dubbed.mp4"
+        public_path = Path(f"static/outputs/{output_filename}")
+        public_path.parent.mkdir(parents=True, exist_ok=True)
+        import shutil
+        if os.path.exists(final_mp4):
+            shutil.copy(final_mp4, str(public_path))
+            
+            # Upload to Cloudflare R2
+            from app.services import r2
+            if r2.R2_ENDPOINT and r2.R2_BUCKET:
+                r2_key = r2.dubbing_key(workspace_id, job_id, output_filename)
+                await asyncio.to_thread(r2.upload_file, r2_key, str(public_path), "video/mp4")
+                output_path_for_db = r2_key
                 
-                # Upload to Cloudflare R2
-                from app.services import r2
-                if r2.R2_ENDPOINT and r2.R2_BUCKET:
-                    r2_key = r2.dubbing_key(workspace_id, job_id, output_filename)
-                    await asyncio.to_thread(r2.upload_file, r2_key, str(public_path), "video/mp4")
-                    output_path_for_db = r2_key
-                    
-                    # Clean up local storage after successful upload to R2
-                    try:
-                        shutil.rmtree(work_dir, ignore_errors=True)
-                        if os.path.exists(public_path):
-                            os.remove(public_path)
-                        logger.info(f"[JOB {job_id}] Cleaned up local files to save space.")
-                    except Exception as e:
-                        logger.warning(f"[JOB {job_id}] Failed to clean up local files: {e}")
-                else:
-                    output_path_for_db = f"/static/outputs/{output_filename}"
+                # Clean up local storage after successful upload to R2
+                try:
+                    shutil.rmtree(work_dir, ignore_errors=True)
+                    if os.path.exists(public_path):
+                        os.remove(public_path)
+                    logger.info(f"[JOB {job_id}] Cleaned up local files to save space.")
+                except Exception as e:
+                    logger.warning(f"[JOB {job_id}] Failed to clean up local files: {e}")
             else:
                 output_path_for_db = f"/static/outputs/{output_filename}"
-            
-            await database.update_job_status(_get_service_role_client(), workspace_id=workspace_id, job_id=job_id, status="completed", progress=100, output_path=output_path_for_db)
         else:
-            raise Exception("We encountered an issue finalizing your dubbed video. Please try submitting it again.")
+            output_path_for_db = f"/static/outputs/{output_filename}"
+        
+        await database.update_job_status(_get_service_role_client(), workspace_id=workspace_id, job_id=job_id, status="completed", progress=100, output_path=output_path_for_db)
         
         job_total_latency_ms = (time.time() - job_start_time) * 1000
         await database.update_job_cost(

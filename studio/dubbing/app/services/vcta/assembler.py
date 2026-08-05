@@ -42,11 +42,11 @@ async def assemble_final_video(
     work = Path(work_dir)
     tts_entries = []
     
-    for chunk in chunks:
+    for enumerate_idx, chunk in enumerate(chunks, start=1):
         tts_file = chunk.get("tts_file", "")
         if not tts_file or not os.path.exists(tts_file):
             chunk_id = chunk.get('chunk_id')
-            idx = chunk.get('chunk_index', 1)
+            idx = chunk.get('chunk_index', enumerate_idx)
             
             assembled_atempo = work / "assembled" / f"chunk_{chunk_id}_assembled.wav"
             mastered = work / "mastered_chunks" / f"chunk_{idx}_mastered.wav"
