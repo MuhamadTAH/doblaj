@@ -4,7 +4,7 @@ import { t } from "@/lib/i18n";
 import { useUiStore } from "@/store/ui";
 
 const items = [
-  { to: "/", labelKey: "nav_text_to_speech", defaultLabel: "Text to Speech", icon: "wand" },
+  { to: "/tts", labelKey: "nav_text_to_speech", defaultLabel: "Text to Speech", icon: "wand" },
   { to: "/dubbing", labelKey: "nav_video_dubbing", defaultLabel: "Video Dubbing", icon: "video" },
   { to: "/voices", labelKey: "nav_voice_library", defaultLabel: "Voice Library", icon: "voices" },
   { to: "/history", labelKey: "nav_history", defaultLabel: "History", icon: "history" },

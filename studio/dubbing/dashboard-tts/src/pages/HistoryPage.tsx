@@ -499,7 +499,7 @@ export default function HistoryPage() {
                 Head over to the Generate tab to produce realistic Kurdish & Arabic speech audio.
               </p>
               <div className="pt-2">
-                <Link to="/" className="btn-primary text-xs py-2 px-4 rounded-xl">
+                <Link to="/tts" className="btn-primary text-xs py-2 px-4 rounded-xl">
                   Go to Speech Generator
                 </Link>
               </div>
