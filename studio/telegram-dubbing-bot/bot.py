@@ -47,14 +47,23 @@ LOCAL_API_SERVER_URL = os.getenv("LOCAL_API_SERVER_URL", "http://telegram-bot-ap
 DUBBING_BACKEND_URL = os.getenv("DUBBING_BACKEND_URL", "http://backend:8000")
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "pird_internal_dubbing_key_2026")
 
-DB_PATH = "/app/state/jobs.db"
-OUTPUTS_DIR = "/var/lib/telegram-bot-api/pird_outputs"
+DB_PATH = os.getenv("BOT_DB_PATH", "/app/state/jobs.db")
+OUTPUTS_DIR = os.getenv("BOT_OUTPUTS_DIR", "/var/lib/telegram-bot-api/pird_outputs")
 
-if not BOT_TOKEN:
-    raise ValueError("CRITICAL: TELEGRAM_BOT_TOKEN is missing.")
+# Fallback to local script directory if root /app or /var/lib paths are not writable
+_base_dir = os.path.dirname(os.path.abspath(__file__))
 
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-os.makedirs(OUTPUTS_DIR, exist_ok=True)
+try:
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+except (PermissionError, OSError):
+    DB_PATH = os.path.join(_base_dir, "bot-state", "jobs.db")
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+
+try:
+    os.makedirs(OUTPUTS_DIR, exist_ok=True)
+except (PermissionError, OSError):
+    OUTPUTS_DIR = os.path.join(_base_dir, "outputs")
+    os.makedirs(OUTPUTS_DIR, exist_ok=True)
 
 # Globals for shutdown sequence
 is_shutting_down = False
