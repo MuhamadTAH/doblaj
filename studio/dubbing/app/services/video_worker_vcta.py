@@ -381,37 +381,56 @@ async def process_video_cpu_phase(zip_path: str):
     # absolute path. All stored paths must be rewritten to point at the
     # directory where the zip was just extracted.
     gpu_work_dir_str = state.get("gpu_work_dir", "")
-    cpu_work_dir_str = str(work_dir.resolve())
     
     def _remap(path_str: str) -> str:
-        """Replace the old GPU work_dir prefix with the CPU work_dir prefix."""
-        if gpu_work_dir_str and path_str and path_str.startswith(gpu_work_dir_str):
-            return cpu_work_dir_str + path_str[len(gpu_work_dir_str):]
+        if not path_str: return path_str
+        # 1. Normalize all backslashes to forward slashes
+        normalized = path_str.replace('\\', '/')
+        
+        # 2. Check for absolute prefix match
+        gpu_prefix = gpu_work_dir_str.replace('\\', '/')
+        if gpu_prefix and normalized.startswith(gpu_prefix):
+            rel_part = normalized[len(gpu_prefix):].lstrip('/')
+            return str(work_dir / rel_part)
+            
+        # 3. Check for relative path match (e.g. data/jobs/sessions/3/2-chunks/file.wav)
+        if "sessions/" in normalized:
+            parts = normalized.split("sessions/")
+            if len(parts) == 2:
+                sub_parts = parts[1].split('/', 1) # split "3/2-chunks/file.wav" -> ["3", "2-chunks/file.wav"]
+                if len(sub_parts) == 2:
+                    return str(work_dir / sub_parts[1])
+                    
+        # 4. Fallback: match known subdirectories
+        for sub in ["1-separation", "2-chunks", "3-transcription"]:
+            if f"/{sub}/" in normalized:
+                return str(work_dir / sub / normalized.split(f"/{sub}/")[-1])
+                
+        # 5. Last resort fallback if it doesn't match known patterns
         return path_str
     
-    if gpu_work_dir_str and gpu_work_dir_str != cpu_work_dir_str:
-        logger.info(f"[CPU PHASE] Remapping GPU paths: {gpu_work_dir_str!r} -> {cpu_work_dir_str!r}")
-        fish_wav = _remap(fish_wav)
-        bg_wav = _remap(bg_wav)
-        video_path = _remap(video_path)
-        
-        # Remap paths inside prepared_tasks (list of [idx, g, chunk_dict, chunk_file, rms_energy])
-        remapped_tasks = []
-        for task in prepared_tasks:
-            idx, g, chunk_dict, chunk_file, rms_energy = task
-            chunk_file = _remap(chunk_file)
-            for key in ("audio_file", "file_path", "vocal_file", "voice_reference"):
-                if chunk_dict.get(key):
-                    chunk_dict[key] = _remap(chunk_dict[key])
-            remapped_tasks.append([idx, g, chunk_dict, chunk_file, rms_energy])
-        prepared_tasks = remapped_tasks
-        
-        # Remap paths in clean_references_ledger
-        # Format: {speaker: [[rms_energy, path], ...]}
-        for spk, refs in clean_references_ledger.items():
-            clean_references_ledger[spk] = [
-                [rms, _remap(p)] for rms, p in refs
-            ]
+    logger.info(f"[CPU PHASE] Remapping stored GPU paths to CPU local: {work_dir}")
+    fish_wav = _remap(fish_wav)
+    bg_wav = _remap(bg_wav)
+    video_path = _remap(video_path)
+    
+    # Remap paths inside prepared_tasks (list of [idx, g, chunk_dict, chunk_file, rms_energy])
+    remapped_tasks = []
+    for task in prepared_tasks:
+        idx, g, chunk_dict, chunk_file, rms_energy = task
+        chunk_file = _remap(chunk_file)
+        for key in ("audio_file", "file_path", "vocal_file", "voice_reference"):
+            if chunk_dict.get(key):
+                chunk_dict[key] = _remap(chunk_dict[key])
+        remapped_tasks.append([idx, g, chunk_dict, chunk_file, rms_energy])
+    prepared_tasks = remapped_tasks
+    
+    # Remap paths in clean_references_ledger
+    # Format: {speaker: [[rms_energy, path], ...]}
+    for spk, refs in clean_references_ledger.items():
+        clean_references_ledger[spk] = [
+            [rms, _remap(p)] for rms, p in refs
+        ]
     
     dir_sep = work_dir / "1-separation"
     dir_chunks = work_dir / "2-chunks"
