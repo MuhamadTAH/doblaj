@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { type Voice } from "@/api/tts";
 import { useApi, AuthFailedError, AuthNetworkError } from "@/hooks/useApi";
 import { useTtsStore } from "@/store/tts";
+import { useUiStore } from "@/store/ui";
 import { uid } from "@/lib/format";
 import VoicePickerModal from "@/components/VoicePickerModal";
 import Modal from "@/components/Modal";
@@ -25,14 +26,16 @@ export default function TextToSpeechPage() {
   const [pickerTarget, setPickerTarget] = useState<string | null>(null); // speaker id, or null for "+ Add more voice"
 
   // Global settings
-  const [model, setModel] = useState("Fish Audio S2 Pro");
-  const [volume, setVolume] = useState(0);     // -5..+5
-  const [speed, setSpeed] = useState(1);        // 0.7..1.3
-  const [loudness, setLoudness] = useState(false);
-  const [textNorm, setTextNorm] = useState(false);
-  const [tagCompat, setTagCompat] = useState(false);
+  const audioDefaults = useUiStore((s) => s.audioDefaults);
+  const [model, setModel] = useState(audioDefaults.model || "Fish Audio S2 Pro");
+  const [volume, setVolume] = useState(audioDefaults.volume ?? 0);     // -5..+5
+  const [speed, setSpeed] = useState(audioDefaults.speed ?? 1);        // 0.7..1.3
+  const [loudness, setLoudness] = useState(audioDefaults.loudnessNorm ?? true);
+  const [textNorm, setTextNorm] = useState(audioDefaults.textNorm ?? true);
+  const [tagCompat, setTagCompat] = useState(audioDefaults.tagCompat ?? false);
   const [confirmDelete, setConfirmDelete] = useState<{ speakerId: string } | null>(null);
   const [consent, setConsent] = useState(false);
+
 
   const isGenerating = useTtsStore((s) => s.isGenerating);
   const setGenerating = useTtsStore((s) => s.setGenerating);

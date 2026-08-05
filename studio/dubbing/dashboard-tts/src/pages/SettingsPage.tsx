@@ -1,20 +1,34 @@
 import React, { useState } from "react";
 import { useUser, useClerk } from "@clerk/clerk-react";
+import { useNavigate } from "react-router-dom";
 import { useApi, HttpError, AuthFailedError, AuthNetworkError } from "@/hooks/useApi";
+import { useUiStore } from "@/store/ui";
+import { locale, dir, t } from "@/lib/i18n";
+
+type SettingsTab = "general" | "appearance" | "audio" | "notifications" | "billing" | "connections";
 
 export default function SettingsPage() {
   const { user } = useUser();
   const { signOut } = useClerk();
-  
-  const [activeTab, setActiveTab] = useState<"general" | "connections">("general");
+  const navigate = useNavigate();
+  const api = useApi();
+
+  const {
+    theme,
+    toggleTheme,
+    audioDefaults,
+    setAudioDefaults,
+    notifications,
+    setNotifications,
+  } = useUiStore();
+
+  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const [password, setPassword] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [message, setMessage] = useState("");
-  
+
   const [isConnecting, setIsConnecting] = useState(false);
   const [telegramError, setTelegramError] = useState("");
-  
-  const api = useApi();
 
   const handleDelete = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,33 +73,30 @@ export default function SettingsPage() {
     }
   };
 
-  return (
-    <div className="p-8 max-w-2xl mx-auto text-white">
-      <h1 className="text-3xl font-bold mb-6">Account Settings</h1>
+  const handleLanguageChange = (newLang: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("lang", newLang);
+    window.location.href = url.toString();
+  };
 
-      <div className="flex border-b border-gray-800 mb-8">
-        <button
-          onClick={() => setActiveTab("general")}
-          className={`px-4 py-2 font-medium text-sm transition-colors ${
-            activeTab === "general"
-              ? "text-white border-b-2 border-primary-500"
-              : "text-gray-400 hover:text-white"
-          }`}
-        >
-          General
-        </button>
-        <button
-          onClick={() => setActiveTab("connections")}
-          className={`px-4 py-2 font-medium text-sm transition-colors ${
-            activeTab === "connections"
-              ? "text-white border-b-2 border-primary-500"
-              : "text-gray-400 hover:text-white"
-          }`}
-        >
-          Connections
-        </button>
+  return (
+    <div className="p-8 max-w-4xl mx-auto text-white">
+      <h1 className="text-3xl font-bold mb-2">{t("nav_settings", "Account & App Settings")}</h1>
+      <p className="text-ink-400 text-sm mb-6">
+        {t("settings_subtitle", "Manage your profile, application defaults, language, and connected integrations.")}
+      </p>
+
+      {/* Tabs Bar */}
+      <div className="flex border-b border-gray-800 mb-8 overflow-x-auto gap-2">
+        <TabButton id="general" label="General" activeTab={activeTab} onClick={setActiveTab} />
+        <TabButton id="appearance" label="Appearance & Language" activeTab={activeTab} onClick={setActiveTab} />
+        <TabButton id="audio" label="Audio Defaults" activeTab={activeTab} onClick={setActiveTab} />
+        <TabButton id="notifications" label="Notifications" activeTab={activeTab} onClick={setActiveTab} />
+        <TabButton id="billing" label="Billing & Plan" activeTab={activeTab} onClick={setActiveTab} />
+        <TabButton id="connections" label="Connections" activeTab={activeTab} onClick={setActiveTab} />
       </div>
 
+      {/* General Tab */}
       {activeTab === "general" && (
         <div className="space-y-8 animate-fade-in">
           <div className="bg-ink-900/20 border border-white/[0.06] rounded-lg p-6">
@@ -143,6 +154,195 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {/* Appearance & Language Tab */}
+      {activeTab === "appearance" && (
+        <div className="space-y-8 animate-fade-in">
+          <div className="bg-ink-900/20 border border-white/[0.06] rounded-lg p-6 space-y-6">
+            <h2 className="text-xl font-bold">Theme & Interface</h2>
+            <div className="flex items-center justify-between py-2 border-b border-white/[0.06]">
+              <div>
+                <div className="font-semibold text-white">Color Theme</div>
+                <div className="text-xs text-ink-400">Switch between dark and light workspace theme</div>
+              </div>
+              <button
+                onClick={toggleTheme}
+                className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white text-sm font-medium transition-colors capitalize flex items-center gap-2"
+              >
+                <span>{theme === "dark" ? "🌙 Dark Mode" : "☀️ Light Mode"}</span>
+              </button>
+            </div>
+
+            <div className="space-y-4 pt-2">
+              <h2 className="text-xl font-bold">Language & Region</h2>
+              <div className="max-w-md">
+                <label className="block text-sm font-medium text-ink-400 mb-2">Display Language</label>
+                <select
+                  value={locale}
+                  onChange={(e) => handleLanguageChange(e.target.value)}
+                  className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white focus:outline-none cursor-pointer"
+                >
+                  <option value="en">English (English)</option>
+                  <option value="ckb">Kurdish Sorani (سۆرانی)</option>
+                  <option value="ar">Iraqi Arabic (عربي عراقي)</option>
+                </select>
+              </div>
+              <div className="text-xs text-ink-400">
+                Active Text Direction: <span className="text-brand-300 font-mono font-semibold uppercase">{dir}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Audio Defaults Tab */}
+      {activeTab === "audio" && (
+        <div className="space-y-8 animate-fade-in">
+          <div className="bg-ink-900/20 border border-white/[0.06] rounded-lg p-6 space-y-6">
+            <div>
+              <h2 className="text-xl font-bold mb-1">Text-to-Speech & Dubbing Defaults</h2>
+              <p className="text-xs text-ink-400">Default options automatically applied when starting a new generation.</p>
+            </div>
+
+            <div className="max-w-md">
+              <label className="block text-sm font-medium text-ink-400 mb-2">Default TTS Engine Model</label>
+              <select
+                value={audioDefaults.model}
+                onChange={(e) => setAudioDefaults({ model: e.target.value })}
+                className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white focus:outline-none cursor-pointer"
+              >
+                <option value="Fish Audio S2 Pro">Fish Audio S2 Pro (Recommended)</option>
+                <option value="Fish Audio S1">Fish Audio S1</option>
+                <option value="Fish Audio S2">Fish Audio S2</option>
+              </select>
+            </div>
+
+            <div className="space-y-4 max-w-md pt-2">
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-ink-400">Default Volume</span>
+                  <span className="font-mono text-brand-300">{audioDefaults.volume > 0 ? `+${audioDefaults.volume}` : audioDefaults.volume}</span>
+                </div>
+                <input
+                  type="range"
+                  min="-5"
+                  max="5"
+                  step="1"
+                  value={audioDefaults.volume}
+                  onChange={(e) => setAudioDefaults({ volume: Number(e.target.value) })}
+                  className="w-full accent-brand-400 cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-ink-400">Default Speed</span>
+                  <span className="font-mono text-brand-300">{audioDefaults.speed.toFixed(2)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.7"
+                  max="1.3"
+                  step="0.05"
+                  value={audioDefaults.speed}
+                  onChange={(e) => setAudioDefaults({ speed: Number(e.target.value) })}
+                  className="w-full accent-brand-400 cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-4 border-t border-white/[0.06]">
+              <ToggleRow
+                label="Loudness Normalization"
+                description="Automatically balance output audio loudness level"
+                checked={audioDefaults.loudnessNorm}
+                onChange={(v) => setAudioDefaults({ loudnessNorm: v })}
+              />
+              <ToggleRow
+                label="Text Normalization"
+                description="Convert numbers, symbols, and dates to spoken words"
+                checked={audioDefaults.textNorm}
+                onChange={(v) => setAudioDefaults({ textNorm: v })}
+              />
+              <ToggleRow
+                label="Tag Compatible Mode"
+                description="Preserve SSML / emotion tags in prompt text"
+                checked={audioDefaults.tagCompat}
+                onChange={(v) => setAudioDefaults({ tagCompat: v })}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notifications Tab */}
+      {activeTab === "notifications" && (
+        <div className="space-y-8 animate-fade-in">
+          <div className="bg-ink-900/20 border border-white/[0.06] rounded-lg p-6 space-y-6">
+            <h2 className="text-xl font-bold mb-4">Notification Preferences</h2>
+            <div className="space-y-4">
+              <ToggleRow
+                label="Generation & Dubbing Completed"
+                description="Receive alerts when long video dubbing or batch audio generation completes"
+                checked={notifications.notifyJobComplete}
+                onChange={(v) => setNotifications({ notifyJobComplete: v })}
+              />
+              <ToggleRow
+                label="Low Credit Warnings"
+                description="Get notified when remaining generation credits drop below 10%"
+                checked={notifications.notifyLowCredits}
+                onChange={(v) => setNotifications({ notifyLowCredits: v })}
+              />
+              <ToggleRow
+                label="Telegram Bot Notifications"
+                description="Receive status updates and task results via @dolajbot"
+                checked={notifications.telegramUpdates}
+                onChange={(v) => setNotifications({ telegramUpdates: v })}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Billing & Plan Tab */}
+      {activeTab === "billing" && (
+        <div className="space-y-8 animate-fade-in">
+          <div className="bg-ink-900/20 border border-white/[0.06] rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-bold">Current Subscription</h2>
+                <p className="text-ink-400 text-sm">Manage your billing method, view usage, and upgrade plan.</p>
+              </div>
+              <span className="text-xs font-semibold bg-emerald-500/20 text-emerald-300 px-3 py-1 rounded-full uppercase border border-emerald-500/30">
+                Free Tier
+              </span>
+            </div>
+
+            <div className="bg-white/[0.02] border border-white/[0.06] rounded-lg p-4 mb-6 flex flex-wrap justify-between items-center gap-4">
+              <div>
+                <div className="text-xs text-ink-400">Voice Generation Credits</div>
+                <div className="text-2xl font-bold text-white mt-0.5">5,000 / month</div>
+              </div>
+              <button
+                onClick={() => navigate("/billing")}
+                className="bg-brand-500 hover:bg-brand-600 text-white font-semibold py-2 px-5 rounded-lg text-sm transition-colors"
+              >
+                Manage Billing & Usage
+              </button>
+            </div>
+
+            <div className="flex gap-4">
+              <button
+                onClick={() => navigate("/pricing")}
+                className="bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-amber-950 font-bold py-2.5 px-6 rounded-lg text-sm transition-all"
+              >
+                ✦ Upgrade to Pro Plan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Connections Tab */}
       {activeTab === "connections" && (
         <div className="space-y-8 animate-fade-in">
           <div className="bg-ink-900/20 border border-white/[0.06] rounded-lg p-6">
@@ -175,3 +375,60 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+function TabButton({
+  id,
+  label,
+  activeTab,
+  onClick,
+}: {
+  id: SettingsTab;
+  label: string;
+  activeTab: SettingsTab;
+  onClick: (t: SettingsTab) => void;
+}) {
+  const active = activeTab === id;
+  return (
+    <button
+      onClick={() => onClick(id)}
+      className={`px-4 py-2.5 font-medium text-sm transition-colors whitespace-nowrap ${
+        active
+          ? "text-white border-b-2 border-brand-400 font-semibold"
+          : "text-gray-400 hover:text-white"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ToggleRow({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-none">
+      <div>
+        <div className="text-sm font-semibold text-white">{label}</div>
+        {description && <div className="text-xs text-ink-400">{description}</div>}
+      </div>
+      <button
+        type="button"
+        onClick={() => onChange(!checked)}
+        className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors ${
+          checked ? "bg-brand-500 justify-end" : "bg-gray-800 justify-start"
+        }`}
+      >
+        <span className="w-4 h-4 bg-white rounded-full shadow-md transform transition-transform" />
+      </button>
+    </div>
+  );
+}
+
