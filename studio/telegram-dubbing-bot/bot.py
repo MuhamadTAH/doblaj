@@ -247,27 +247,74 @@ class DubbingConfig(StatesGroup):
 
 router = Router()
 
+@router.message.outer_middleware()
+async def log_all_incoming_messages(handler, event: Message, data: dict):
+    logger.info({
+        "service": "telegram_incoming",
+        "chat_id": event.chat.id,
+        "from_user": event.from_user.username if event.from_user else None,
+        "text": event.text,
+        "content_type": event.content_type
+    })
+    return await handler(event, data)
+
 @router.message(CommandStart())
 async def handle_start(message: Message, state: FSMContext):
     await state.clear()
     
+    chat_id = message.chat.id
+    username = message.from_user.username if message.from_user else "unknown"
+    logger.info({
+        "service": "handle_start",
+        "message": f"Processing /start command from chat_id={chat_id} (@{username})",
+        "full_text": message.text
+    })
+
     args = message.text.split()
     if len(args) > 1:
         nonce = args[1]
-        logger.info({"service": "auth", "message": f"Received link nonce {nonce}"})
+        logger.info({
+            "service": "auth",
+            "message": f"Deep link detected. Verifying nonce: {nonce} for chat_id={chat_id}"
+        })
         headers = {"x-internal-key": INTERNAL_API_KEY} if INTERNAL_API_KEY else {}
         verify_url = f"{DUBBING_BACKEND_URL.rstrip('/')}/api/telegram/link-verify"
+        
+        logger.info({
+            "service": "auth",
+            "message": f"Calling backend verify_url: {verify_url}",
+            "headers_present": list(headers.keys())
+        })
+        
         try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(verify_url, json={"nonce": nonce, "telegram_chat_id": str(message.chat.id)}, headers=headers)
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(
+                    verify_url, 
+                    json={"nonce": nonce, "telegram_chat_id": str(chat_id)}, 
+                    headers=headers
+                )
+                logger.info({
+                    "service": "auth",
+                    "status_code": resp.status_code,
+                    "response_body": resp.text
+                })
+                
                 if resp.status_code == 200:
-                    await message.answer("✅ Your Telegram account has been successfully linked to your Doblaj workspace!\nYou can now upload videos here to dub them.")
+                    reply_text = "✅ Your Telegram account has been successfully linked to your Doblaj workspace!\nYou can now upload videos here to dub them."
                 elif resp.status_code == 409:
-                    await message.answer("⚠️ This workspace is already linked to another Telegram account.")
+                    reply_text = "⚠️ This workspace is already linked to another Telegram account."
                 else:
-                    await message.answer("⚠️ Invalid or expired link token. Please generate a new one from the dashboard.")
+                    reply_text = f"⚠️ Invalid or expired link token (HTTP {resp.status_code}). Please generate a new one from the dashboard."
+                
+                await message.answer(reply_text)
+                logger.info({"service": "auth", "message": f"Sent verification response to chat_id={chat_id}"})
+                
         except Exception as e:
-            logger.error({"service": "auth", "message": f"Error linking account: {e}"})
+            logger.error({
+                "service": "auth",
+                "message": f"Error calling backend verify endpoint: {e}",
+                "traceback": traceback.format_exc()
+            })
             await message.answer("⚠️ Error communicating with the server. Please try again later.")
         return
 
@@ -282,6 +329,7 @@ async def handle_start(message: Message, state: FSMContext):
         "تکایە ڤیدیۆیەک بباربکە بۆ دەستپێکردنی وەرگێڕان و دۆبلاژکردن."
     )
     await message.answer(welcome_text)
+    logger.info({"service": "handle_start", "message": f"Sent welcome message to chat_id={chat_id}"})
 
 @router.message(DubbingConfig.waiting_for_video, F.video | F.document)
 async def handle_video_upload(message: Message, state: FSMContext):
