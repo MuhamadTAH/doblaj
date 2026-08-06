@@ -350,11 +350,11 @@ async def process_video_cpu_phase(zip_path: str):
                 break
                 
     if extracted_top_level:
-        work_dir = jobs_base / extracted_top_level
+        work_dir = (jobs_base / extracted_top_level).resolve()
     else:
         # Fallback if zip is empty or flat
-        basename = os.path.basename(zip_path).replace(".zip", "")
-        work_dir = jobs_base / basename
+        basename = os.path.basename(zip_path).replace(".zip", "").replace("_intermediate", "")
+        work_dir = (jobs_base / basename).resolve()
     
     state_file = work_dir / "gpu_state.json"
     if not state_file.exists():
@@ -520,6 +520,7 @@ async def process_video_cpu_phase(zip_path: str):
                         sub_chunk = chunk_dict.copy()
                         sub_chunk["chunk_id"] = f"{g['chunk_id']}_{spk}"
                         sub_chunk["speaker"] = spk
+                        sub_chunk["kurdish_raw"] = arabic_text or f"[{spk} speech]"
                         sub_chunk["arabic_text"] = arabic_text
                         sub_chunk["voice_reference"] = clean_ref
                         sub_chunk["status"] = "approved"
