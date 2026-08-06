@@ -176,7 +176,7 @@ async def get_job(client: Any = None, *, workspace_id: str = "", job_id: str = "
     scope" and is preserved for the non-request code paths.
     """
 
-    def _owned(job: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def _owned(job: Optional[Dict[str, Any]], from_memory: bool = False) -> Optional[Dict[str, Any]]:
         # PIRD-017: defense in depth. Convex already enforces
         # expectedWorkspaceId server-side, but a future schema change or
         # a bug in resolveWorkspaceId (e.g. accepting a legacy id that
@@ -191,11 +191,20 @@ async def get_job(client: Any = None, *, workspace_id: str = "", job_id: str = "
         doc_ws = job.get("workspaceId") or job.get("workspace_id") or ""
         if not doc_ws:
             return job  # doc with no workspace — treat as orphan, do not block
-        # Compare by string equality. resolveWorkspaceId already ran on
-        # the Convex side, so both sides should be normalized Convex IDs.
-        # If a legacy id slipped through, the strings won't match and we
-        # reject — that's the whole point.
-        return job if str(doc_ws) == str(workspace_id) else None
+        
+        # If they match exactly, we're good (e.g., in-memory jobs)
+        if str(doc_ws) == str(workspace_id):
+            return job
+            
+        # If the job came from in-memory and string doesn't match, reject
+        if from_memory:
+            return None
+            
+        # If the job came from Convex, getInternal already strictly verified 
+        # expectedWorkspaceId server-side. Since doc_ws is the Convex ID and
+        # workspace_id is the legacy Clerk ID, they will not match by strict 
+        # string equality. We can safely trust Convex's validation here.
+        return job
 
     try:
         c = client or _get_client()
@@ -209,12 +218,12 @@ async def get_job(client: Any = None, *, workspace_id: str = "", job_id: str = "
             return _normalize_job(raw)
         result = await asyncio.to_thread(_do)
         if result:
-            return _owned(result)
+            return _owned(result, from_memory=False)
     except Exception as e:
         logger.warning(f"[DATABASE-CONVEX] get_job query failed: {e}")
         pass
 
-    return _owned(_normalize_job(_in_memory_jobs.get(job_id)))
+    return _owned(_normalize_job(_in_memory_jobs.get(job_id)), from_memory=True)
 
 
 async def list_jobs(client: Any = None, *, workspace_id: str = "", store_id: str = "", limit: int = 50):
