@@ -30,6 +30,8 @@ def _compress_audio_to_base64(wav_path: str) -> str:
             except:
                 pass
 
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001")
+
 async def gemini_audio_diarize_and_translate_async(chunk_path: str) -> list[dict]:
     """
     Phase 5 Multimodal Audio Diarization using OpenRouter (Base64 MP3 Trick).
@@ -63,7 +65,7 @@ async def gemini_audio_diarize_and_translate_async(chunk_path: str) -> list[dict
     )
 
     payload = {
-        "model": "google/gemini-flash-1.5",
+        "model": OPENROUTER_MODEL,
         "messages": [
             {
                 "role": "user",

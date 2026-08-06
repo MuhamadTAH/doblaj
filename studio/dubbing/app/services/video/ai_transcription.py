@@ -10,8 +10,10 @@ logger = logging.getLogger(__name__)
 
 
 
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001")
+
 async def transcribe_gemini_flash(audio_path: str, history: list = None) -> str:
-    """Fallback using google/gemini-flash-1.5"""
+    """Fallback using OpenRouter STT model"""
     api_key = os.getenv("OPEN_ROUTER_API_KEY")
     if not api_key:
         logger.error("[GEMINI STT] OPEN_ROUTER_API_KEY not set.")
@@ -43,7 +45,7 @@ async def transcribe_gemini_flash(audio_path: str, history: list = None) -> str:
         timeline_text = "--- CURRENT TARGET ---\nTask: Transcribe the attached audio chunk. Return ONLY the Kurdish Sorani text. No preambles, no explanations."
 
     payload = {
-        "model": "google/gemini-flash-1.5",
+        "model": OPENROUTER_MODEL,
         "messages": [
             {
                 "role": "system",
@@ -109,7 +111,7 @@ async def cross_reference_transcription(scribe_text: str, flash_text: str) -> st
     }
 
     payload = {
-        "model": "google/gemini-flash-1.5",
+        "model": OPENROUTER_MODEL,
         "messages": [
             {
                 "role": "user", 
@@ -212,7 +214,7 @@ async def transcribe_gemini_flash_batch(chunks: list[dict], history: list = None
         system_prompt += f"\n{dict_prompt}"
 
     payload = {
-        "model": "google/gemini-flash-1.5",
+        "model": OPENROUTER_MODEL,
         "messages": [
             {
                 "role": "system",

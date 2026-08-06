@@ -9,6 +9,8 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001")
+
 # Shared connection pool to avoid connection setup overhead on every request
 _http_client: Optional[httpx.AsyncClient] = None
 
@@ -165,7 +167,7 @@ async def translate_single_chunk_structured(
     }
 
     payload = {
-        "model": "google/gemini-flash-1.5",
+        "model": OPENROUTER_MODEL,
         "messages": messages,
         "temperature": 0.4
     }
@@ -296,7 +298,7 @@ async def batch_translate_text(chunks: list, batch_size: int = 5, category_id: s
         ]
         
         payload = {
-            "model": "google/gemini-flash-1.5",
+            "model": OPENROUTER_MODEL,
             "messages": messages,
             "temperature": 0.3
         }
