@@ -30,7 +30,7 @@ def _compress_audio_to_base64(wav_path: str) -> str:
             except:
                 pass
 
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-3-flash-preview")
 
 async def gemini_audio_diarize_and_translate_async(chunk_path: str) -> list[dict]:
     """

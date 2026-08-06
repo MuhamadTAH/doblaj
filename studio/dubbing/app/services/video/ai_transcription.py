@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-3-flash-preview")
 
 async def transcribe_gemini_flash(audio_path: str, history: list = None) -> str:
     """Fallback using OpenRouter STT model"""
