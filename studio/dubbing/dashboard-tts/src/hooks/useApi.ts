@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import { useAuth, useClerk } from '@clerk/clerk-react';
+import { useAuth } from '@clerk/clerk-react';
 import { getDubJobs, getDubStatus, submitDubJob } from '../api/dubbing';
 import { fetchVoices, generateTts, previewVoice, TtsRequest } from '../api/tts';
 import { deleteAccount } from '../api/user';
@@ -26,11 +26,8 @@ export class HttpError extends Error {
   }
 }
 
-let isSigningOut = false;
-
 export const useApi = () => {
   const { getToken } = useAuth();
-  const { signOut } = useClerk();
 
   const authFetch = useCallback(async (url: string | URL | globalThis.Request, options: RequestInit = {}): Promise<Response> => {
     let token: string | null = null;
@@ -40,25 +37,15 @@ export const useApi = () => {
       console.error("Clerk getToken error:", sdkError);
       
       const errorStr = String(sdkError).toLowerCase();
-      // Only sign out if it's explicitly an unauthorized (401) session error.
-      // A 404 here usually means the JWT template 'pird-dubbing' is missing in the Clerk dashboard.
+      // Only throw if it's explicitly an unauthorized (401) session error.
+      // A 404 here usually means the JWT template is missing in the Clerk dashboard.
       if (errorStr.includes('401') || sdkError?.status === 401) {
-        if (!isSigningOut) {
-          isSigningOut = true;
-          await signOut();
-          isSigningOut = false;
-        }
         throw new AuthFailedError();
       }
       throw new AuthNetworkError();
     }
 
     if (!token) {
-      if (!isSigningOut) {
-        isSigningOut = true;
-        await signOut();
-        isSigningOut = false;
-      }
       throw new AuthFailedError();
     }
 
@@ -70,11 +57,6 @@ export const useApi = () => {
     const res = await fetch(url, { ...options, headers });
 
     if (res.status === 401) {
-      if (!isSigningOut) {
-        isSigningOut = true;
-        await signOut();
-        isSigningOut = false;
-      }
       throw new AuthFailedError();
     }
 
@@ -90,7 +72,7 @@ export const useApi = () => {
     }
 
     return res;
-  }, [getToken, signOut]);
+  }, [getToken]);
 
   return useMemo(() => ({
     getDubJobs: (signal?: AbortSignal) => getDubJobs(authFetch, signal),
