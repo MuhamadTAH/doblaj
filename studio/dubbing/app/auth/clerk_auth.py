@@ -14,8 +14,10 @@ CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE", "pird-dubbing")
 CLERK_AUDIENCE_REQUIRED = os.getenv("CLERK_AUDIENCE_REQUIRED", "true").lower() == "true"
 ALLOWED_AZPS = {
     "https://doblaj.com",
+    "https://www.doblaj.com",
     "http://localhost:3000",
     "http://localhost:8081",
+    "http://localhost:5173",
     "https://api.doblaj.com",
     "https://pird.ai",
 }
@@ -62,7 +64,7 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
                 token,
                 signing_key.key,
                 algorithms=["RS256"],
-                audience=CLERK_AUDIENCE,
+                audience=[CLERK_AUDIENCE, "convex", "pird-dubbing"],
                 issuer=[CLERK_ISSUER, "https://clerk.doblaj.com", "https://deciding-quagga-70.clerk.accounts.dev"],
                 options=options,
                 leeway=5,
