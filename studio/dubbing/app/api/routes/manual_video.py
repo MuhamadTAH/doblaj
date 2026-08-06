@@ -969,11 +969,8 @@ async def step5_run_physics(session_id: str = Form(...), chunks_json: Optional[s
         actual_words = len(clean_arabic.split())
         
         if actual_words < min_w or actual_words > max_w:
-            _log(session_id, f"Audit Trap: Chunk {c_id} word count ({actual_words}) out of bounds [{min_w}, {max_w}]. Falling back to single-chunk retry.", "WARNING")
-            c["bypass_initial_translation"] = False
-            c["arabic_text"] = ""
-        else:
-            c["bypass_initial_translation"] = True
+            _log(session_id, f"Audit Trap: Chunk {c_id} word count ({actual_words}) out of bounds [{min_w}, {max_w}]. Relying on physical TTS duration check.", "INFO")
+        c["bypass_initial_translation"] = True
 
     try:
         valid_chunks = []

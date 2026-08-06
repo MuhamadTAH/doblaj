@@ -268,6 +268,7 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
             
             if not arabic_text:
                 arabic_text = chunk.get("arabic_text", "")
+                chunk["error"] = "Arabic text empty after translation"
                 retries += 1
                 await asyncio.sleep(2)
                 continue
