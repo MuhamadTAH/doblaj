@@ -191,7 +191,7 @@ export default function VideoDubbingPage() {
       const job = await api.submitDubJob(file, {
         category: resolvedCategory || undefined,
         entity: resolvedEntity || undefined,
-        consent_text_version: "v1.0_2026",
+        consent_text_version: "2026-07-26.1",
       });
       setJobId(job.id);
       setPhase("processing");
