@@ -239,12 +239,9 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
             import re
             has_madd_multiplier = bool(re.search(r'(ا{3,}|و{3,}|ي{3,}|ى{3,})', chunk.get("arabic_text", "")))
             
-            # If phonetic stretching is needed but the current text lacks Madd multipliers, force Gemini to handle it even if bypassed.
-            force_gemini_stretch = is_phonetic_stretched and not has_madd_multiplier
-            
-            if bypass_initial_translation and retries == 0 and chunk.get("arabic_text") and not force_gemini_stretch:
+            if bypass_initial_translation and retries == 0 and chunk.get("arabic_text"):
                 arabic_text = chunk["arabic_text"]
-                logger.info(f"[PHYSICS] Bypassing initial Gemini translation, using manual text: {arabic_text}")
+                logger.info(f"[PHYSICS] Using pre-translated Arabic text: {arabic_text}")
             else:
                 result = await translate_single_chunk_structured(
                     text=chunk.get("kurdish_raw", ""),
