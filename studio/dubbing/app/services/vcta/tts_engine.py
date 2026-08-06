@@ -61,27 +61,10 @@ async def _call_fish_speech(
     Calls the Fish Speech API (speech-1.6) for voice cloning.
     Handles msgpack body with audio bytes and retry logic.
     """
-    api_key = os.getenv("FISH_SPEECH_API_KEY")
+    api_key = os.getenv("FISH_SPEECH_API_KEY") or os.getenv("FISH_API_KEY")
     if not api_key:
-        logger.warning("[TTS] FISH_SPEECH_API_KEY not set. Generating silence.")
-        # Pird: list-args subprocess, no shell. See Fix 1.
-        try:
-            subprocess.run(
-                [
-                    "ffmpeg", "-y",
-                    "-f", "lavfi",
-                    "-i", "anullsrc=r=16000:cl=mono",
-                    "-t", "3",
-                    output_wav,
-                ],
-                shell=False,
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        except Exception as e:
-            logger.error(f"[TTS] silence-stub ffmpeg failed: {e}")
-        return True, ""
+        logger.error("[TTS] Neither FISH_SPEECH_API_KEY nor FISH_API_KEY is set in environment.")
+        return False, "Neither FISH_SPEECH_API_KEY nor FISH_API_KEY environment variable is set"
 
     if not reference_id and not os.path.exists(reference_audio_path):
         logger.error(f"[TTS] Reference audio not found: {reference_audio_path}")

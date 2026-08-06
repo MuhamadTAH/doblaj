@@ -416,7 +416,7 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
     # 5. FFmpeg Atempo Assembly (Stretches the raw speech)
     if not translate_only:
         if not os.path.exists(final_tts_wav):
-            err_msg = chunk.get("tts_error", "TTS generation failed.")
+            err_msg = chunk.get("tts_error") or chunk.get("error") or "TTS generation failed."
             logger.error(f"[ASSEMBLY] final_tts_wav missing for chunk {chunk_id} at {final_tts_wav}. Error: {err_msg}")
             
             # Write to terminal log
