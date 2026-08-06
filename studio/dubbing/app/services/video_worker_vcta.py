@@ -534,6 +534,7 @@ async def process_video_cpu_phase(zip_path: str):
                 logger.error(f"[JOB {job_id}] Task processing failed for chunk {g['chunk_id']}: {e}")
                 chunk_dict["speaker"] = g["speakers"][0]
                 chunk_dict["kurdish_raw"] = ""
+                chunk_dict["error"] = str(e)
                 return [chunk_dict]
 
         task_coroutines = [
