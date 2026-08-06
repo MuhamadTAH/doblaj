@@ -72,8 +72,10 @@ export const recordInternal = mutation({
     tier: v.optional(v.string()),
     amountUsd: v.optional(v.number()),
     minutesAdded: v.optional(v.number()),
+    __internalApiKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    requireInternalApiKey(args.__internalApiKey);
     const workspaceId = await resolveWorkspaceId(ctx, args.workspaceId);
     const existing = await ctx.db
       .query("transactions")

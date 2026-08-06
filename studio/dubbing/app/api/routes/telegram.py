@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
@@ -60,12 +61,19 @@ async def verify_link_nonce(req: LinkVerifyRequest, user: AuthenticatedUser = De
     return {"status": "success", "workspace_id": workspace_id}
 
 
+MAX_RESERVATION_SECONDS = int(os.getenv("MAX_RESERVATION_SECONDS", "1800"))
+
 @router.post("/jobs/reserve", response_model=JobReserveResponse)
 async def reserve_job_minutes(req: JobReserveRequest, user: AuthenticatedUser = Depends(require_user_or_internal)):
     """Reserve minutes for a job upfront."""
     if user.email != "bot@internal.doblaj.com":
         raise HTTPException(status_code=403, detail="Only internal bot can call this endpoint.")
-        
+
+    if req.video_duration_seconds <= 0:
+        raise HTTPException(status_code=400, detail="video_duration_seconds must be > 0")
+    if req.video_duration_seconds > MAX_RESERVATION_SECONDS:
+        raise HTTPException(status_code=400, detail=f"video_duration_seconds exceeds maximum allowed limit of {MAX_RESERVATION_SECONDS}s ({MAX_RESERVATION_SECONDS // 60} mins)")
+
     workspace_id = await db.get_workspace_by_telegram_id(req.telegram_chat_id)
     if not workspace_id:
         raise HTTPException(status_code=404, detail="Telegram account not linked to any workspace.")
@@ -99,7 +107,12 @@ async def refund_job_minutes(req: JobRefundRequest, user: AuthenticatedUser = De
     """Refund minutes if the job failed before or during submission to backend."""
     if user.email != "bot@internal.doblaj.com":
         raise HTTPException(status_code=403, detail="Only internal bot can call this endpoint.")
-        
+
+    if req.minutes_to_refund <= 0:
+        raise HTTPException(status_code=400, detail="minutes_to_refund must be > 0")
+    if req.minutes_to_refund > 30:
+        raise HTTPException(status_code=400, detail="minutes_to_refund exceeds maximum single refund limit of 30 minutes.")
+
     workspace_id = await db.get_workspace_by_telegram_id(req.telegram_chat_id)
     if not workspace_id:
         raise HTTPException(status_code=404, detail="Telegram account not linked to any workspace.")

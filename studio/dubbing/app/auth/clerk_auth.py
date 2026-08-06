@@ -11,7 +11,17 @@ CLERK_FRONTEND_API = os.getenv("CLERK_FRONTEND_API", "deciding-quagga-70.clerk.a
 CLERK_ISSUER = os.getenv("CLERK_ISSUER", f"https://{CLERK_FRONTEND_API}").rstrip("/")
 CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL", f"{CLERK_ISSUER}/.well-known/jwks.json")
 CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE", "pird-dubbing")
-CLERK_AUDIENCE_REQUIRED = os.getenv("CLERK_AUDIENCE_REQUIRED", "false").lower() == "true"
+CLERK_AUDIENCE_REQUIRED = os.getenv("CLERK_AUDIENCE_REQUIRED", "true").lower() == "true"
+ALLOWED_AZPS = {
+    "https://doblaj.com",
+    "http://localhost:3000",
+    "http://localhost:8081",
+    "https://api.doblaj.com",
+    "https://pird.ai",
+}
+if os.getenv("ALLOWED_AZPS"):
+    ALLOWED_AZPS.update(x.strip() for x in os.getenv("ALLOWED_AZPS").split(",") if x.strip())
+
 # Pird: lazy-init JWKS client.
 # PyJWT 2.6+ prefetches the JWKS at construction time, which blocks startup
 # indefinitely if Clerk is unreachable from this host. Build the client on
@@ -67,14 +77,13 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
         
         # PIRD: azp validation to prevent token leakage
         azp = claims.get("azp")
-        if azp not in ["https://doblaj.com", "http://localhost:3000", "http://localhost:8081", "https://api.doblaj.com"]:
+        if azp and azp not in ALLOWED_AZPS:
             logger.error(f"Invalid azp claim: {azp}")
-            # Relax AZP temporarily for debugging if it fails
-            # raise HTTPException(
-            #     401, 
-            #     f"Invalid azp claim: {azp}", 
-            #     headers={"WWW-Authenticate": 'Bearer error="invalid_token"'}
-            # )
+            raise HTTPException(
+                401, 
+                f"Invalid azp claim: {azp}", 
+                headers={"WWW-Authenticate": 'Bearer error="invalid_token"'}
+            )
             
         return claims
     except jwt.ExpiredSignatureError as exc:
@@ -249,13 +258,13 @@ async def require_user_or_internal(
     actual_internal_key = x_internal_key or request.headers.get("x-internal-key")
     
     if actual_internal_key and internal_key and hmac.compare_digest(actual_internal_key, internal_key):
-        bot_user_id = os.getenv("BOT_SERVICE_USER_ID", "telegram-bot")
-        bot_workspace_id = os.getenv("BOT_SERVICE_WORKSPACE_ID", "telegram-bot-ws")
+        bot_user_id = request.headers.get("x-user-id") or os.getenv("BOT_SERVICE_USER_ID", "telegram-bot")
+        bot_workspace_id = request.headers.get("x-workspace-id") or os.getenv("BOT_SERVICE_WORKSPACE_ID", "telegram-bot-ws")
         return AuthenticatedUser(
             user_id=bot_user_id,
             email="bot@internal.doblaj.com",
             workspace_id=bot_workspace_id,
-            role="org:admin",
+            role="org:service",
             raw_claims={"sub": bot_user_id, "workspace_id": bot_workspace_id, "azp": "https://api.doblaj.com"},
             access_token="internal-bot-token"
         )

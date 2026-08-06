@@ -1,4 +1,4 @@
-﻿import os
+import os
 import logging
 import aiohttp
 import base64
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 async def transcribe_gemini_flash(audio_path: str, history: list = None) -> str:
-    """Fallback using google/gemini-3-flash-preview"""
+    """Fallback using google/gemini-flash-1.5"""
     api_key = os.getenv("OPEN_ROUTER_API_KEY")
     if not api_key:
         # Pird: fail closed in prod for consistency with batch function below.
@@ -47,7 +47,7 @@ async def transcribe_gemini_flash(audio_path: str, history: list = None) -> str:
         timeline_text = "--- CURRENT TARGET ---\nTask: Transcribe the attached audio chunk. Return ONLY the Kurdish Sorani text. No preambles, no explanations."
 
     payload = {
-        "model": "google/gemini-3-flash-preview",
+        "model": "google/gemini-flash-1.5",
         "messages": [
             {
                 "role": "system",
@@ -113,7 +113,7 @@ async def cross_reference_transcription(scribe_text: str, flash_text: str) -> st
     }
 
     payload = {
-        "model": "google/gemini-3-flash-preview",
+        "model": "google/gemini-flash-1.5",
         "messages": [
             {
                 "role": "user", 
@@ -216,7 +216,7 @@ async def transcribe_gemini_flash_batch(chunks: list[dict], history: list = None
         system_prompt += f"\n{dict_prompt}"
 
     payload = {
-        "model": "google/gemini-3-flash-preview",
+        "model": "google/gemini-flash-1.5",
         "messages": [
             {
                 "role": "system",

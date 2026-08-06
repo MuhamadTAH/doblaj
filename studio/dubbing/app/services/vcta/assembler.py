@@ -59,7 +59,7 @@ async def assemble_final_video(
             elif raw_tts.exists():
                 tts_file = str(raw_tts)
             else:
-                logger.warning(f"[ASSEMBLER] Could not find any TTS file for chunk {chunk_id}")
+                logger.warning(f"[ASSEMBLER] Could not find any TTS file for chunk {chunk_id}. Checked paths:\n- {assembled_atempo}\n- {mastered}\n- {raw_tts}")
                 continue
 
         start_time = float(chunk.get("start_time", 0.0))
@@ -70,6 +70,10 @@ async def assemble_final_video(
         })
 
     if not tts_entries:
+        errors = [c.get("tts_error") for c in chunks if isinstance(c, dict) and c.get("tts_error")]
+        if errors:
+            unique_errors = list(set(errors))
+            raise RuntimeError(f"No TTS files were generated. TTS API Errors: {', '.join(unique_errors)}")
         raise RuntimeError("No TTS files found for any chunk. Cannot assemble video.")
 
     logger.info(f"[ASSEMBLER] Stage 5: Assembling {len(tts_entries)} clips against silent master")

@@ -453,7 +453,7 @@ async def on_startup():
     missing = [
         f"{name} ({purpose})"
         for name, purpose in _REQUIRED_KEYS
-        if not os.getenv(name) and name != "GEMINI_API_KEY"
+        if not os.getenv(name)
     ]
     is_prod = os.getenv("PIRD_ENV", "").lower() == "prod"
     if missing:
@@ -527,16 +527,6 @@ async def auth_me(request: Request):
         import datetime
         user_client = database.get_user_client(user.access_token)
         remaining_minutes = await database.get_workspace_minutes(user_client, workspace_id=user.workspace_id)
-        
-        # Remove free limit for this specific user
-        if user.email == "mhamadtah548@gmail.com" and remaining_minutes > 1000:
-            await database.deduct_workspace_minutes(user_client, workspace_id=user.workspace_id, minutes=remaining_minutes)
-            remaining_minutes = 0
-        
-        # Remove 1-minute free limit if present
-        elif remaining_minutes == 1:
-            await database.deduct_workspace_minutes(user_client, workspace_id=user.workspace_id, minutes=1)
-            remaining_minutes = 0
         
         # Fetch transactions
         transactions = await database.list_transactions(user_client, workspace_id=user.workspace_id)

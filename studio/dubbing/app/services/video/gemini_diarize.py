@@ -63,7 +63,7 @@ async def gemini_audio_diarize_and_translate_async(chunk_path: str) -> list[dict
     )
 
     payload = {
-        "model": "google/gemini-3-flash-preview",
+        "model": "google/gemini-flash-1.5",
         "messages": [
             {
                 "role": "user",

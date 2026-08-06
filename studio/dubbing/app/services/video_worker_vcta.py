@@ -476,7 +476,7 @@ async def process_video_cpu_phase(zip_path: str):
 
                     if flash_text:
                         chunk_dict["kurdish_raw"] = sanitize_transcript(flash_text)
-                        logger.info(f"Gemini 3 Flash: {flash_text}")
+                        logger.info(f"Gemini 3 Flash: {ascii(flash_text)}")
                     else:
                         logger.error(f"[JOB {job_id}] CRITICAL: Transcription failed for chunk {g['chunk_id']}.")
                         chunk_dict["kurdish_raw"] = ""
@@ -551,7 +551,9 @@ async def process_video_cpu_phase(zip_path: str):
         session_state = {"work_dir": str(work_dir)}
         
         stage6_start = time.time()
+        logger.info("DEBUG: importing translator")
         from app.services.vcta import translator
+        logger.info("DEBUG: imported translator, calling batch_translate_text")
         translated_chunks = await translator.batch_translate_text(
             chunks=chunks, 
             category_id=category,

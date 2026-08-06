@@ -60,8 +60,9 @@ export const getMinutes = query({
 });
 
 export const addMinutes = mutation({
-  args: { delta: v.number() },
+  args: { delta: v.number(), __internalApiKey: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    requireInternalApiKey(args.__internalApiKey);
     if (args.delta === 0) {
       throw new ConvexError("ZERO_DELTA_NOT_ALLOWED");
     }

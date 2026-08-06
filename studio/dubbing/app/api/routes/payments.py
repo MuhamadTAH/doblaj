@@ -67,9 +67,16 @@ async def create_checkout_session(req: CheckoutRequest, user: AuthenticatedUser 
 from fastapi.responses import RedirectResponse
 import uuid
 
+def _ensure_test_endpoints_allowed():
+    env = os.getenv("PIRD_ENV", os.getenv("ENVIRONMENT", "dev")).lower()
+    allow_test = os.getenv("ALLOW_TEST_ENDPOINTS", "false").lower() == "true"
+    if env == "prod" or env == "production" or not allow_test:
+        raise HTTPException(status_code=403, detail="Test payment endpoints are disabled in this environment.")
+
 @router.get("/mock-success")
 async def mock_checkout_success(user_id: str, workspace_id: str, tier_id: str):
     """Simulate a successful payment for local testing when real Suby keys are not present."""
+    _ensure_test_endpoints_allowed()
     if tier_id in TIERS:
         minutes = TIERS[tier_id]["minutes"]
         price = TIERS[tier_id]["price_usd"]
@@ -95,6 +102,7 @@ async def mock_checkout_success(user_id: str, workspace_id: str, tier_id: str):
 @router.post("/test-webhook")
 async def test_suby_webhook(request: Request):
     """Local testing endpoint for webhooks (bypasses signature check for local testing)."""
+    _ensure_test_endpoints_allowed()
     try:
         event = await request.json()
         data = event.get("data", event)
@@ -127,6 +135,8 @@ async def test_suby_webhook(request: Request):
             return {"status": "ok", "message": f"Successfully added {minutes} minutes to workspace {workspace_id}", "new_balance": new_balance}
         else:
             raise HTTPException(status_code=400, detail="Invalid tier_id")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Test webhook failed")
         raise HTTPException(status_code=400, detail=str(e))

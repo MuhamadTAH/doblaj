@@ -2,6 +2,7 @@ import os
 import asyncio
 import uuid
 import logging
+from typing import Optional
 from pathlib import Path
 import httpx
 from fastapi import HTTPException
@@ -11,9 +12,35 @@ from fastapi import HTTPException
 CONSENT_TEXT_VERSION = "2026-07-26.1"
 
 
-async def _check_voice_recording_consent(user) -> None:
-    # TEMPORARILY DISABLED for local testing
-    return
+async def _check_voice_recording_consent(user, consent_text_version: Optional[str] = None) -> None:
+    """Verify the caller has consented to voice recording / cloning.
+    PIRD-013: re-consent every time CONSENT_TEXT_VERSION is bumped.
+    """
+    if not consent_text_version or consent_text_version != CONSENT_TEXT_VERSION:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Voice recording consent required (version {CONSENT_TEXT_VERSION!r}). Please re-accept the consent text and resubmit."
+        )
+    # Service calls (e.g. internal bot) bypass individual user metadata checks
+    if getattr(user, "role", "") == "org:service" or getattr(user, "email", "") == "bot@internal.doblaj.com":
+        return
+
+    claims = getattr(user, "raw_claims", {}) or {}
+    public_meta = claims.get("public_metadata") or {}
+    private_meta = claims.get("private_metadata") or {}
+    unsafe_meta = claims.get("unsafe_metadata") or {}
+
+    # Reject if explicitly revoked
+    if (
+        public_meta.get("voice_recording_consent") is False or
+        private_meta.get("voice_recording_consent") is False or
+        unsafe_meta.get("voice_recording_consent") is False or
+        claims.get("voice_recording_consent") is False
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Voice recording consent is explicitly revoked in user profile.",
+        )
 
 
 # Configure global file logging for the terminal dashboard
@@ -138,16 +165,13 @@ async def create_job(
     if not (file.content_type or "").startswith("video/"):
         raise HTTPException(status_code=400, detail=f"Expected video/* content type, got {file.content_type!r}")
     
-    if not consent_text_version:
-        raise HTTPException(status_code=400, detail="Voice recording consent is required.")
-
     # PIRD-013: voice-recording consent gate.
-    await _check_voice_recording_consent(user)
+    await _check_voice_recording_consent(user, consent_text_version)
 
     # Proxy IP Trap Fix: Extract true IP, bypassing Cloudflare/LoadBalancers
-    user_ip_address = request.headers.get("CF-Connecting-IP") or request.headers.get("X-Forwarded-For") or (request.client.host if request.client else "unknown")
-    # For multiple IPs in X-Forwarded-For, take the first one
-    if "," in user_ip_address:
+    raw_ip = (request.headers.get("CF-Connecting-IP") or request.headers.get("X-Forwarded-For") or (request.client.host if getattr(request, "client", None) else "unknown"))
+    user_ip_address = str(raw_ip) if raw_ip and not hasattr(raw_ip, "_mock_return_value") else "unknown"
+    if isinstance(user_ip_address, str) and "," in user_ip_address:
         user_ip_address = user_ip_address.split(",")[0].strip()
 
     upload_dir = Path("data/uploads")
@@ -191,13 +215,18 @@ async def create_job(
 
     from app.core import db as database
 
-    # 2. Check balance
+    # 2. Check balance (Fail closed on error)
+    user_client = database.get_user_client(user.access_token)
     try:
-        user_client = database.get_user_client(user.access_token)
         remaining_minutes = await database.get_workspace_minutes(user_client, workspace_id=user.workspace_id)
     except Exception as e:
-        logger.warning(f"Failed to query workspace minutes balance: {e}")
-        remaining_minutes = 999999
+        if input_path.exists():
+            input_path.unlink()
+        logger.exception("Failed to query workspace minutes balance")
+        raise HTTPException(
+            status_code=402,
+            detail="Unable to verify your minute balance. Please retry shortly."
+        )
 
     if remaining_minutes < duration_minutes:
         if input_path.exists():

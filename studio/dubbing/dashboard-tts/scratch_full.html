@@ -1,0 +1,187 @@
+<USER_REQUEST>
+i have this style for hte login i wnat to change it to this style 
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Login - Studio Console</title>
+<!-- Inter Font -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS v3 -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              sky: '#38bdf8',
+              surface: '#0a0a0b',
+              'surface-low': '#131314',
+              'surface-bright': '#3a393a',
+              text: '#fafafa',
+              'text-muted': '#cfcfd3',
+              border: 'rgba(255, 255, 255, 0.08)',
+            }
+          }
+        }
+      }
+    }
+  </script>
+<!-- BEGIN: Custom Styles -->
+<style data-purpose="layout-and-fx">
+    body {
+      background-color: #0a0a0b;
+      color: #fafafa;
+    }
+
+    /* Subtle professional studio background effect */
+    .studio-bg {
+      background: radial-gradient(circle at 20% 30%, rgba(56, 189, 248, 0.05) 0%, transparent 40%),
+                  radial-gradient(circle at 80% 70%, rgba(56, 189, 248, 0.03) 0%, transparent 40%);
+    }
+
+    /* Studio Console Card Styling: Hairline border + Inset highlight */
+    .studio-card {
+      background: #131314;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 20px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+
+    .glass-pane {
+      background: rgba(19, 19, 20, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Input styling - Deep set */
+    .input-field {
+      background: #0e0e0f;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.3);
+      transition: all 0.2s ease;
+    }
+
+    .input-field:focus {
+      border-color: #38bdf8;
+      outline: none;
+      box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.3), 0 0 0 2px rgba(56, 189, 248, 0.2);
+    }
+
+    /* Custom geometric element for the right pane */
+    .geometric-star {
+      opacity: 0.15;
+      background: linear-gradient(135deg, #38bdf8 0%, transparent 100%);
+      clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+    }
+  </style>
+<!-- END: Custom Styles -->
+</head>
+<body class="studio-bg min-h-screen flex items-center justify-center p-4">
+<!-- BEGIN: Login Container -->
+<main class="w-full max-w-6xl flex flex-col md:flex-row studio-card rounded-2xl overflow-hidden min-h-[680px]" data-purpose="login-container">
+<!-- BEGIN: Left Pane - Login Form -->
+<section class="flex-1 p-8 md:p-16 flex flex-col justify-center" data-purpose="login-form-section">
+<header class="mb-10">
+<!-- Logo -->
+<div class="mb-8" data-purpose="logo">
+<svg fill="none" height="40" viewbox="0 0 40 40" width="40" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#38bdf8" height="40" rx="8" width="40"></rect>
+<path d="M12 12H18L28 28H22L12 12Z" fill="white"></path>
+<circle cx="15" cy="28" fill="white" r="3"></circle>
+</svg>
+</div>
+<h1 class="text-4xl font-bold text-brand-text mb-2">Welcome back</h1>
+<p class="text-brand-text-muted">Please enter your account details to continue.</p>
+</header>
+<form class="space-y-6" data-purpose="sign-in-form">
+<div>
+<label class="block text-sm font-medium text-brand-text-muted mb-2" for="email">Email</label>
+<input class="input-field w-full px-4 py-3 rounded-lg text-brand-text" id="email" name="email" placeholder="name@company.com" type="email" value="johndoe@gmail.com"/>
+</div>
+<div>
+<label class="block text-sm font-medium text-brand-text-muted mb-2" for="password">Password</label>
+<input class="input-field w-full px-4 py-3 rounded-lg text-brand-text" id="password" name="password" placeholder="••••••••" type="password" value="********"/>
+</div>
+<div class="flex items-center justify-between text-sm">
+<label class="flex items-center space-x-2 cursor-pointer">
+<input checked="" class="rounded border-brand-border bg-brand-surface-low text-brand-sky focus:ring-brand-sky" type="checkbox"/>
+<span class="text-brand-text-muted">Keep me logged in</span>
+</label>
+<a class="text-brand-sky hover:underline font-medium" href="#">Forgot Password?</a>
+</div>
+<button class="w-full bg-brand-sky hover:bg-opacity-90 text-brand-surface font-bold py-4 rounded-lg transition-all transform active:scale-[0.98]" type="submit">
+          Sign in
+        </button>
+</form>
+<!-- BEGIN: Social Logins -->
+<footer class="mt-12">
+<div class="relative flex items-center justify-center mb-8">
+<div class="border-t border-brand-border w-full"></div>
+<span class="absolute bg-brand-surface-low px-4 text-xs text-brand-text-muted uppercase tracking-widest">Or continue with</span>
+</div>
+<div class="flex items-center justify-center space-x-4">
+<button class="w-12 h-12 flex items-center justify-center rounded-full border border-brand-border hover:bg-brand-surface-bright transition-colors" title="Google">
+<svg class="w-5 h-5" viewbox="0 0 24 24">
+<path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="currentColor"></path>
+<path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="currentColor"></path>
+<path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="currentColor"></path>
+<path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="currentColor"></path>
+</svg>
+</button>
+<button class="w-12 h-12 flex items-center justify-center rounded-full border border-brand-border hover:bg-brand-surface-bright transition-colors" title="GitHub">
+<svg class="w-5 h-5" viewbox="0 0 24 24">
+<path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" fill="currentColor"></path>
+</svg>
+</button>
+</div>
+</footer>
+<!-- END: Social Logins -->
+</section>
+<!-- END: Left Pane -->
+<!-- BEGIN: Right Pane - Testimonial/Branding -->
+<section class="relative flex-1 bg-brand-surface-low p-12 md:p-16 flex flex-col justify-between overflow-hidden" data-purpose="branding-section">
+<!-- Decorative geometric element -->
+<div class="absolute -right-20 top-1/2 -translate-y-1/2 w-[400px] h-[400px] geometric-star"></div>
+<div class="relative z-10 max-w-md">
+<h2 class="text-4xl font-bold leading-tight mb-8">What’s our Jobseekers Said.</h2>
+<div class="space-y-6">
+<svg class="w-10 h-10 text-brand-sky opacity-40" fill="currentColor" viewbox="0 0 24 24">
+<path d="M14.017 21L14.017 18C14.017 16.8954 14.9124 16 16.017 16H19.017C19.5693 16 20.017 15.5523 20.017 15V9C20.017 8.44772 19.5693 8 19.017 8H15.017C14.4647 8 14.017 8.44772 14.017 9V12C14.017 12.5523 13.5693 13 13.017 13H11.017C10.4647 13 10.017 12.5523 10.017 12V6C10.017 4.89543 10.9124 4 12.017 4H19.017C21.2261 4 23.017 5.79086 23.017 8V15C23.017 18.3137 20.3307 21 17.017 21H14.017ZM3.017 21L3.017 18C3.017 16.8954 3.91243 16 5.017 16H8.017C8.56928 16 9.017 15.5523 9.017 15V9C9.017 8.44772 8.56928 8 8.017 8H4.017C3.46472 8 3.017 8.44772 3.017 9V12C3.017 12.5523 2.56928 13 2.017 13H0.017C-0.53528 13 -1.017 12.5523 -1.017 12V6C-1.017 4.89543 -0.12157 4 0.983 4H8.017C10.2261 4 12.017 5.79086 12.017 8V15C12.017 18.3137 9.33072 21 6.017 21H3.017Z"></path>
+</svg>
+<p class="text-xl text-brand-text italic leading-relaxed">
+            "Search and find your dream job is now easier than ever. Just browse a job and apply if you need to."
+          </p>
+<div>
+<p class="font-bold text-brand-text">Mas Parjono</p>
+<p class="text-brand-text-muted text-sm">UI Designer at Google</p>
+</div>
+</div>
+</div>
+<!-- Overlapping Floating Card -->
+<div class="relative z-20 mt-12 md:mt-0 md:absolute md:-bottom-4 md:-right-4 w-full md:max-w-xs p-6 glass-pane rounded-xl shadow-2xl" data-purpose="cta-floating-card">
+<h3 class="font-bold text-lg mb-2">Get your right job and right place apply now</h3>
+<p class="text-brand-text-muted text-sm mb-4">Be among the first founders to experience the easiest way to start run a business.</p>
+<div class="flex items-center space-x-2">
+<!-- Avatars -->
+<div class="flex -space-x-2 overflow-hidden">
+<img alt="" class="inline-block h-8 w-8 rounded-full ring-2 ring-brand-surface-low" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBI-te0xmBDKh-XaiGrKLnDXL-SXvbVU6am-3piJo21zg8Hh7Teg5kBRhqaL1uj23lU53AmIHEzyV1omUVYn21yhVuTVWQiiFMkNrIV5ccQoyAcHW2Bqq_Oz14wQaE1J7DvQ_CsXzIQCGV9kjuZ9OWc6gCm6ZjqTp4a0qOLEueujY4L_sgHfotfr4Ictons352wwjt_GSuNbAdPSIXXJWPEO_nyRJGtzcbXb_Ao17EtlUWGvY-u3a4RFg"/>
+<img alt="" class="inline-block h-8 w-8 rounded-full ring-2 ring-brand-surface-low" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD52IxMBHnq1gPyItFzqG4xJhDg5UNwSlXDOCBNP7jC2yDtkJb-uAECBY1JFQplZ-nR53HrS4XijNsUGAepxNOxc6EdjG05w1-MLDCKBJeRzdxSY5cDEGx76Il2P8NP6eEty6dCHsk4WRjYBkP_WRuDgYwRauu-XySoSG1ZRxnmoTDRZYlnJ58OptRUK7s-pSMfiw-JEWwTQUkRCY2wrL6ZFKHmEjh3rOlY8kEgoLaaOtLY9ABMGS29Ig"/>
+<img alt="" class="inline-block h-8 w-8 rounded-full ring-2 ring-brand-surface-low" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAWAtxjneO-CN5NjuY8u9s6dXTcg8VO4kLeTwGlNqR7bO7om--gtfimvM8tPYNpXfB2Tnigi7u0Fp6k6_U54YYzYn9XPaCPZjPjbBKxkV_XjtmxQN-YCMsvg90f2_-Li-_-Pz-0PFBzmJgzTt_Kp9E9cpWGDpOgYUwSHRamF8PlHefJiesGY5vxoYX-pwCOBQpbFt8RwK-WLYnRQ_dy69KJK7U8cMpMfuIZNYsoe2w5rvG99XaKLLFSLg"/>
+<div class="inline-block h-8 w-8 rounded-full ring-2 ring-brand-surface-low bg-brand-surface-bright flex items-center justify-center text-[10px] font-medium">+1k</div>
+</div>
+</div>
+</div>
+</section>
+<!-- END: Right Pane -->
+</main>
+<!-- END: Login Container -->
+</body></html>
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-08-03T19:12:28+03:00.
+</ADDITIONAL_METADATA>

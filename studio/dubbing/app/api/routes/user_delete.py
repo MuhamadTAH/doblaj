@@ -75,7 +75,7 @@ def _delete_clerk_user(clerk_user_id: str) -> None:
         logger.warning(f"[USER-DELETE] Clerk delete failed: {e}")
 
 
-def _delete_convex_workspace(workspace_id: str) -> None:
+def _delete_convex_workspace(user_id: str, workspace_id: str) -> None:
     """Cascade-delete the user's Convex rows. Best-effort: log and
     continue. The dubbing_jobs/dubbing_chunks/workspaces rows are
     removed via internal mutations.
@@ -84,13 +84,16 @@ def _delete_convex_workspace(workspace_id: str) -> None:
         from convex import ConvexClient
 
         convex_url = os.getenv("CONVEX_URL", "http://127.0.0.1:3210")
+        internal_key = os.getenv("INTERNAL_API_KEY", "")
         client = ConvexClient(convex_url)
-        # Pird: ConvexClient calls are sync. Run inline. The
-        # deleteByClerkIdInternal mutation is keyed by Clerk id, not
-        # workspace legacyId, so we resolve workspace → clerk id first.
-        # If the workspace has no owner, this is a no-op.
-        client.mutation("users:deleteByClerkIdInternal", {"clerkId": workspace_id})
-        logger.info(f"[USER-DELETE] Convex workspace {workspace_id!r} cleanup requested")
+        if user_id:
+            client.mutation("users:deleteByClerkIdInternal", {"clerkId": user_id, "__internalApiKey": internal_key})
+        if workspace_id:
+            try:
+                client.mutation("users:deleteByLegacyWorkspaceIdInternal", {"workspaceId": workspace_id, "__internalApiKey": internal_key})
+            except Exception as w_exc:
+                logger.debug(f"[USER-DELETE] Legacy workspace cleanup: {w_exc}")
+        logger.info(f"[USER-DELETE] Convex cleanup requested for user {user_id!r} (workspace {workspace_id!r})")
     except Exception as e:
         logger.warning(f"[USER-DELETE] Convex cleanup failed: {e}")
 
@@ -100,25 +103,12 @@ async def delete_user(
     body: DeleteUserBody,
     user: AuthenticatedUser = Depends(require_user),
 ):
-    """Permanently delete the calling user's data.
-
-    Pird (security review M1): the previous implementation accepted a
-    `password` it never verified and returned {"status": "queued"} with
-    no real deletion — a GDPR foot-gun. This version:
-      1. Authenticates via the Clerk JWT (require_user, not _optional).
-      2. Calls Clerk's REST API to delete the user record server-side.
-      3. Asks Convex to cascade-delete the user's rows.
-      4. The Clerk webhook (user.deleted) handles any straggler rows.
-    The password field is kept in the request body so the React UI
-    doesn't have to change shape, but it's no longer trusted.
-    """
+    """Permanently delete the calling user's data."""
     logger.info(
         f"[AUDIT] User deletion requested for {user.user_id} "
         f"(workspace {user.workspace_id!r}) via Dubbing platform"
     )
 
-    # PIRD-024: per-user rate limit via Redis INCR + EXPIRE. Fail-closed
-    # if Redis is unreachable.
     if not _check_rate_limit(user.user_id, max_attempts=5, window_sec=600):
         raise HTTPException(
             status_code=503,
@@ -126,6 +116,6 @@ async def delete_user(
         )
 
     _delete_clerk_user(user.user_id)
-    _delete_convex_workspace(user.workspace_id)
+    _delete_convex_workspace(user.user_id, user.workspace_id)
 
     return {"status": "deleted", "user_id": user.user_id}

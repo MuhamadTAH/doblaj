@@ -16,7 +16,7 @@ def _get_http_client() -> httpx.AsyncClient:
     global _http_client
     if _http_client is None or _http_client.is_closed:
         _http_client = httpx.AsyncClient(
-            http2=True,
+            http2=False,
             limits=httpx.Limits(max_keepalive_connections=20, max_connections=50),
             timeout=httpx.Timeout(90.0)
         )
@@ -165,7 +165,7 @@ async def translate_single_chunk_structured(
     }
 
     payload = {
-        "model": "google/gemini-3-flash-preview",
+        "model": "google/gemini-flash-1.5",
         "messages": messages,
         "temperature": 0.4
     }
@@ -220,6 +220,7 @@ async def batch_translate_text(chunks: list, batch_size: int = 5, category_id: s
     """
     Batches multiple text chunks into a single API request via OpenRouter.
     """
+    logger.info(f"DEBUG: Entering batch_translate_text with {len(chunks)} chunks")
     api_key = os.getenv("OPEN_ROUTER_API_KEY")
     if not api_key:
         if os.getenv("PIRD_ENV") == "prod":
@@ -272,8 +273,10 @@ async def batch_translate_text(chunks: list, batch_size: int = 5, category_id: s
             valid_batch_chunks.append(chunk)
         
         if not batch_input:
+            logger.info("DEBUG: batch_input is empty, returning")
             return
             
+        logger.info(f"DEBUG: Running OpenRouter Text Batch on {len(batch_input)} chunks...")
         logger.info(f"[BATCH INFERENCE] Running OpenRouter Text Batch on {len(batch_input)} chunks...")
         
         sys_prompt = _TRANSLATION_SYSTEM_PROMPT_TEMPLATE
@@ -293,7 +296,7 @@ async def batch_translate_text(chunks: list, batch_size: int = 5, category_id: s
         ]
         
         payload = {
-            "model": "google/gemini-3-flash-preview",
+            "model": "google/gemini-flash-1.5",
             "messages": messages,
             "temperature": 0.3
         }

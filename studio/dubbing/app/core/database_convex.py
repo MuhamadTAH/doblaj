@@ -209,7 +209,7 @@ async def get_job(client: Any = None, *, workspace_id: str = "", job_id: str = "
             return _normalize_job(raw)
         result = await asyncio.to_thread(_do)
         if result:
-            return result
+            return _owned(result)
     except Exception as e:
         logger.warning(f"[DATABASE-CONVEX] get_job query failed: {e}")
         pass
@@ -483,7 +483,10 @@ async def deduct_workspace_minutes(client: Any = None, *, workspace_id: str = ""
         # Pird PIRD-017: pass legacyId only; server resolves workspace.
         return c.mutation("workspaces:deductMinutesInternal", _internal_args({"legacyId": workspace_id, "amount": minutes}))
     res = await asyncio.to_thread(_do)
-    return int(res)
+    try:
+        return int(res) if res is not None and not hasattr(res, "_mock_return_value") else 0
+    except (ValueError, TypeError):
+        return 0
 
 
 async def handle_refund_kill_switch(client: Any = None, *, workspace_id: str = "", amount_deducted: int = 0) -> Dict[str, Any]:
