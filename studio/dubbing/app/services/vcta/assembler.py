@@ -70,7 +70,7 @@ async def assemble_final_video(
         })
 
     if not tts_entries:
-        errors = [c.get("tts_error") for c in chunks if isinstance(c, dict) and c.get("tts_error")]
+        errors = [c.get("error") or c.get("tts_error") for c in chunks if isinstance(c, dict) and (c.get("error") or c.get("tts_error"))]
         if errors:
             unique_errors = list(set(errors))
             raise RuntimeError(f"No TTS files were generated. TTS API Errors: {', '.join(unique_errors)}")
