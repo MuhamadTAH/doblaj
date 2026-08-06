@@ -81,11 +81,11 @@ async def _call_fish_speech(
             )
         except Exception as e:
             logger.error(f"[TTS] silence-stub ffmpeg failed: {e}")
-        return True
+        return True, ""
 
     if not reference_id and not os.path.exists(reference_audio_path):
         logger.error(f"[TTS] Reference audio not found: {reference_audio_path}")
-        return False
+        return False, f"Reference audio not found: {reference_audio_path}"
 
     url = "https://api.fish.audio/v1/tts"
     headers = {
@@ -164,20 +164,23 @@ async def generate_tts(text: str, reference_audio_path: str, output_wav: str, is
     """
     Public entry point for TTS generation. Handles padded audio trimming and enforces Fish Audio 10s limit.
     """
-    target_ref = reference_audio_path
-    
-    import librosa
-    try:
-        duration = librosa.get_duration(filename=reference_audio_path)
-    except Exception:
-        duration = 0.0
+    target_ref = reference_audio_path or ""
+
+    duration = 0.0
+    if target_ref:
+        import librosa
+        try:
+            duration = librosa.get_duration(filename=target_ref)
+        except Exception:
+            duration = 0.0
 
     # Fish Audio strictly rejects reference audio > 10 seconds.
     # Trim to 9.5s max, or the requested speech_duration if it's shorter.
     trim_target = min(9.5, speech_duration if speech_duration > 0 else 9.5)
     
-    if (is_padded and speech_duration > 0) or duration > 9.9:
-        target_ref = reference_audio_path.replace(".wav", "_trimmed.wav")
-        _trim_reference_audio(reference_audio_path, target_ref, trim_target)
+    if target_ref and ((is_padded and speech_duration > 0) or duration > 9.9):
+        trimmed = target_ref.replace(".wav", "_trimmed.wav")
+        _trim_reference_audio(target_ref, trimmed, trim_target)
+        target_ref = trimmed
         
     return await _call_fish_speech(text, target_ref, output_wav, speed=speed)
