@@ -622,6 +622,7 @@ async def process_video_cpu_phase(zip_path: str):
             except Exception as e:
                 logger.error(f"[JOB {job_id}] Chunk processing exception: {e}")
                 chunk["status"] = "failed"
+                chunk["error"] = str(e)
                 return chunk
 
         tts_tasks = [_run_tts_task(i, chunk) for i, chunk in enumerate(translated_chunks, start=1)]

@@ -609,9 +609,9 @@ async def _async_assemble_video(results, session_id: str, video_path: str, bg_wa
         return False
         
     # Log all results for debugging
-    failed_chunks = [c for c in results if isinstance(c, dict) and c.get("status") == "failed"]
+    failed_chunks = [c for c in results if isinstance(c, dict) and c.get("status") in ("failed", "skipped")]
     for c in failed_chunks:
-        logger.error(f"[ASSEMBLY_CHECK] Chunk {c.get('chunk_id')} failed with error: {c.get('error', 'Unknown')}")
+        logger.error(f"[ASSEMBLY_CHECK] Chunk {c.get('chunk_id')} failed/skipped with error: {c.get('error', 'Unknown')}")
         
     # Valid chunks
     valid_chunks = [c for c in results if isinstance(c, dict) and c.get("status") in ("approved", "tts_done", "pending")]

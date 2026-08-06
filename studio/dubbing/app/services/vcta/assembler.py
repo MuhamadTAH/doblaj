@@ -42,6 +42,9 @@ async def assemble_final_video(
     work = Path(work_dir)
     tts_entries = []
     
+    if not chunks:
+        raise RuntimeError("No chunks were provided to the assembler. Upstream processing likely failed on all chunks.")
+    
     for enumerate_idx, chunk in enumerate(chunks, start=1):
         tts_file = chunk.get("tts_file", "")
         if not tts_file or not os.path.exists(tts_file):
