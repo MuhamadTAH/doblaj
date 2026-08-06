@@ -84,7 +84,7 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
     
     if not chunk.get("kurdish_raw") and not remaster_only:
         logger.warning(f"Chunk {chunk_id} has no kurdish_raw text (transcription failed). Skipping processing.")
-        return {"chunk_id": chunk_id, "status": "skipped", "error": "No source text"}
+        return {"chunk_id": chunk_id, "status": "skipped", "error": chunk.get("error") or "No source text"}
     
     # Check circuit breaker before starting
     processed_key = f"circuit_breaker:{session_id}:processed"

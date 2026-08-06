@@ -14,22 +14,18 @@ async def transcribe_gemini_flash(audio_path: str, history: list = None) -> str:
     """Fallback using google/gemini-flash-1.5"""
     api_key = os.getenv("OPEN_ROUTER_API_KEY")
     if not api_key:
-        # Pird: fail closed in prod for consistency with batch function below.
-        # See pass-6 review.
-        if os.getenv("PIRD_ENV") == "prod":
-            raise RuntimeError("OPEN_ROUTER_API_KEY is not configured in production")
         logger.error("[GEMINI STT] OPEN_ROUTER_API_KEY not set.")
-        return ""
+        raise RuntimeError("OPEN_ROUTER_API_KEY environment variable is not set")
         
     if not os.path.exists(audio_path):
-        return ""
+        raise RuntimeError(f"Audio file does not exist: {audio_path}")
     
     try:
         with open(audio_path, "rb") as f:
             b64_audio = base64.b64encode(f.read()).decode("utf-8")
     except Exception as e:
         logger.error(f"[GEMINI FLASH] Encoding failed: {e}")
-        return ""
+        raise RuntimeError(f"Audio encoding failed: {e}")
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -87,18 +83,18 @@ async def transcribe_gemini_flash(audio_path: str, history: list = None) -> str:
                             await asyncio.sleep(15)
                             continue
                         logger.error(f"[GEMINI FLASH] OpenRouter API Error 429: {err_text}")
-                        return ""
+                        raise RuntimeError(f"OpenRouter Rate Limit (429): {err_text}")
                     else:
                         err_text = await resp.text()
                         logger.error(f"[GEMINI FLASH] OpenRouter API Error {resp.status}: {err_text}")
-                        return ""
+                        raise RuntimeError(f"OpenRouter API Error {resp.status}: {err_text}")
         except Exception as e:
-            if attempt < max_retries - 1:
+            if attempt < max_retries - 1 and not isinstance(e, RuntimeError):
                 logger.warning(f"[GEMINI FLASH] Request Failed ({e}) on attempt {attempt+1}. Retrying in 5s...")
                 await asyncio.sleep(5)
                 continue
             logger.error(f"[GEMINI FLASH] OpenRouter Request Failed finally: {e}")
-            return ""
+            raise RuntimeError(f"OpenRouter Request Failed: {e}")
 
 async def cross_reference_transcription(scribe_text: str, flash_text: str) -> str:
     """Uses Gemini 3.1 Pro Preview to correct Sorani text based on both inputs."""

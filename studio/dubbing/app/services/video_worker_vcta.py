@@ -480,6 +480,7 @@ async def process_video_cpu_phase(zip_path: str):
                     else:
                         logger.error(f"[JOB {job_id}] CRITICAL: Transcription failed for chunk {g['chunk_id']}.")
                         chunk_dict["kurdish_raw"] = ""
+                        chunk_dict["error"] = "Transcription (Gemini Flash) returned empty text"
                         
                     with open(dir_transcription / f"chunk_{idx}_transcription.txt", "w", encoding="utf-8") as f:
                         f.write(chunk_dict.get("kurdish_raw", ""))
