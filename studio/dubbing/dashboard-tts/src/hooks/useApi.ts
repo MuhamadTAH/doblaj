@@ -32,7 +32,7 @@ export const useApi = () => {
   const authFetch = useCallback(async (url: string | URL | globalThis.Request, options: RequestInit = {}): Promise<Response> => {
     let token: string | null = null;
     try {
-      token = await getToken({ template: 'convex' });
+      token = await getToken({ template: "convex" });
     } catch (sdkError: any) {
       console.error("Clerk getToken error:", sdkError);
       
@@ -57,6 +57,12 @@ export const useApi = () => {
     const res = await fetch(url, { ...options, headers });
 
     if (res.status === 401) {
+      try {
+        const errorText = await res.clone().text();
+        console.error(`Auth failed with 401. Backend says: ${errorText}`);
+      } catch (e) {
+        console.error('Auth failed with 401. Could not read response text.');
+      }
       throw new AuthFailedError();
     }
 
