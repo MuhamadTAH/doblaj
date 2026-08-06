@@ -11,6 +11,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional
 
+from app.core.session_logger import session_log_context
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -705,45 +707,46 @@ async def step4_transcribe(session_id: str = Form(...), user: AuthenticatedUser 
         entity = state.get("entity", "")
         
         async def _process_batch_with_fallback(batch_chunks, start_idx, history=None):
-            if not batch_chunks:
-                return
-            
-            _log(session_id, f"Processing batch of {len(batch_chunks)} chunks ({start_idx} to {start_idx + len(batch_chunks) - 1}) with Gemini 3.1 Pro Preview Array Batching...")
-            
-            try:
-                results = await ai_transcription.transcribe_gemini_flash_batch(
-                    chunks=batch_chunks, 
-                    history=history, 
-                    entity=entity,
-                    category_id=state.get("category_id"),
-                    session_id=session_id
-                )
-                
-                from app.services.video.dictionary_cache import inject_lrm
-                for i, res in enumerate(results):
-                    c = batch_chunks[i]
-                    raw_text = res.get("text", "")
-                    
-                    # Phase 7: Root-Level LRM Injection
-                    c["kurdish_raw"] = inject_lrm(raw_text, state.get("category_id"))
-                    
-                    c["words"] = res.get("words", [])
-                    global_idx = start_idx + i
-                    _log(session_id, f"Chunk {global_idx} [{c['chunk_id'][:6]}]: {c['kurdish_raw']}")
-                    
-                    with open(dir_trans / f"chunk_{global_idx}_transcription.txt", "w", encoding="utf-8") as f:
-                        f.write(c["kurdish_raw"])
-                        
-            except Exception as e:
-                _log(session_id, f"Batch failed ({e}). Attempting binary split fallback...", "WARNING")
-                if len(batch_chunks) == 1:
-                    _log(session_id, f"Chunk {start_idx} failed individually. Skipping.", "ERROR")
+            with session_log_context(session_id):
+                if not batch_chunks:
                     return
                 
-                mid = len(batch_chunks) // 2
-                await _process_batch_with_fallback(batch_chunks[:mid], start_idx, history)
-                next_history = batch_chunks[max(0, mid - 2):mid]
-                await _process_batch_with_fallback(batch_chunks[mid:], start_idx + mid, next_history)
+                _log(session_id, f"Processing batch of {len(batch_chunks)} chunks ({start_idx} to {start_idx + len(batch_chunks) - 1}) with Gemini 3.1 Pro Preview Array Batching...")
+                
+                try:
+                    results = await ai_transcription.transcribe_gemini_flash_batch(
+                        chunks=batch_chunks, 
+                        history=history, 
+                        entity=entity,
+                        category_id=state.get("category_id"),
+                        session_id=session_id
+                    )
+                    
+                    from app.services.video.dictionary_cache import inject_lrm
+                    for i, res in enumerate(results):
+                        c = batch_chunks[i]
+                        raw_text = res.get("text", "")
+                        
+                        # Phase 7: Root-Level LRM Injection
+                        c["kurdish_raw"] = inject_lrm(raw_text, state.get("category_id"))
+                        
+                        c["words"] = res.get("words", [])
+                        global_idx = start_idx + i
+                        _log(session_id, f"Chunk {global_idx} [{c['chunk_id'][:6]}]: {c['kurdish_raw']}")
+                        
+                        with open(dir_trans / f"chunk_{global_idx}_transcription.txt", "w", encoding="utf-8") as f:
+                            f.write(c["kurdish_raw"])
+                            
+                except Exception as e:
+                    _log(session_id, f"Batch failed ({e}). Attempting binary split fallback...", "WARNING")
+                    if len(batch_chunks) == 1:
+                        _log(session_id, f"Chunk {start_idx} failed individually. Skipping.", "ERROR")
+                        return
+                    
+                    mid = len(batch_chunks) // 2
+                    await _process_batch_with_fallback(batch_chunks[:mid], start_idx, history)
+                    next_history = batch_chunks[max(0, mid - 2):mid]
+                    await _process_batch_with_fallback(batch_chunks[mid:], start_idx + mid, next_history)
 
         batches = []
         current_batch = []
@@ -991,19 +994,20 @@ async def step5_run_physics(session_id: str = Form(...), chunks_json: Optional[s
             
         if valid_chunks:
             async def run_pipeline_bg():
-                try:
-                    _log(session_id, "Processing chunks with concurrency limit of 2...")
-                    sem = asyncio.Semaphore(2)
-                    async def bounded_process(c):
-                        async with sem:
-                            return await _async_process_chunk(c, session_id, session_state_dict, video_path, translate_only=True)
-                            
-                    chunk_tasks = [bounded_process(c) for c in valid_chunks]
-                    results = await asyncio.gather(*chunk_tasks)
-                    
-                    _log(session_id, "Translation completed. Background TTS and Physics skipped as requested.")
-                except Exception as ex:
-                    _log(session_id, f"Pipeline execution failed: {ex}", "ERROR")
+                with session_log_context(session_id):
+                    try:
+                        _log(session_id, "Processing chunks with concurrency limit of 2...")
+                        sem = asyncio.Semaphore(2)
+                        async def bounded_process(c):
+                            async with sem:
+                                return await _async_process_chunk(c, session_id, session_state_dict, video_path, translate_only=True)
+                                
+                        chunk_tasks = [bounded_process(c) for c in valid_chunks]
+                        results = await asyncio.gather(*chunk_tasks)
+                        
+                        _log(session_id, "Translation completed. Background TTS and Physics skipped as requested.")
+                    except Exception as ex:
+                        _log(session_id, f"Pipeline execution failed: {ex}", "ERROR")
 
             asyncio.create_task(run_pipeline_bg())
             _log(session_id, f"Dispatched {len(valid_chunks)} background pipeline tasks.")
@@ -1072,23 +1076,24 @@ async def step6_run_tts(
         
         if valid_chunks:
             async def run_tts_bg():
-                try:
-                    _log(session_id, f"Generating voices for {len(valid_chunks)} chunks with Physics duration autofix...")
-                    sem = asyncio.Semaphore(2)
-                    async def bounded_process(c):
-                        async with sem:
-                            return await _async_process_chunk(
-                                c, session_id, session_state_dict, video_path,
-                                translate_only=False,
-                                bypass_initial_translation=True
-                            )
-                            
-                    chunk_tasks = [bounded_process(c) for c in valid_chunks]
-                    results = await asyncio.gather(*chunk_tasks)
-                    
-                    _log(session_id, "All Voice Generation completed with Autofix limits.")
-                except Exception as ex:
-                    _log(session_id, f"TTS execution failed: {ex}", "ERROR")
+                with session_log_context(session_id):
+                    try:
+                        _log(session_id, f"Generating voices for {len(valid_chunks)} chunks with Physics duration autofix...")
+                        sem = asyncio.Semaphore(2)
+                        async def bounded_process(c):
+                            async with sem:
+                                return await _async_process_chunk(
+                                    c, session_id, session_state_dict, video_path,
+                                    translate_only=False,
+                                    bypass_initial_translation=True
+                                )
+                                
+                        chunk_tasks = [bounded_process(c) for c in valid_chunks]
+                        results = await asyncio.gather(*chunk_tasks)
+                        
+                        _log(session_id, "All Voice Generation completed with Autofix limits.")
+                    except Exception as ex:
+                        _log(session_id, f"TTS execution failed: {ex}", "ERROR")
 
             asyncio.create_task(run_tts_bg())
             _log(session_id, f"Dispatched {len(valid_chunks)} background TTS tasks.")
@@ -1142,35 +1147,36 @@ async def step7_run_assembly(
     from app.worker import _async_assemble_video, _async_process_chunk
     try:
         async def run_assembly_bg():
-            try:
-                _log(session_id, "Re-mastering chunks with latest timing parameters before assembly (Free/Local)...")
-                remaster_tasks = []
-                for c in chunks:
-                    if c.get("arabic_text") and os.path.exists(Path(session_dir) / "tts" / f"raw_tts_{c['chunk_id']}.wav"):
-                        remaster_tasks.append(_async_process_chunk(
-                            chunk=c, 
-                            session_id=session_id, 
-                            session_state_dict=state, 
-                            video_path=video_path, 
-                            remaster_only=True
-                        ))
-                
-                if remaster_tasks:
-                    remaster_results = await asyncio.gather(*remaster_tasks)
-                    # Merge results to update chunk status and paths
-                    for res in remaster_results:
-                        for c in chunks:
-                            if c.get("chunk_id") == res.get("chunk_id"):
-                                c.update(res)
-                                break
-                                
-                _write_state(session_id, state)
-                
-                _log(session_id, "Assembling final video with Atempo limits...")
-                await _async_assemble_video(chunks, session_id, video_path, bg_wav, reference_profile)
-                _log(session_id, "Video assembly completed.")
-            except Exception as ex:
-                _log(session_id, f"Assembly execution failed: {ex}", "ERROR")
+            with session_log_context(session_id):
+                try:
+                    _log(session_id, "Re-mastering chunks with latest timing parameters before assembly (Free/Local)...")
+                    remaster_tasks = []
+                    for c in chunks:
+                        if c.get("arabic_text") and os.path.exists(Path(session_dir) / "tts" / f"raw_tts_{c['chunk_id']}.wav"):
+                            remaster_tasks.append(_async_process_chunk(
+                                chunk=c, 
+                                session_id=session_id, 
+                                session_state_dict=state, 
+                                video_path=video_path, 
+                                remaster_only=True
+                            ))
+                    
+                    if remaster_tasks:
+                        remaster_results = await asyncio.gather(*remaster_tasks)
+                        # Merge results to update chunk status and paths
+                        for res in remaster_results:
+                            for c in chunks:
+                                if c.get("chunk_id") == res.get("chunk_id"):
+                                    c.update(res)
+                                    break
+                                    
+                    _write_state(session_id, state)
+                    
+                    _log(session_id, "Assembling final video with Atempo limits...")
+                    await _async_assemble_video(chunks, session_id, video_path, bg_wav, reference_profile)
+                    _log(session_id, "Video assembly completed.")
+                except Exception as ex:
+                    _log(session_id, f"Assembly execution failed: {ex}", "ERROR")
 
         asyncio.create_task(run_assembly_bg())
         _log(session_id, "Dispatched background Assembly task.")
@@ -1398,11 +1404,13 @@ async def assemble_video_only(session_id: str = Form(...), user: AuthenticatedUs
     from app.worker import _async_assemble_video
     
     async def run_assembly_bg():
-        try:
-            final_video = await _async_assemble_video(valid_chunks, session_id, video_path, bg_wav)
-            _log(session_id, "Fast Assembly complete!", "INFO")
-        except Exception as e:
-            _log(session_id, f"Fast Assembly failed: {e}", "ERROR")
+        with session_log_context(session_id):
+            try:
+                _log(session_id, "Re-mastering chunks before final assembly (Standalone Assembly Mode)...")
+                await _async_assemble_video(valid_chunks, session_id, video_path, bg_wav)
+                _log(session_id, "Fast Assembly complete!", "INFO")
+            except Exception as e:
+                _log(session_id, f"Fast Assembly failed: {e}", "ERROR")
             
     # Run in background so the UI doesn't hang
     asyncio.create_task(run_assembly_bg())

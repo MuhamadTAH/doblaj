@@ -22,6 +22,7 @@ from app.services.vcta.voice_router import route_voice
 from scripts.audio_assembly import process_chunk_assembly
 from app.services.vcta.assembler import assemble_final_video
 from app.core.database import update_job_status, get_job
+from app.core.session_logger import session_log_context
 
 # Pird: validate chunk_id before using it to construct file paths. chunk_id
 # flows from user-controlled state.json into Path() — without this, a
@@ -68,12 +69,13 @@ def process_chunk_task(self, chunk: dict, session_id: str, session_state_dict: d
     Executes Translation -> TTS -> FFmpeg Atempo for a specific chunk.
     """
     # Create an event loop for async functions
-    loop = asyncio.get_event_loop()
-    if loop.is_closed():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-    return loop.run_until_complete(_async_process_chunk(chunk, session_id, session_state_dict, video_path))
+    with session_log_context(session_id):
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+        return loop.run_until_complete(_async_process_chunk(chunk, session_id, session_state_dict, video_path))
 
 async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict: dict, video_path: str, translate_only: bool = False, bypass_initial_translation: bool = False, remaster_only: bool = False, skip_math: bool = False):
     """
@@ -592,12 +594,13 @@ def assemble_video_task(results, session_id: str, video_path: str, bg_wav: str):
     Service C: The Assembler
     Triggered via Chord when all process_chunk_tasks complete.
     """
-    loop = asyncio.get_event_loop()
-    if loop.is_closed():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-    return loop.run_until_complete(_async_assemble_video(results, session_id, video_path, bg_wav))
+    with session_log_context(session_id):
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+        return loop.run_until_complete(_async_assemble_video(results, session_id, video_path, bg_wav))
 
 async def _async_assemble_video(results, session_id: str, video_path: str, bg_wav: str, reference_profile: dict = None):
     logger.info(f"[ASSEMBLER] All chunks completed for session {session_id}. Starting mix.")
