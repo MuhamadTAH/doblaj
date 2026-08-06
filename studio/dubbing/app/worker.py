@@ -320,6 +320,7 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
                 
             # 2. TTS
             lib_id, ref_audio = route_voice(chunk, session_state_dict)
+            logger.info(f"[TTS] Chunk {chunk_id} routing result: lib_id={lib_id}, ref_audio={ref_audio}")
             success, err_msg = await generate_tts(
                 text=arabic_text,
                 reference_audio_path=ref_audio or "",
@@ -330,6 +331,7 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
             )
             
             if not success:
+                logger.error(f"[TTS] generate_tts failed for chunk {chunk_id}: {err_msg}")
                 chunk["tts_error"] = err_msg
                 break
                 
@@ -414,7 +416,17 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
     # 5. FFmpeg Atempo Assembly (Stretches the raw speech)
     if not translate_only:
         if not os.path.exists(final_tts_wav):
-            return {"chunk_id": chunk_id, "status": "failed", "error": chunk.get("tts_error", "TTS generation failed.")}
+            err_msg = chunk.get("tts_error", "TTS generation failed.")
+            logger.error(f"[ASSEMBLY] final_tts_wav missing for chunk {chunk_id} at {final_tts_wav}. Error: {err_msg}")
+            
+            # Write to terminal log
+            session_dir = Path("data/jobs/sessions") / session_id
+            log_path = session_dir / "terminal.log"
+            if log_path.parent.exists():
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(f"[ERROR] Chunk {chunk_id} TTS failed: {err_msg}\n")
+                    
+            return {"chunk_id": chunk_id, "status": "failed", "error": err_msg}
             
         try:
             target_active_duration = max(0.1, video_slot_duration)
@@ -596,8 +608,26 @@ async def _async_assemble_video(results, session_id: str, video_path: str, bg_wa
         logger.warning("Job requires WPS recalibration. Skipping final assembly.")
         return False
         
+    # Log all results for debugging
+    failed_chunks = [c for c in results if isinstance(c, dict) and c.get("status") == "failed"]
+    for c in failed_chunks:
+        logger.error(f"[ASSEMBLY_CHECK] Chunk {c.get('chunk_id')} failed with error: {c.get('error', 'Unknown')}")
+        
     # Valid chunks
     valid_chunks = [c for c in results if isinstance(c, dict) and c.get("status") in ("approved", "tts_done", "pending")]
+    
+    if not valid_chunks and failed_chunks:
+        errors = [c.get("error") for c in failed_chunks if c.get("error")]
+        unique_errors = list(set(errors))
+        error_msg = f"All chunks failed processing. Errors: {', '.join(unique_errors)}"
+        logger.error(f"[ASSEMBLY] {error_msg}")
+        session_dir = Path("data/jobs/sessions") / session_id
+        log_path = session_dir / "terminal.log"
+        if log_path.parent.exists():
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"[ERROR] Stage 5 Assembly Failed: {error_msg}\n")
+        await update_job_status(session_id, "failed", error=error_msg)
+        raise RuntimeError(error_msg)
     
     assembled_dir = Path("data/jobs/sessions") / session_id / "assembled"
     final_audio = str(assembled_dir / "final_dub.wav")
