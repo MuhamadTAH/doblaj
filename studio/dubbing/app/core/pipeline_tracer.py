@@ -87,7 +87,7 @@ def _get_session_logger(session_id: str) -> logging.Logger:
 
     # Avoid adding duplicate handlers if the logger already has them
     if not logger.handlers:
-        fh = logging.FileHandler(log_path, encoding="utf-8")
+        fh = logging.FileHandler(log_path, encoding="utf-8", delay=False)
         fh.setFormatter(logging.Formatter("%(message)s"))
         logger.addHandler(fh)
 
@@ -100,14 +100,23 @@ def _get_session_logger(session_id: str) -> logging.Logger:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _emit(session_id: str, record: dict) -> None:
-    """Serialize a record to both the session file and the combined file."""
+    """Serialize a record to both the session file and the combined file.
+    Flushes immediately so logs survive a crash mid-job.
+    """
     record.setdefault("session_id", session_id)
     record.setdefault("ts", datetime.now(timezone.utc).isoformat())
 
     line = json.dumps(record, ensure_ascii=False)
 
-    _get_session_logger(session_id).info(line)
+    sess_logger = _get_session_logger(session_id)
+    sess_logger.info(line)
+    # Force flush so the line is on disk even if the process crashes next
+    for h in sess_logger.handlers:
+        h.flush()
+
     _combined_logger.info(line)
+    for h in _combined_logger.handlers:
+        h.flush()
 
 
 def trace_step(
