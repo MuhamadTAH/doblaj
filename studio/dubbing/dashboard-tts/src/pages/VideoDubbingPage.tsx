@@ -5,6 +5,8 @@ import { type DubJob } from "@/api/dubbing";
 import StageIcons, { activeStageIndex } from "@/components/StageIcons";
 import { useApi, AuthFailedError, AuthNetworkError } from "@/hooks/useApi";
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+
 const ACCEPTED = ".mp4,.mov,.webm,.mkv,video/*";
 const MAX_BYTES = 500 * 1024 * 1024; // 500 MB
 
