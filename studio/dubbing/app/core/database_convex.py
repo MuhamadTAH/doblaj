@@ -192,18 +192,11 @@ async def get_job(client: Any = None, *, workspace_id: str = "", job_id: str = "
         if not doc_ws:
             return job  # doc with no workspace — treat as orphan, do not block
         
-        # If they match exactly, we're good (e.g., in-memory jobs)
-        if str(doc_ws) == str(workspace_id):
-            return job
-            
-        # If the job came from in-memory and string doesn't match, reject
-        if from_memory:
+        # If workspace_id is supplied and doc_ws is present, they must match
+        if str(doc_ws) != str(workspace_id):
+            logger.warning("[DATABASE-CONVEX] Workspace mismatch: doc_ws=%s, expected=%s", doc_ws, workspace_id)
             return None
             
-        # If the job came from Convex, getInternal already strictly verified 
-        # expectedWorkspaceId server-side. Since doc_ws is the Convex ID and
-        # workspace_id is the legacy Clerk ID, they will not match by strict 
-        # string equality. We can safely trust Convex's validation here.
         return job
 
     try:

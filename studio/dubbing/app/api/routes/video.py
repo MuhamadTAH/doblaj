@@ -365,7 +365,7 @@ async def get_status(job_id: str, user: AuthenticatedUser = Depends(require_user
         from app.services import r2
         if r2.R2_ENDPOINT and raw_output.startswith("dubbing/"):
             try:
-                output_url = r2.signed_url(raw_output, ttl_seconds=86400)
+                output_url = r2.signed_url(raw_output, ttl_seconds=86400, filename=f"dubbed_{job_id[:8]}.mp4", inline=True)
             except Exception as e:
                 logger.error(f"[GET_STATUS] Failed to generate signed R2 URL for {raw_output}: {e}")
                 output_url = f"/video/jobs/{job_id}/download"
@@ -387,7 +387,7 @@ async def get_status(job_id: str, user: AuthenticatedUser = Depends(require_user
 
 
 @router.get("/jobs/{job_id}/download")
-async def download_video(job_id: str, inline: bool = False, user: AuthenticatedUser = Depends(require_user)) -> FileResponse:
+async def download_video(job_id: str, inline: bool = False, user: AuthenticatedUser = Depends(require_user)):
     from app.core import db as database
     user_client = database.get_user_client(user.access_token)
     job = await database.get_job(user_client, workspace_id=user.workspace_id, job_id=job_id)
@@ -406,14 +406,16 @@ async def download_video(job_id: str, inline: bool = False, user: AuthenticatedU
         logger.warning("[DOWNLOAD] job_id=%s not completed (status=%s)", job_id[:16], job["status"])
         raise HTTPException(status_code=400, detail="Job not completed")
 
-    output_path = job.get("result_video_r2_key") or job.get("resultVideoR2Key") or ""
+    output_path = job.get("result_video_r2_key") or job.get("resultVideoR2Key") or job.get("output_path") or ""
+
+    filename = f"dubbed_{job_id[:8]}.mp4"
 
     # If R2 is configured and this looks like a remote R2 key, redirect to signed URL
     from app.services import r2
     if r2.R2_ENDPOINT and output_path and output_path.startswith("dubbing/"):
         logger.info("[DOWNLOAD] R2 redirect for key=%s", output_path[:80])
         try:
-            url = r2.signed_url(output_path)
+            url = r2.signed_url(output_path, filename=filename, inline=inline)
             return RedirectResponse(url)
         except Exception as e:
             logger.error(f"Failed to generate signed URL for R2 key {output_path}: {e}")
@@ -431,32 +433,37 @@ async def download_video(job_id: str, inline: bool = False, user: AuthenticatedU
         logger.warning("[DOWNLOAD] job_id=%s output_path is EMPTY — no file to serve", job_id[:16])
         raise HTTPException(status_code=404, detail="Output file not found")
 
-    # Pird: path canonicalization — reject anything outside static/ and data/
-    # result_video_r2_key can be a path or an R2 key depending on the
-    # pipeline. Resolve and verify before serving. See
-    # handoffs/dubbing-audit-fixes-2026-07-15.md Fix 4.
     static_root = Path("static").resolve()
     data_root = Path("data").resolve()
     try:
         resolved = Path(output_path).resolve()
     except (OSError, RuntimeError):
-        raise HTTPException(status_code=404, detail="Output file not found")
-        
-    is_safe_path = resolved.is_relative_to(static_root) or resolved.is_relative_to(data_root)
+        resolved = None
+
+    is_safe_path = resolved and (resolved.is_relative_to(static_root) or resolved.is_relative_to(data_root))
     
     if not is_safe_path or not resolved.is_file():
+        # Fallback to R2 if local file is missing but R2 is configured
+        if r2.R2_ENDPOINT:
+            filename_part = Path(output_path).name if output_path else f"dubbed_{job_id}.mp4"
+            r2_key = r2.dubbing_key(user.workspace_id, job_id, filename_part)
+            if r2.exists(r2_key):
+                url = r2.signed_url(r2_key, filename=filename, inline=inline)
+                return RedirectResponse(url)
+
         logger.warning(
-            "[DOWNLOAD] job_id=%s path rejected: resolved=%s is_safe=%s is_file=%s",
-            job_id[:16], str(resolved)[:100],
+            "[DOWNLOAD] job_id=%s path rejected or missing: resolved=%s is_safe=%s is_file=%s",
+            job_id[:16], str(resolved)[:100] if resolved else "None",
             is_safe_path,
             resolved.is_file() if resolved else False,
         )
         raise HTTPException(status_code=404, detail="Output file not found")
 
     logger.info("[DOWNLOAD] Serving local file: %s", str(resolved)[:120])
+    headers = {"Content-Disposition": f'{"inline" if inline else "attachment"}; filename="{filename}"'}
     return FileResponse(
         path=str(resolved),
-        filename=None if inline else resolved.name,
+        headers=headers,
         media_type="video/mp4"
     )
 

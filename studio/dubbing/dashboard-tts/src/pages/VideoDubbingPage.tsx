@@ -212,7 +212,7 @@ export default function VideoDubbingPage() {
               } else if (rawPath.startsWith("/")) {
                 setVideoUrl(`${API_BASE}${rawPath}`);
               } else {
-                setVideoUrl(`${API_BASE}/video/jobs/${job.id}/download`);
+                setVideoUrl(`${API_BASE}/video/jobs/${job.id}/download?inline=true`);
               }
             } else {
               setVideoUrl(null);

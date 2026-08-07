@@ -82,15 +82,39 @@ def download_file(key: str, local_path: str) -> None:
 
 
 
-def signed_url(key: str, ttl_seconds: int = 86400) -> str:
+def signed_url(
+    key: str,
+    ttl_seconds: int = 86400,
+    filename: Optional[str] = None,
+    inline: bool = True,
+) -> str:
     """
     Generate a presigned URL valid for `ttl_seconds` (default 24 hours).
-    Anyone with this URL can download the object until it expires.
+    Sets proper Content-Type and Content-Disposition response headers so browsers
+    can stream/play videos natively in <video> elements and download with correct extensions.
     """
     client = _client()
+    params: dict = {"Bucket": R2_BUCKET, "Key": key}
+
+    lower_key = key.lower()
+    if lower_key.endswith(".mp4"):
+        params["ResponseContentType"] = "video/mp4"
+    elif lower_key.endswith(".wav"):
+        params["ResponseContentType"] = "audio/wav"
+    elif lower_key.endswith(".mp3"):
+        params["ResponseContentType"] = "audio/mpeg"
+    elif lower_key.endswith(".zip"):
+        params["ResponseContentType"] = "application/zip"
+
+    disposition_type = "inline" if inline else "attachment"
+    if filename:
+        params["ResponseContentDisposition"] = f'{disposition_type}; filename="{filename}"'
+    else:
+        params["ResponseContentDisposition"] = disposition_type
+
     return client.generate_presigned_url(
         "get_object",
-        Params={"Bucket": R2_BUCKET, "Key": key},
+        Params=params,
         ExpiresIn=ttl_seconds,
     )
 

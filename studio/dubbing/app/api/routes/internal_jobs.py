@@ -244,7 +244,7 @@ async def download_internal_job(
     from app.services import r2
     if r2.R2_ENDPOINT and output_path and output_path.startswith("dubbing/"):
         try:
-            url = r2.signed_url(output_path)
+            url = r2.signed_url(output_path, filename=f"dubbed_{job_id[:8]}.mp4", inline=False)
             return RedirectResponse(url)
         except Exception as e:
             logger.error(f"Failed to generate signed URL for R2 key {output_path}: {e}")
