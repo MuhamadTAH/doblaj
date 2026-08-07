@@ -356,7 +356,7 @@ export default function HistoryPage() {
                       <div>
                         {/* Video Viewport Container */}
                         {isCompleted && job.output_path ? (
-                          <DubVideoCardPlayer jobId={job.id} status={job.status} />
+                          <DubVideoCardPlayer jobId={job.id} status={job.status} videoUrl={job.output_path} />
                         ) : isProcessing ? (
                           <div className="aspect-video w-full bg-black/90 relative overflow-hidden group/video border-b border-white/[0.06] flex flex-col items-center justify-center p-6 text-center bg-gradient-to-b from-black/80 to-ink-950/90">
                             <div className="absolute inset-0 bg-cyan-500/5 animate-pulse" />
@@ -633,8 +633,11 @@ function downloadBlob(url: string, filename: string) {
   document.body.removeChild(a);
 }
 
-function DubVideoCardPlayer({ jobId, status }: { jobId: string; status: string }) {
+function DubVideoCardPlayer({ jobId, status, videoUrl }: { jobId: string; status: string; videoUrl?: string }) {
   const [orientation, setOrientation] = useState<"vertical" | "landscape" | "square">("landscape");
+  const videoSrc = (videoUrl && (videoUrl.startsWith("http") || videoUrl.startsWith("/")))
+    ? (videoUrl.startsWith("/") && !videoUrl.startsWith("http") ? `${API_BASE}${videoUrl}` : videoUrl)
+    : `${API_BASE}/video/jobs/${jobId}/download?inline=true`;
 
   return (
     <div
@@ -647,7 +650,7 @@ function DubVideoCardPlayer({ jobId, status }: { jobId: string; status: string }
       }`}
     >
       <video
-        src={`${API_BASE}/video/jobs/${jobId}/download?inline=true`}
+        src={videoSrc}
         controls
         preload="metadata"
         onLoadedMetadata={(e) => {

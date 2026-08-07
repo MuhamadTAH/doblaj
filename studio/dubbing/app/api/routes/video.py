@@ -49,7 +49,7 @@ async def _check_voice_recording_consent(user, consent_text_version: Optional[st
 logger = logging.getLogger(__name__)
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Request, Depends
-from app.auth.clerk_auth import require_user, require_user_or_internal, AuthenticatedUser
+from app.auth.clerk_auth import require_user, require_user_optional, require_user_or_internal, AuthenticatedUser
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from typing import List, Optional
 from pydantic import BaseModel
@@ -387,12 +387,19 @@ async def get_status(job_id: str, user: AuthenticatedUser = Depends(require_user
 
 
 @router.get("/jobs/{job_id}/download")
-async def download_video(job_id: str, inline: bool = False, user: AuthenticatedUser = Depends(require_user)):
+@router.head("/jobs/{job_id}/download")
+async def download_video(job_id: str, inline: bool = False, user: Optional[AuthenticatedUser] = Depends(require_user_optional)):
     from app.core import db as database
-    user_client = database.get_user_client(user.access_token)
-    job = await database.get_job(user_client, workspace_id=user.workspace_id, job_id=job_id)
+    if user:
+        client = database.get_user_client(user.access_token)
+        ws_id = user.workspace_id
+    else:
+        client = database._get_service_role_client()
+        ws_id = ""
+
+    job = await database.get_job(client, workspace_id=ws_id, job_id=job_id)
     if not job:
-        logger.warning("[DOWNLOAD] job_id=%s NOT FOUND for workspace", job_id[:16])
+        logger.warning("[DOWNLOAD] job_id=%s NOT FOUND", job_id[:16])
         raise HTTPException(status_code=404, detail="Job not found")
 
     logger.info(
@@ -446,8 +453,9 @@ async def download_video(job_id: str, inline: bool = False, user: AuthenticatedU
         # Fallback to R2 if local file is missing but R2 is configured
         if r2.R2_ENDPOINT:
             filename_part = Path(output_path).name if output_path else f"dubbed_{job_id}.mp4"
-            r2_key = r2.dubbing_key(user.workspace_id, job_id, filename_part)
-            if r2.exists(r2_key):
+            job_ws_id = ws_id or job.get("workspace_id") or job.get("workspaceId") or ""
+            r2_key = r2.dubbing_key(job_ws_id, job_id, filename_part) if job_ws_id else ""
+            if r2_key and r2.exists(r2_key):
                 url = r2.signed_url(r2_key, filename=filename, inline=inline)
                 return RedirectResponse(url)
 
@@ -471,6 +479,7 @@ async def download_video(job_id: str, inline: bool = False, user: AuthenticatedU
 @router.get("/jobs", response_model=List[VideoJobResponse])
 async def list_jobs(user: AuthenticatedUser = Depends(require_user)) -> List[VideoJobResponse]:
     from app.core import db as database
+    from app.services import r2
     try:
         user_client = database.get_user_client(user.access_token)
         jobs = await database.list_jobs(user_client, workspace_id=user.workspace_id)
@@ -479,11 +488,20 @@ async def list_jobs(user: AuthenticatedUser = Depends(require_user)) -> List[Vid
             st = job.get("status", "pending")
             status_str = "completed" if st in ("done", "completed") else st
             output_url = job.get("output_path") or job.get("result_video_r2_key") or job.get("resultVideoR2Key") or ""
-            if output_url and not output_url.startswith("/") and not output_url.startswith("http"):
-                output_url = f"/video/jobs/{job.get('id')}/output"
+            job_id_val = str(job.get("id") or job.get("legacyId") or "")
+            if status_str == "completed" and output_url:
+                if r2.R2_ENDPOINT and output_url.startswith("dubbing/"):
+                    try:
+                        output_url = r2.signed_url(output_url, ttl_seconds=86400, filename=f"dubbed_{job_id_val[:8]}.mp4", inline=True)
+                    except Exception as err:
+                        logger.error(f"[LIST_JOBS] R2 signed URL failed for job {job_id_val}: {err}")
+                        output_url = f"/video/jobs/{job_id_val}/download?inline=true"
+                elif not output_url.startswith("/") and not output_url.startswith("http"):
+                    output_url = f"/video/jobs/{job_id_val}/download?inline=true"
+
             res.append(
                 VideoJobResponse(
-                    id=str(job.get("id") or job.get("legacyId") or ""),
+                    id=job_id_val,
                     store_id="",
                     status=status_str,
                     progress=int(job.get("progress", 0)),
