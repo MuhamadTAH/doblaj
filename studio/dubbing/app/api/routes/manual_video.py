@@ -1008,7 +1008,11 @@ async def step5_run_physics(session_id: str = Form(...), chunks_json: Optional[s
                             trace_step(session_id, "CHUNK_DISPATCH", chunk_id=cid, status="START",
                                        bypass_initial_translation=bypass)
                             async with sem:
-                                result = await _async_process_chunk(c, session_id, session_state_dict, video_path, translate_only=True)
+                                result = await _async_process_chunk(
+                                    c, session_id, session_state_dict, video_path,
+                                    translate_only=True,
+                                    bypass_initial_translation=bypass
+                                )
                                 trace_step(session_id, "CHUNK_DISPATCH", chunk_id=cid, status="OK")
                                 return result
                                 
