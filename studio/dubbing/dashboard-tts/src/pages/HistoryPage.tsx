@@ -7,6 +7,8 @@ import { t } from "@/lib/i18n";
 import { DubJob } from "@/api/dubbing";
 import { useApi } from "@/hooks/useApi";
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+
 export default function HistoryPage() {
   const [activeTab, setActiveTab] = useState<"video" | "tts">("video");
   
@@ -439,7 +441,7 @@ export default function HistoryPage() {
                       <div className="p-4 pt-0">
                         {isCompleted && job.output_path ? (
                           <a
-                            href={`/video/jobs/${job.id}/download`}
+                            href={job.output_path.startsWith("http") ? job.output_path : `${API_BASE}/video/jobs/${job.id}/download`}
                             download
                             target="_blank"
                             rel="noreferrer"
@@ -645,7 +647,7 @@ function DubVideoCardPlayer({ jobId, status }: { jobId: string; status: string }
       }`}
     >
       <video
-        src={`/video/jobs/${jobId}/download?inline=true`}
+        src={`${API_BASE}/video/jobs/${jobId}/download?inline=true`}
         controls
         preload="metadata"
         onLoadedMetadata={(e) => {

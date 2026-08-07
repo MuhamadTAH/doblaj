@@ -358,12 +358,28 @@ async def get_status(job_id: str, user: AuthenticatedUser = Depends(require_user
     job = await database.get_job(user_client, workspace_id=user.workspace_id, job_id=job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    raw_output = job.get("result_video_r2_key") or job.get("resultVideoR2Key") or job.get("output_path") or ""
+    output_url = ""
+    if job.get("status") in ("completed", "done") and raw_output:
+        from app.services import r2
+        if r2.R2_ENDPOINT and raw_output.startswith("dubbing/"):
+            try:
+                output_url = r2.signed_url(raw_output, ttl_seconds=86400)
+            except Exception as e:
+                logger.error(f"[GET_STATUS] Failed to generate signed R2 URL for {raw_output}: {e}")
+                output_url = f"/video/jobs/{job_id}/download"
+        elif raw_output.startswith("http://") or raw_output.startswith("https://"):
+            output_url = raw_output
+        else:
+            output_url = f"/video/jobs/{job_id}/download"
+
     return VideoJobStatus(
         id=job["id"],
         status="completed" if job["status"] == "done" else job["status"],
         progress=job.get("progress", 0),
         input_path="",  # not persisted in app schema
-        output_path=job.get("result_video_r2_key") or job.get("resultVideoR2Key") or "",
+        output_path=output_url,
         error=job.get("error") or "",
         created_at=str(job.get("created_at", "")),
         updated_at=str(job.get("updated_at", "")),

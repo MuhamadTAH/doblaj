@@ -205,7 +205,18 @@ export default function VideoDubbingPage() {
           if (s.status === "completed") {
             setProgress(100);
             setPhase("completed");
-            setVideoUrl(s.output_path ?? null);
+            const rawPath = s.output_path ?? null;
+            if (rawPath) {
+              if (rawPath.startsWith("http://") || rawPath.startsWith("https://")) {
+                setVideoUrl(rawPath);
+              } else if (rawPath.startsWith("/")) {
+                setVideoUrl(`${API_BASE}${rawPath}`);
+              } else {
+                setVideoUrl(`${API_BASE}/video/jobs/${job.id}/download`);
+              }
+            } else {
+              setVideoUrl(null);
+            }
             setStatusMsg(t("dubbing_complete", "Dubbing complete"));
             if (pollRef.current) {
               window.clearInterval(pollRef.current);
