@@ -12,10 +12,6 @@ aiosqlite>=0.20.0
 # (the Convex adapter) and transitively by runpod_worker.py. Missing
 # this caused ModuleNotFoundError at worker boot on RunPod.
 convex>=0.7.0
-# dictionary_cache.py uses TTLCache/cached for Convex dictionary lookups.
-# Missing this caused "No module named 'cachetools'" which silently
-# swallowed every successful OpenRouter translation response.
-cachetools>=5.3.0
 msgpack>=1.0.0
 numpy>=1.24.0,<2.0.0
 python-multipart>=0.0.9
@@ -50,3 +46,7 @@ redis>=5.0.0
 runpod>=1.6.2
 # PIRD-010: rate limiting for expensive routes.
 slowapi>=0.1.9
+# Required by app/services/video/dictionary_cache.py (inject_lrm).
+# Missing this causes all translations to fail silently after a successful
+# OpenRouter 200 response — the Arabic text is received but discarded.
+cachetools>=5.3.0
