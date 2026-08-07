@@ -749,6 +749,7 @@ async def process_video_cpu_phase(zip_path: str):
             total_cost_usd=total_cost_usd
         )
         logger.info(f"[JOB {job_id}] Completed successfully. Latency: {job_total_latency_ms:.1f}ms, Cost: ${total_cost_usd:.4f}")
+        return output_path_for_db
 
     except Exception as e:
         logger.exception(f"[JOB {job_id}] Pipeline failed: {e}")
