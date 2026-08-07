@@ -82,9 +82,9 @@ def download_file(key: str, local_path: str) -> None:
 
 
 
-def signed_url(key: str, ttl_seconds: int = 300) -> str:
+def signed_url(key: str, ttl_seconds: int = 86400) -> str:
     """
-    Generate a presigned URL valid for `ttl_seconds` (default 5 minutes).
+    Generate a presigned URL valid for `ttl_seconds` (default 24 hours).
     Anyone with this URL can download the object until it expires.
     """
     client = _client()
