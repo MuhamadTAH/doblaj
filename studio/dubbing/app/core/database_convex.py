@@ -189,12 +189,15 @@ async def get_job(client: Any = None, *, workspace_id: str = "", job_id: str = "
         if not workspace_id:
             return job  # trusted internal/worker path
         doc_ws = job.get("workspaceId") or job.get("workspace_id") or ""
-        if not doc_ws:
-            return job  # doc with no workspace — treat as orphan, do not block
+        doc_owner = job.get("ownerUserId") or job.get("owner_user_id") or ""
+        if not doc_ws and not doc_owner:
+            return job  # doc with no workspace or owner — treat as orphan, do not block
         
-        # If workspace_id is supplied and doc_ws is present, they must match
-        if str(doc_ws) != str(workspace_id):
-            logger.warning("[DATABASE-CONVEX] Workspace mismatch: doc_ws=%s, expected=%s", doc_ws, workspace_id)
+        # If workspace_id is supplied, it must match either doc_ws or doc_owner
+        matches_ws = bool(doc_ws) and str(doc_ws) == str(workspace_id)
+        matches_owner = bool(doc_owner) and str(doc_owner) == str(workspace_id)
+        if not (matches_ws or matches_owner):
+            logger.warning("[DATABASE-CONVEX] Workspace mismatch: doc_ws=%s, doc_owner=%s, expected=%s", doc_ws, doc_owner, workspace_id)
             return None
             
         return job
