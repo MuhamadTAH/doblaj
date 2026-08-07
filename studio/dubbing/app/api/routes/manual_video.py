@@ -13,6 +13,11 @@ from typing import List, Optional
 
 from app.core.session_logger import session_log_context
 
+try:
+    from app.core.pipeline_tracer import trace_step
+except ImportError:
+    def trace_step(*a, **kw): pass
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -939,7 +944,9 @@ async def step5_run_physics(session_id: str = Form(...), chunks_json: Optional[s
     import math
     
     _log(session_id, "Running Google GenAI JSON Text Batching...")
-    chunks = await translator.batch_translate_text(chunks, batch_size=4)
+    trace_step(session_id, "BATCH_TRANSLATE_DISPATCH", status="START", chunk_count=len(chunks))
+    chunks = await translator.batch_translate_text(chunks, batch_size=4, session_id=session_id)
+    trace_step(session_id, "BATCH_TRANSLATE_DISPATCH", status="OK", chunk_count=len(chunks))
     
     _log(session_id, "Running Batch JSON Audit Trap...")
     for c in chunks:
@@ -996,8 +1003,14 @@ async def step5_run_physics(session_id: str = Form(...), chunks_json: Optional[s
                         _log(session_id, "Processing chunks with concurrency limit of 2...")
                         sem = asyncio.Semaphore(2)
                         async def bounded_process(c):
+                            cid = str(c.get("chunk_id", "?"))
+                            bypass = c.get("bypass_initial_translation", False)
+                            trace_step(session_id, "CHUNK_DISPATCH", chunk_id=cid, status="START",
+                                       bypass_initial_translation=bypass)
                             async with sem:
-                                return await _async_process_chunk(c, session_id, session_state_dict, video_path, translate_only=True)
+                                result = await _async_process_chunk(c, session_id, session_state_dict, video_path, translate_only=True)
+                                trace_step(session_id, "CHUNK_DISPATCH", chunk_id=cid, status="OK")
+                                return result
                                 
                         chunk_tasks = [bounded_process(c) for c in valid_chunks]
                         results = await asyncio.gather(*chunk_tasks)

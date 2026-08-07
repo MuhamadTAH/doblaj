@@ -9,6 +9,12 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+try:
+    from app.core.pipeline_tracer import trace_step, trace_http_request_count
+except ImportError:
+    def trace_step(*a, **kw): pass
+    def trace_http_request_count(*a, **kw): pass
+
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-3-flash-preview")
 
 # Shared connection pool to avoid connection setup overhead on every request
@@ -79,7 +85,8 @@ async def translate_single_chunk_structured(
     current_arabic_text: str = "",
     phonetic_stretched_word: str = None,
     entity: str = None,
-    category_id: str = None
+    category_id: str = None,
+    session_id: str = "unknown"
 ) -> dict:
     """
     Stage 2: The Transcreation Engine (Single-Chunk Fallback)
@@ -175,6 +182,7 @@ async def translate_single_chunk_structured(
     client = _get_http_client()
     for attempt in range(3):
         try:
+            trace_http_request_count(session_id, f"translate_single_chunk_structured:attempt={attempt}")
             resp = await client.post(url, headers=headers, json=payload, timeout=60.0)
             if resp.status_code != 200:
                 logger.error(f"[TRANSLATOR] OpenRouter API Error {resp.status_code}: {resp.text}")
@@ -218,11 +226,12 @@ async def translate_single_chunk_structured(
                 continue
             return {"arabic_text": "", "status": "failed", "trace": trace + [f"Exception: {e}"]}
 
-async def batch_translate_text(chunks: list, batch_size: int = 5, category_id: str = None, entity: str = None) -> list:
+async def batch_translate_text(chunks: list, batch_size: int = 5, category_id: str = None, entity: str = None, session_id: str = "unknown") -> list:
     """
     Batches multiple text chunks into a single API request via OpenRouter.
     """
     logger.info(f"DEBUG: Entering batch_translate_text with {len(chunks)} chunks")
+    trace_step(session_id, "BATCH_TRANSLATE", status="START", chunk_count=len(chunks), batch_size=batch_size)
     api_key = os.getenv("OPEN_ROUTER_API_KEY")
     if not api_key:
         if os.getenv("PIRD_ENV") == "prod":
@@ -307,6 +316,7 @@ async def batch_translate_text(chunks: list, batch_size: int = 5, category_id: s
         success = False
         for attempt in range(3):
             try:
+                trace_http_request_count(session_id, f"batch_translate_text._process_batch:attempt={attempt}")
                 resp = await client.post(url, headers=headers, json=payload, timeout=90.0)
                 if resp.status_code != 200:
                     logger.error(f"[BATCH INFERENCE] OpenRouter API Error {resp.status_code}: {resp.text}")

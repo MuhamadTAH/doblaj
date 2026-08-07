@@ -24,6 +24,11 @@ from app.services.vcta.assembler import assemble_final_video
 from app.core.database import update_job_status, get_job
 from app.core.session_logger import session_log_context
 
+try:
+    from app.core.pipeline_tracer import trace_step
+except ImportError:
+    def trace_step(*a, **kw): pass
+
 # Pird: validate chunk_id before using it to construct file paths. chunk_id
 # flows from user-controlled state.json into Path() — without this, a
 # crafted chunk_id like "../../etc/passwd" escapes the session dir. See
@@ -247,7 +252,12 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
             if bypass_initial_translation and retries == 0 and chunk.get("arabic_text") and not force_gemini_stretch:
                 arabic_text = chunk["arabic_text"]
                 logger.info(f"[PHYSICS] Bypassing initial Gemini translation, using manual text: {arabic_text}")
+                trace_step(session_id, "TRANSLATE", chunk_id=chunk_id, status="SKIP",
+                           note="bypass_initial_translation=True — using existing arabic_text", retry=retries)
             else:
+                trace_step(session_id, "TRANSLATE", chunk_id=chunk_id, status="START",
+                           note="translate_single_chunk_structured", retry=retries,
+                           bypass_was=bypass_initial_translation)
                 result = await translate_single_chunk_structured(
                     text=chunk.get("kurdish_raw", ""),
                     speech_duration=video_slot_duration,
@@ -259,8 +269,11 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
                     current_arabic_text=arabic_text if retries > 0 else chunk.get("arabic_text", ""),
                     phonetic_stretched_word=phonetic_stretched_word,
                     entity=session_state_dict.get("entity"),
-                    category_id=session_state_dict.get("category_id")
+                    category_id=session_state_dict.get("category_id"),
+                    session_id=session_id
                 )
+                trace_step(session_id, "TRANSLATE", chunk_id=chunk_id, status="OK",
+                           note="translate_single_chunk_structured done", retry=retries)
                 
                 new_text = result.get("arabic_text", "")
                 if new_text:
@@ -384,14 +397,18 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
                     
                     if retries >= max_retries:
                         logger.warning(f"[PHYSICS] Max retries reached. Forcing audio clamp for chunk {chunk_id}.")
+                        trace_step(session_id, "PHYSICS_RETRY", chunk_id=chunk_id, status="FAIL",
+                                   note="max_retries reached, clamping audio", retries=retries)
                         is_zone_c = True
                         chunk["arabic_text"] = arabic_text
                         chunk["f_pacing"] = f_pacing
                         break
                     else:
+                        trace_step(session_id, "PHYSICS_RETRY", chunk_id=chunk_id, status="RETRY",
+                                   note=f"scale out of bounds — retry {retries+1}", scale=round(scale, 3))
                         retries += 1
                         # We must bypass initial bypass check on subsequent retries
-                        bypass_initial_translation = False 
+                        bypass_initial_translation = False
                         continue
                 else:
                     logger.info(f"[PHYSICS] Post-TTS validation passed! Scale {scale:.2f} is perfectly within [0.95, 1.20].")

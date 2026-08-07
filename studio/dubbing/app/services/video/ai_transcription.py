@@ -8,6 +8,12 @@ from app.services.video import MAX_AUDIO_BYTES
 
 logger = logging.getLogger(__name__)
 
+try:
+    from app.core.pipeline_tracer import trace_step, trace_http_request_count
+except ImportError:
+    def trace_step(*a, **kw): pass
+    def trace_http_request_count(*a, **kw): pass
+
 
 
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-3-flash-preview")
@@ -122,6 +128,7 @@ async def cross_reference_transcription(scribe_text: str, flash_text: str) -> st
 
     try:
         async with aiohttp.ClientSession() as session:
+            trace_http_request_count("unknown", "cross_reference_transcription")
             async with session.post(url, headers=headers, json=payload, timeout=180) as resp:
                 if resp.status == 200:
                     data = await resp.json()
@@ -264,6 +271,7 @@ async def transcribe_gemini_flash_batch(chunks: list[dict], history: list = None
     for attempt in range(max_retries):
         try:
             async with aiohttp.ClientSession() as session:
+                trace_http_request_count(session_id, f"transcribe_gemini_flash_batch:attempt={attempt}")
                 async with session.post(url, headers=headers, json=payload, timeout=120) as resp:
                     if resp.status == 200:
                         data = await resp.json()
