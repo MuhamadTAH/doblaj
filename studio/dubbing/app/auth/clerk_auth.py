@@ -7,8 +7,18 @@ import jwt
 from fastapi import Cookie, Header, HTTPException, Request
 from jwt import PyJWKClient
 
-CLERK_FRONTEND_API = os.getenv("CLERK_FRONTEND_API", "deciding-quagga-70.clerk.accounts.dev")
-CLERK_ISSUER_URL = os.getenv("CLERK_ISSUER_URL") or os.getenv("CLERK_ISSUER", f"https://{CLERK_FRONTEND_API}").rstrip("/")
+CLERK_FRONTEND_API = os.getenv("CLERK_FRONTEND_API")
+CLERK_ISSUER_URL = (
+    os.getenv("CLERK_ISSUER_URL")
+    or os.getenv("CLERK_ISSUER")
+    or (f"https://{CLERK_FRONTEND_API}" if CLERK_FRONTEND_API else None)
+)
+if not CLERK_ISSUER_URL:
+    raise RuntimeError(
+        "CLERK_ISSUER_URL (or CLERK_ISSUER / CLERK_FRONTEND_API) is required. "
+        "Set it in the environment before starting the dubbing service."
+    )
+CLERK_ISSUER_URL = CLERK_ISSUER_URL.rstrip("/")
 CLERK_ISSUER = CLERK_ISSUER_URL
 CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL", f"{CLERK_ISSUER}/.well-known/jwks.json")
 CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE", "dubbing-api")
