@@ -434,11 +434,15 @@ def run_vcta_pipeline(input_path: str, output_dir: str, device: str = None) -> d
     logger.info("[ISOLATION] Stage 4.5: Cleanup (Slice 2.0s Warm-Up Padding)")
     # Mathematically slice the exact padding off the front to re-sync with video timeline
     vocal_ensemble = vocal_ensemble[:, pad_samples:]
-    inst_stem = inst_stem[:, pad_samples:]
+    audio = audio[:, pad_samples:]
     silence_mask = silence_mask[pad_samples:]
 
     logger.info("[ISOLATION] Stage 5: Silence restoration")
     vocal_clean = restore_silence_regions(vocal_ensemble, silence_mask)
+
+    # Compute true background stem by subtracting clean isolated vocals from original audio
+    min_len = min(audio.shape[1], vocal_clean.shape[1])
+    inst_stem = audio[:, :min_len] - vocal_clean[:, :min_len]
 
     logger.info("[ISOLATION] Stage 6: Quality gate")
     metrics = evaluate_quality(vocal_clean, sr)
