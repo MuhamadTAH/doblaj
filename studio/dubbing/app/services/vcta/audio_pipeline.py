@@ -237,7 +237,7 @@ def compile_final_video(
     arabic_vocal_track_path: str,
     background_stem_path: str,
     output_path: str,
-    background_duck_db: float = -8.0,
+    background_duck_db: float = -12.0,
     audio_bitrate: str = "192k",
     sample_rate: int = 44100,
     ffmpeg_bin: str = "ffmpeg",
@@ -259,8 +259,9 @@ def compile_final_video(
     )
 
     filter_complex: str = (
+        f"[0:a]volume={bg_volume_linear:.6f}[bg_scaled];"
         f"[1:a]asplit=2[sc][mix];"
-        f"[0:a][sc]sidechaincompress=threshold=0.08:ratio=4:attack=5:release=50[bg_ducked];"
+        f"[bg_scaled][sc]sidechaincompress=threshold=0.04:ratio=6:attack=5:release=50[bg_ducked];"
         f"[bg_ducked][mix]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[mixed];"
         f"[mixed]alimiter=limit=-0.5dB[final_mix]"
     )
