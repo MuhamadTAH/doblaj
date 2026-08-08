@@ -237,7 +237,7 @@ def compile_final_video(
     arabic_vocal_track_path: str,
     background_stem_path: str,
     output_path: str,
-    background_duck_db: float = -12.0,
+    background_duck_db: float = -18.0,
     audio_bitrate: str = "192k",
     sample_rate: int = 44100,
     ffmpeg_bin: str = "ffmpeg",

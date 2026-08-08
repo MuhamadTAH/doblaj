@@ -167,7 +167,7 @@ async def assemble_final_video(
             arabic_vocal_track_path=arabic_voice_wav,
             background_stem_path=background_wav,
             output_path=final_output_path,
-            background_duck_db=-8.0,
+            background_duck_db=-18.0,
             audio_bitrate="192k",
             sample_rate=44100
         )
