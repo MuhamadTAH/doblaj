@@ -464,7 +464,7 @@ async def get_workspace_minutes(client: Any = None, *, workspace_id: str = "") -
     c = client or _get_client()
     def _do():
         # Pird PIRD-017: pass legacyId only; server resolves workspace.
-        return c.query("workspaces:getMinutesInternal", _internal_args({"legacyId": workspace_id}))
+        return c.query("workspaces:getMinutesInternal", _internal_args({"workspaceId": workspace_id}))
     res = await asyncio.to_thread(_do)
     logger.info(
         "[PIRD-CREDITS-DEBUG] convex getMinutesInternal legacyId=%s returned=%s",
@@ -481,7 +481,7 @@ async def add_workspace_minutes(client: Any = None, *, workspace_id: str = "", m
     c = client or _get_client()
     def _do():
         # Pird PIRD-017: pass legacyId only; server resolves workspace.
-        return c.mutation("workspaces:addMinutesInternal", _internal_args({"legacyId": workspace_id, "delta": minutes}))
+        return c.mutation("workspaces:addMinutesInternal", _internal_args({"workspaceId": workspace_id, "delta": minutes}))
     res = await asyncio.to_thread(_do)
     return int(res)
 
@@ -490,7 +490,7 @@ async def deduct_workspace_minutes(client: Any = None, *, workspace_id: str = ""
     c = client or _get_client()
     def _do():
         # Pird PIRD-017: pass legacyId only; server resolves workspace.
-        return c.mutation("workspaces:deductMinutesInternal", _internal_args({"legacyId": workspace_id, "amount": minutes}))
+        return c.mutation("workspaces:deductMinutesInternal", _internal_args({"workspaceId": workspace_id, "amount": minutes}))
     res = await asyncio.to_thread(_do)
     try:
         return int(res) if res is not None and not hasattr(res, "_mock_return_value") else 0
@@ -501,7 +501,7 @@ async def deduct_workspace_minutes(client: Any = None, *, workspace_id: str = ""
 async def handle_refund_kill_switch(client: Any = None, *, workspace_id: str = "", amount_deducted: int = 0) -> Dict[str, Any]:
     c = client or _get_client()
     def _do():
-        return c.mutation("workspaces:handleRefundKillSwitchInternal", _internal_args({"legacyId": workspace_id, "amountDeducted": amount_deducted}))
+        return c.mutation("workspaces:handleRefundKillSwitchInternal", _internal_args({"workspaceId": workspace_id, "amountDeducted": amount_deducted}))
     return await asyncio.to_thread(_do)
 
 
