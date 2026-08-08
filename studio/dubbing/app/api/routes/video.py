@@ -217,8 +217,16 @@ async def create_job(
 
     # 2. Check balance (Fail closed on error)
     user_client = database.get_user_client(user.access_token)
+    logger.info(
+        "[PIRD-CREDITS-DEBUG] user_id=%s workspace_id=%s duration_minutes=%s",
+        user.user_id, user.workspace_id, duration_minutes,
+    )
     try:
         remaining_minutes = await database.get_workspace_minutes(user_client, workspace_id=user.workspace_id)
+        logger.info(
+            "[PIRD-CREDITS-DEBUG] get_workspace_minutes returned %s for workspace %s",
+            remaining_minutes, user.workspace_id,
+        )
     except Exception as e:
         if input_path.exists():
             input_path.unlink()

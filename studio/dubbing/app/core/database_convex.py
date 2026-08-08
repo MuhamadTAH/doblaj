@@ -466,6 +466,10 @@ async def get_workspace_minutes(client: Any = None, *, workspace_id: str = "") -
         # Pird PIRD-017: pass legacyId only; server resolves workspace.
         return c.query("workspaces:getMinutesInternal", _internal_args({"legacyId": workspace_id}))
     res = await asyncio.to_thread(_do)
+    logger.info(
+        "[PIRD-CREDITS-DEBUG] convex getMinutesInternal legacyId=%s returned=%s",
+        workspace_id, res,
+    )
     if res is None:
         raise RuntimeError(
             f"workspaces:getMinutesInternal returned null for workspace {workspace_id!r}"
