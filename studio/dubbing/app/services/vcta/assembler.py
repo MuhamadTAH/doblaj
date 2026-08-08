@@ -79,7 +79,10 @@ async def assemble_final_video(
             raise RuntimeError(f"No TTS files were generated. TTS API Errors: {', '.join(unique_errors)}")
         raise RuntimeError("No TTS files found for any chunk. Cannot assemble video.")
 
-    logger.info(f"[ASSEMBLER] Stage 5: Assembling {len(tts_entries)} clips against silent master")
+    bg_exists = os.path.exists(background_wav)
+    bg_size = os.path.getsize(background_wav) if bg_exists else 0
+    video_exists = os.path.exists(video_path)
+    logger.info(f"[ASSEMBLER] Stage 5: Assembling {len(tts_entries)} clips against silent master. background_wav={background_wav} (exists={bg_exists}, size={bg_size}b), video_path={video_path} (exists={video_exists})")
 
     # Get total video duration to create the silent master
     video_duration = await asyncio.to_thread(_get_wav_duration_sync, video_path)

@@ -157,6 +157,13 @@ async def process_video_gpu_phase(job_id: str, input_path: str, workspace_id: st
         if not pyannote_turns:
             raise Exception("No human voices were detected. Please upload a video containing clear speech.")
             
+        logger.info(f"[JOB {job_id}] Stage 2: Pyannote detected {len(pyannote_turns)} active speech turns and {len(purged_turns)} purged turns.")
+        if purged_turns:
+            for pt in purged_turns[:10]:
+                logger.info(f"[JOB {job_id}] Purged turn details: start={pt.get('start')}, end={pt.get('end')}, speaker={pt.get('speaker')}")
+            if len(purged_turns) > 10:
+                logger.info(f"[JOB {job_id}] ... and {len(purged_turns) - 10} more purged turns.")
+
         logger.info(f"[JOB {job_id}] Stage 2.5: Secondary Speaker Restoration")
         from app.services.vcta.restoration import restore_background_vocals
         restored_bg_wav = str(work_dir / "2-separation" / "Audio_3_Noise_Only_Restored.wav")
@@ -173,7 +180,7 @@ async def process_video_gpu_phase(job_id: str, input_path: str, workspace_id: st
         if success and os.path.exists(restored_bg_wav):
             bg_wav = restored_bg_wav
             fish_wav = muted_fish_wav
-            logger.info(f"[JOB {job_id}] Instrumental track restored and Vocals track muted for secondary speakers.")
+            logger.info(f"[JOB {job_id}] Instrumental track restored and Vocals track muted for secondary speakers. Restored bg_wav size={os.path.getsize(restored_bg_wav)} bytes.")
             
         await database.update_job_status(_get_service_role_client(), workspace_id=workspace_id, job_id=job_id, status="separating", progress=40)
 
