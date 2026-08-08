@@ -81,12 +81,19 @@ async def process_video_gpu_phase(job_id: str, input_path: str, workspace_id: st
             
         await database.update_job_status(_get_service_role_client(), workspace_id=workspace_id, job_id=job_id, status="separating", progress=10)
 
-        # Step 1: Extract Audio
-        logger.info(f"[JOB {job_id}] Step 1: Extracting Audio")
+        # Step 1: Extract Audio and Loudness Profile
+        logger.info(f"[JOB {job_id}] Step 1: Extracting Audio and Reference Loudness Profile")
         audio_raw = dir_sep / "Audio_1_Original_Kurdish_Noise.wav"
         success, _ = await extract_audio(str(video_path), str(audio_raw))
         if not success:
             raise Exception("We couldn't read the audio track. Ensure your video file isn't corrupted and try again.")
+            
+        from app.services.vcta.reference_mastering import extract_loudness_profile
+        try:
+            reference_profile = await asyncio.to_thread(extract_loudness_profile, str(video_path))
+        except Exception as ref_err:
+            logger.warning(f"[JOB {job_id}] Could not extract reference profile: {ref_err}")
+            reference_profile = None
             
         await database.update_job_status(_get_service_role_client(), workspace_id=workspace_id, job_id=job_id, status="separating", progress=15)
 
@@ -298,7 +305,8 @@ async def process_video_gpu_phase(job_id: str, input_path: str, workspace_id: st
             "fish_wav": fish_wav,
             "bg_wav": bg_wav,
             "video_path": str(video_path),
-            "gpu_work_dir": str(work_dir.resolve())
+            "gpu_work_dir": str(work_dir.resolve()),
+            "reference_profile": reference_profile
         }
         with open(state_file, "w") as f:
             json.dump(state, f, indent=4)
@@ -382,6 +390,7 @@ async def process_video_cpu_phase(zip_path: str):
     fish_wav = state["fish_wav"]
     bg_wav = state["bg_wav"]
     video_path = state["video_path"]
+    reference_profile = state.get("reference_profile")
     
     # Remap stale GPU-machine absolute paths to CPU-local paths.
     # The zip was created on the GPU machine where work_dir had a different
@@ -699,7 +708,8 @@ async def process_video_cpu_phase(zip_path: str):
             results=final_processed_chunks,
             session_id=str(next_id),
             video_path=str(video_path),
-            bg_wav=bg_wav
+            bg_wav=bg_wav,
+            reference_profile=reference_profile
         )
         stage8_dur = (time.time() - stage8_start) * 1000
         stage8_cost = (stage8_dur / 1000) * PRICING_CPU_PER_SECOND

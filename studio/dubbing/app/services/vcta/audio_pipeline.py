@@ -261,7 +261,7 @@ def compile_final_video(
     filter_complex: str = (
         f"[0:a]volume={bg_volume_linear:.6f}[bg_scaled];"
         f"[1:a]asplit=2[sc][mix];"
-        f"[bg_scaled][sc]sidechaincompress=threshold=0.04:ratio=6:attack=5:release=50[bg_ducked];"
+        f"[bg_scaled][sc]sidechaincompress=threshold=0.04:ratio=4:attack=5:release=250[bg_ducked];"
         f"[bg_ducked][mix]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[mixed];"
         f"[mixed]alimiter=limit=-0.5dB[final_mix]"
     )
