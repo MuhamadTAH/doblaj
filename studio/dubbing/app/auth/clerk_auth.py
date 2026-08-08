@@ -8,9 +8,10 @@ from fastapi import Cookie, Header, HTTPException, Request
 from jwt import PyJWKClient
 
 CLERK_FRONTEND_API = os.getenv("CLERK_FRONTEND_API", "deciding-quagga-70.clerk.accounts.dev")
-CLERK_ISSUER = os.getenv("CLERK_ISSUER", f"https://{CLERK_FRONTEND_API}").rstrip("/")
+CLERK_ISSUER_URL = os.getenv("CLERK_ISSUER_URL") or os.getenv("CLERK_ISSUER", f"https://{CLERK_FRONTEND_API}").rstrip("/")
+CLERK_ISSUER = CLERK_ISSUER_URL
 CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL", f"{CLERK_ISSUER}/.well-known/jwks.json")
-CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE", "pird-dubbing")
+CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE", "dubbing-api")
 CLERK_AUDIENCE_REQUIRED = os.getenv("CLERK_AUDIENCE_REQUIRED", "true").lower() == "true"
 ALLOWED_AZPS = {
     "https://doblaj.com",
@@ -35,6 +36,9 @@ _jwks_client = None
 def get_jwks_client():
     global _jwks_client
     if _jwks_client is None:
+        # Enforce HTTPS scheme validation to prevent local file inclusion / SSRF scheme smuggling.
+        if not CLERK_JWKS_URL.startswith("https://") and not CLERK_JWKS_URL.startswith("http://127.0.0.1") and not CLERK_JWKS_URL.startswith("http://localhost"):
+            raise ValueError(f"JWKS URL must use HTTPS scheme, got: {CLERK_JWKS_URL}")
         # timeout=5s so a hung JWKS fetch never stalls request handlers.
         _jwks_client = PyJWKClient(CLERK_JWKS_URL, timeout=5)
     return _jwks_client
@@ -59,18 +63,20 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
         import logging
         logger = logging.getLogger(__name__)
         
+        expected_issuer = os.getenv("CLERK_ISSUER_URL") or CLERK_ISSUER
+        
         try:
             claims = jwt.decode(
                 token,
                 signing_key.key,
                 algorithms=["RS256"],
-                audience=[CLERK_AUDIENCE, "convex", "pird-dubbing"],
-                issuer=[CLERK_ISSUER, "https://clerk.doblaj.com", "https://deciding-quagga-70.clerk.accounts.dev"],
+                audience="dubbing-api",
+                issuer=expected_issuer,
                 options=options,
                 leeway=5,
             )
         except Exception as inner_exc:
-            logger.error(f"JWT decode failed: {inner_exc} | Issuer: {CLERK_ISSUER}")
+            logger.error(f"JWT decode failed: {inner_exc} | Issuer: {expected_issuer}")
             raise HTTPException(
                 401, 
                 f"Invalid token: {str(inner_exc)}", 

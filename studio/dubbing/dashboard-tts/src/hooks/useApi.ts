@@ -4,6 +4,7 @@ import { getDubJobs, getDubStatus, submitDubJob } from '../api/dubbing';
 import { fetchVoices, generateTts, previewVoice, TtsRequest } from '../api/tts';
 import { deleteAccount } from '../api/user';
 import { getTelegramLinkNonce } from '../api/telegram';
+import { secureAuthFetch } from '../lib/apiClient';
 
 export class AuthFailedError extends Error {
   constructor(message = "Authentication failed") {
@@ -30,54 +31,7 @@ export const useApi = () => {
   const { getToken } = useAuth();
 
   const authFetch = useCallback(async (url: string | URL | globalThis.Request, options: RequestInit = {}): Promise<Response> => {
-    let token: string | null = null;
-    try {
-      token = await getToken({ template: "convex" });
-    } catch (sdkError: any) {
-      console.error("Clerk getToken error:", sdkError);
-      
-      const errorStr = String(sdkError).toLowerCase();
-      // Only throw if it's explicitly an unauthorized (401) session error.
-      // A 404 here usually means the JWT template is missing in the Clerk dashboard.
-      if (errorStr.includes('401') || sdkError?.status === 401) {
-        throw new AuthFailedError();
-      }
-      throw new AuthNetworkError();
-    }
-
-    if (!token) {
-      throw new AuthFailedError();
-    }
-
-    const headers = new Headers(options.headers || {});
-    headers.set("Authorization", `Bearer ${token}`);
-    
-    // We do NOT set Content-Type here to preserve FormData boundaries if they exist.
-    
-    const res = await fetch(url, { ...options, headers });
-
-    if (res.status === 401) {
-      try {
-        const errorText = await res.clone().text();
-        console.error(`Auth failed with 401. Backend says: ${errorText}`);
-      } catch (e) {
-        console.error('Auth failed with 401. Could not read response text.');
-      }
-      throw new AuthFailedError();
-    }
-
-    if (!res.ok) {
-      let errorDetail = res.statusText;
-      try {
-        const errorData = await res.json();
-        errorDetail = errorData.detail || errorDetail;
-      } catch {
-        // Ignore parsing errors here, it's probably HTML
-      }
-      throw new HttpError(res.status, errorDetail);
-    }
-
-    return res;
+    return secureAuthFetch(getToken, url, options);
   }, [getToken]);
 
   return useMemo(() => ({
