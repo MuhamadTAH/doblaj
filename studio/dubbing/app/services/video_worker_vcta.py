@@ -171,23 +171,9 @@ async def process_video_gpu_phase(job_id: str, input_path: str, workspace_id: st
             if len(purged_turns) > 10:
                 logger.info(f"[JOB {job_id}] ... and {len(purged_turns) - 10} more purged turns.")
 
-        logger.info(f"[JOB {job_id}] Stage 2.5: Secondary Speaker Restoration")
-        from app.services.vcta.restoration import restore_background_vocals
-        restored_bg_wav = str(work_dir / "2-separation" / "Audio_3_Noise_Only_Restored.wav")
-        muted_fish_wav = str(work_dir / "2-separation" / "Audio_2_Vocal_Only_Muted.wav")
-        
-        success = await asyncio.to_thread(
-            restore_background_vocals,
-            vocals_wav_path=fish_wav,
-            instrumental_wav_path=bg_wav,
-            output_bg_wav_path=restored_bg_wav,
-            output_vocals_wav_path=muted_fish_wav,
-            purged_turns=purged_turns
-        )
-        # Note: We do NOT re-assign bg_wav = restored_bg_wav because injecting purged vocal turns
-        # back into the background stem leaks the original Kurdish speech into the final video mix.
-        # We keep bg_wav as the clean, pristine instrumental stem (Audio_3_Noise_Only.wav).
-        logger.info(f"[JOB {job_id}] Preserving pure isolated instrumental stem for bg_wav without Kurdish vocal re-injection.")
+        logger.info(f"[JOB {job_id}] Stage 2.5: Preserving pure background stem (skipping vocal re-injection)")
+        # We explicitly preserve bg_wav as the pure isolated background stem (Audio_3_Noise_Only.wav)
+        # without re-injecting any vocal speech back into the noise track.
             
         await database.update_job_status(_get_service_role_client(), workspace_id=workspace_id, job_id=job_id, status="separating", progress=40)
 
