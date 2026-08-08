@@ -177,10 +177,10 @@ async def process_video_gpu_phase(job_id: str, input_path: str, workspace_id: st
             output_vocals_wav_path=muted_fish_wav,
             purged_turns=purged_turns
         )
-        if success and os.path.exists(restored_bg_wav):
-            bg_wav = restored_bg_wav
-            fish_wav = muted_fish_wav
-            logger.info(f"[JOB {job_id}] Instrumental track restored and Vocals track muted for secondary speakers. Restored bg_wav size={os.path.getsize(restored_bg_wav)} bytes.")
+        # Note: We do NOT re-assign bg_wav = restored_bg_wav because injecting purged vocal turns
+        # back into the background stem leaks the original Kurdish speech into the final video mix.
+        # We keep bg_wav as the clean, pristine instrumental stem (Audio_3_Noise_Only.wav).
+        logger.info(f"[JOB {job_id}] Preserving pure isolated instrumental stem for bg_wav without Kurdish vocal re-injection.")
             
         await database.update_job_status(_get_service_role_client(), workspace_id=workspace_id, job_id=job_id, status="separating", progress=40)
 
