@@ -374,10 +374,9 @@ def export_dual_output(vocal: np.ndarray, instrumental: np.ndarray, sr: int, out
     fish_path = out / "vocals_stem_fish_44k1.wav"
     sf.write(str(fish_path), fish.T, sr, subtype='FLOAT')
     
-    # Instrumental target (-6dBTP constraint)
-    inst = true_peak_normalize(instrumental, sr=sr, target_dbtp=-6.0)
+    # Instrumental target: preserve natural gain relative to original audio
     inst_path = out / "instrumental_stem_44k1.wav"
-    sf.write(str(inst_path), inst.T, sr, subtype='FLOAT')
+    sf.write(str(inst_path), instrumental.T, sr, subtype='FLOAT')
 
     return {'pyannote': str(pyannote_path), 'fish_audio': str(fish_path), 'instrumental': str(inst_path)}
 
