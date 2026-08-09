@@ -7,7 +7,10 @@ export interface TokenGetter {
 let refreshTokenPromise: Promise<string | null> | null = null;
 
 export async function getDubbingApiToken(getToken: TokenGetter, forceRefresh = false): Promise<string> {
-  if (refreshTokenPromise && !forceRefresh) {
+  // Single-flight: always coalesce onto an in-flight refresh, including the
+  // retry path after a 401. Without this, N concurrent 401s each call
+  // getToken({ skipCache: true }) and N parallel refreshes hit Clerk.
+  if (refreshTokenPromise) {
     const token = await refreshTokenPromise;
     if (token) return token;
   }
