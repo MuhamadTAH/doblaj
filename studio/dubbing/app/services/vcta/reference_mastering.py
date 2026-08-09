@@ -234,7 +234,7 @@ def compile_with_reference_mastering(
     sc_attack_ms: float = 5.0,        # 5ms — fast enough to catch speech onset
     sc_release_ms: float = 250.0,     # 250ms — CRITICAL. 50ms causes pumping. See module docstring.
     sc_makeup_db: float = 0.0,        # No makeup gain (we're ducking BG, not boosting)
-    background_base_volume: float = 1.0,  # Full standard background volume
+    background_base_volume: float = 1.8,  # Boosted to 1.8 to compensate for clean frequency removal
     # Output params
     true_peak_ceiling_dbtp: float = -1.5,  # Leave 1.5 dB headroom before AAC encode
     audio_bitrate: str = "192k",
