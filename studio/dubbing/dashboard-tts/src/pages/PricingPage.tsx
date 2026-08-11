@@ -182,6 +182,31 @@ export default function PricingPage() {
           </motion.div>
         )}
 
+        {/* Production Test Package (500 IQD) */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-2xl mx-auto p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 backdrop-blur-md flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg text-center sm:text-left"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-3 h-3 rounded-full bg-amber-400 animate-ping shrink-0" />
+            <div>
+              <div className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Production Test Package</div>
+              <div className="text-base font-bold text-white">
+                Test Live Wayl Checkout — <span className="text-amber-300">500 IQD</span> (1 Min)
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => handleCheckout("test_500iqd")}
+            disabled={loadingTier === "test_500iqd"}
+            className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-ink-950 font-bold text-sm transition-all shadow-md hover:scale-105 disabled:opacity-50 shrink-0"
+          >
+            {loadingTier === "test_500iqd" ? "Redirecting..." : "Test Pay 500 IQD"}
+          </button>
+        </motion.div>
+
+
         {/* Pricing Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full mt-8">
           <PricingCard

@@ -17,6 +17,7 @@ router = APIRouter()
 
 # Pricing Tiers Config
 TIERS = {
+    "test_500iqd": {"minutes": 1, "price_usd": 0.33, "fixed_iqd": 500},
     "starter": {"minutes": 5, "price_usd": 10},
     "pro": {"minutes": 15, "price_usd": 20},
     "creator": {"minutes": 120, "price_usd": 99},
@@ -62,8 +63,12 @@ async def create_checkout_session(
     except ValueError:
         usd_to_iqd_rate = 1500.0
 
-    # Constraint: Explicitly cast total to integer
-    total_iqd = int(round(usd_amount * usd_to_iqd_rate))
+    # Constraint: Explicitly cast total to integer (support fixed IQD for test packages)
+    if "fixed_iqd" in tier_info:
+        total_iqd = int(tier_info["fixed_iqd"])
+    else:
+        total_iqd = int(round(usd_amount * usd_to_iqd_rate))
+
 
     # Unique reference ID for Wayl
     reference_id = f"ref_{uuid.uuid4().hex}"
