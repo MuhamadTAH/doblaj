@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useAuth } from "@clerk/clerk-react";
+import { secureAuthFetch } from "@/lib/apiClient";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
@@ -30,12 +31,7 @@ export default function BillingPage() {
     
     async function fetchData() {
       try {
-        const token = await getToken({ template: 'convex' });
-        const res = await fetch(`${API_BASE}/api/auth/me`, { 
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
+        const res = await secureAuthFetch(getToken, `${API_BASE}/api/auth/me`);
         const data = await res.json();
         if (isMounted && data.id) {
           setUserData(data);

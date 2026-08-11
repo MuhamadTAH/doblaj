@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import PricingCard from "@/components/PricingCard";
 import { useAuth } from "@clerk/clerk-react";
 import { useSearchParams } from "react-router-dom";
+import { secureAuthFetch } from "@/lib/apiClient";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
@@ -19,11 +20,7 @@ export default function PricingPage() {
   useEffect(() => {
     async function fetchUserPlan() {
       try {
-        const token = await getToken({ template: 'convex' });
-        if (!token) return;
-        const res = await fetch(`${API_BASE}/api/auth/me`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await secureAuthFetch(getToken, `${API_BASE}/api/auth/me`);
         if (res.ok) {
           const data = await res.json();
           setUserData(data);
@@ -68,31 +65,19 @@ export default function PricingPage() {
     setNotification(null);
 
     try {
-      const token = await getToken({ template: 'convex' });
-      const res = await fetch(`${API_BASE}/api/payments/checkout`, {
+      const res = await secureAuthFetch(getToken, `${API_BASE}/api/payments/checkout`, {
         method: 'POST',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ tier: tierId })
       });
 
-      if (!res.ok) {
-        let errorMsg = "Failed to create Wayl checkout session";
-        try {
-          const errorData = await res.json();
-          errorMsg = errorData.detail || errorMsg;
-        } catch {
-          errorMsg = `Server error (${res.status}). Please check backend logs.`;
-        }
-        throw new Error(errorMsg);
-      }
-
       const data = await res.json().catch(() => {
         throw new Error("Invalid response format from server");
       });
+
 
       if (data.checkoutUrl) {
         // Redirect to Wayl checkout URL
