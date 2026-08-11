@@ -39,12 +39,19 @@ class WaylClient:
         Headers: "X-WAYL-AUTHENTICATION": os.getenv("WAYL_API_TOKEN")
         Payload: env, referenceId, total (integer in IQD), currency ("IQD"), webhookUrl, webhookSecret, redirectionUrl
         """
+        if not self.api_token:
+            logger.error("[WAYL] WAYL_API_TOKEN is missing in environment variables")
+            raise ValueError("WAYL_API_TOKEN environment variable is not configured on the server")
+
         if not webhook_url:
-            base_webhook = os.getenv("DUBBING_URL", "http://localhost:8002")
+            base_webhook = os.getenv("DUBBING_URL", "https://api.doblaj.com")
             webhook_url = f"{base_webhook.rstrip('/')}/api/payments/webhook"
 
+        pird_env = os.getenv("PIRD_ENV", "dev").lower()
+        wayl_env = "prod" if pird_env in ("prod", "production") else "dev"
+
         payload = {
-            "env": os.getenv("PIRD_ENV", "dev"),
+            "env": wayl_env,
             "referenceId": reference_id,
             "total": int(amount_iqd),
             "currency": "IQD",  # Strictly hardcoded as IQD

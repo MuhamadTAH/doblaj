@@ -105,7 +105,11 @@ async def create_checkout_session(
         raise
     except Exception as e:
         logger.exception("[WAYL_CHECKOUT] Checkout creation failed: %s", e)
-        raise HTTPException(status_code=500, detail="Wayl checkout creation failed")
+        error_detail = str(e)
+        if hasattr(e, "response") and hasattr(e.response, "text"):
+            error_detail = f"Wayl API ({e.response.status_code}): {e.response.text}"
+        raise HTTPException(status_code=500, detail=f"Wayl checkout failed: {error_detail}")
+
 
 
 @router.post("/webhook")
