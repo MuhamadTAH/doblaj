@@ -54,7 +54,7 @@ export default function PrivacyPolicyPage() {
         <ul className="list-disc pl-6 mb-4">
           <li><strong>Cloud & Compute Providers:</strong> Microsoft Azure, RunPod, and Cloudflare (hosting, storage, network protection, GPU computing).</li>
           <li><strong>AI Models & Gateway Providers:</strong> OpenRouter, Fish Speech, MiniMax, AssemblyAI, Deepgram (AI inference, speech-to-text, translation, and TTS models).</li>
-          <li><strong>Payment Processors:</strong> Suby and Stripe (secure billing, tokenized payment processing).</li>
+          <li><strong>Payment Processors:</strong> Wayl (secure local billing, tokenized payment processing).</li>
           <li><strong>Communication & Analytics:</strong> Resend, Chatwoot, and Google Analytics (transactional emails, customer messaging, web analytics).</li>
         </ul>
 

@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useRef } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import PricingCard from "@/components/PricingCard";
 import { useAuth } from "@clerk/clerk-react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
-
 
 export default function PricingPage() {
   const [loadingTier, setLoadingTier] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<string | null>(null);
   const [userData, setUserData] = useState<any>(null);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const { getToken } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const hasTriggeredCheckout = useRef(false);
-  const navigate = useNavigate();
 
+  // Fetch user plan and details
   useEffect(() => {
     async function fetchUserPlan() {
       try {
@@ -36,8 +36,37 @@ export default function PricingPage() {
     fetchUserPlan();
   }, [getToken]);
 
+  // Handle post-payment redirect query params (e.g., ?payment=success)
+  useEffect(() => {
+    const paymentStatus = searchParams.get("payment");
+    if (paymentStatus === "success") {
+      setNotification({
+        type: 'success',
+        message: "Payment successful! Your workspace balance is updating..."
+      });
+      // Clean up URL query parameters without reloading
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (paymentStatus === "cancel" || paymentStatus === "failed") {
+      setNotification({
+        type: 'error',
+        message: "Payment was cancelled or failed. Please try again."
+      });
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    const plan = searchParams.get("plan");
+    if (plan && !hasTriggeredCheckout.current) {
+      hasTriggeredCheckout.current = true;
+      window.history.replaceState({}, document.title, window.location.pathname);
+      handleCheckout(plan);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   const handleCheckout = async (tierId: string) => {
     setLoadingTier(tierId);
+    setNotification(null);
+
     try {
       const token = await getToken({ template: 'convex' });
       const res = await fetch(`${API_BASE}/api/payments/checkout`, {
@@ -51,12 +80,12 @@ export default function PricingPage() {
       });
 
       if (!res.ok) {
-        let errorMsg = "Failed to create checkout session";
+        let errorMsg = "Failed to create Wayl checkout session";
         try {
           const errorData = await res.json();
           errorMsg = errorData.detail || errorMsg;
         } catch {
-          errorMsg = `Server error (${res.status}). Please check backend logs and environment variables.`;
+          errorMsg = `Server error (${res.status}). Please check backend logs.`;
         }
         throw new Error(errorMsg);
       }
@@ -64,29 +93,21 @@ export default function PricingPage() {
       const data = await res.json().catch(() => {
         throw new Error("Invalid response format from server");
       });
+
       if (data.checkoutUrl) {
+        // Redirect to Wayl checkout URL
         window.location.href = data.checkoutUrl;
       } else {
-        throw new Error("Invalid response from server");
+        throw new Error("Missing checkout URL in server response");
       }
     } catch (err: any) {
-      console.error(err);
-      alert(err.message || "Failed to initiate checkout. Please try again.");
+      console.error("[WAYL_CHECKOUT_ERROR]", err);
+      const message = err.message || "Failed to initiate checkout. Please try again.";
+      setNotification({ type: 'error', message });
     } finally {
       setLoadingTier(null);
     }
   };
-
-  useEffect(() => {
-    const plan = searchParams.get("plan");
-    if (plan && !hasTriggeredCheckout.current) {
-      hasTriggeredCheckout.current = true;
-      // Remove the search param so it doesn't re-trigger if they go back
-      setSearchParams({});
-      handleCheckout(plan);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, setSearchParams]);
 
   return (
     <div className="flex flex-col items-center min-h-[calc(100vh-4rem)] p-6 bg-ink-900/10">
@@ -107,9 +128,36 @@ export default function PricingPage() {
             transition={{ delay: 0.1 }}
             className="text-lg text-ink-300 max-w-2xl mx-auto text-center mt-4"
           >
-            Pay securely with credit card. No hidden fees. Get access to premium AI dubbing minutes instantly.
+            Pay securely with ZainCash, FIB, or Crypto via Wayl. No hidden fees. Get access to premium AI dubbing minutes instantly.
           </motion.p>
         </div>
+
+        {/* User Notification Toast / Banner */}
+        <AnimatePresence>
+          {notification && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className={`w-full max-w-2xl mx-auto p-4 rounded-xl border backdrop-blur-md flex items-center justify-between gap-4 shadow-lg ${
+                notification.type === 'success'
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                  : 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-3 h-3 rounded-full ${notification.type === 'success' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+                <span className="text-sm font-medium">{notification.message}</span>
+              </div>
+              <button 
+                onClick={() => setNotification(null)}
+                className="text-xs opacity-60 hover:opacity-100 uppercase tracking-wider font-semibold"
+              >
+                Dismiss
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Current Subscription Active Banner */}
         {userData && (
@@ -186,10 +234,10 @@ export default function PricingPage() {
           transition={{ delay: 0.5 }}
           className="mt-16 flex items-center justify-center gap-2 text-ink-400 text-sm"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-green-400">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-emerald-400">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           </svg>
-          Payments secured by <strong className="text-white">Suby Checkout</strong>
+          Payments secured by <strong className="text-white">Wayl Gateway</strong>
         </motion.div>
       </div>
     </div>

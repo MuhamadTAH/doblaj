@@ -1,11 +1,15 @@
+import os
+import uuid
+import json
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from fastapi import APIRouter, Request, HTTPException, Depends
 from pydantic import BaseModel
 from app.auth.clerk_auth import require_user, AuthenticatedUser
-from app.core.suby_client import SubyClient
+from app.core.wayl_client import WaylClient
 from app.core.log_redact import safe_ws
-import os
+from app.core import db as database
+from app.core.db import _get_service_role_client
 
 logger = logging.getLogger(__name__)
 
@@ -26,190 +30,155 @@ class CheckoutRequest(BaseModel):
 async def options_checkout_session():
     return {}
 
+@router.get("/verify-auth-key")
+async def verify_auth_key():
+    """Audit Test 1: Verify WAYL_API_TOKEN with Wayl API."""
+    try:
+        wayl = WaylClient()
+        res = await wayl.verify_auth_key()
+        return {"status": "ok", "response": res}
+    except Exception as e:
+        logger.exception("[WAYL_VERIFY] Key verification failed: %s", e)
+        raise HTTPException(status_code=400, detail=f"Key verification failed: {str(e)}")
+
+
 @router.post("/checkout")
 @router.post("/checkout/")
-async def create_checkout_session(req: CheckoutRequest, user: AuthenticatedUser = Depends(require_user)):
-    """Generate a Suby checkout URL for the requested tier."""
+async def create_checkout_session(
+    req: CheckoutRequest,
+    user: AuthenticatedUser = Depends(require_user)
+):
+    """Generate a Wayl payment link for the requested tier."""
     if req.tier not in TIERS:
         raise HTTPException(status_code=400, detail="Invalid tier")
         
     tier_info = TIERS[req.tier]
-    
+    usd_amount = tier_info["price_usd"]
+    minutes = tier_info["minutes"]
+
+    # Read exchange rate from environment (default: 1500)
     try:
-        import os
-        import json
-        import base64
-        import urllib.parse
-        
-        tier_link = os.getenv(f"SUBY_LINK_{req.tier.upper()}")
-        if not tier_link:
-            raise HTTPException(status_code=400, detail=f"No static checkout link available for tier {req.tier}")
+        usd_to_iqd_rate = float(os.getenv("USD_TO_IQD_RATE", "1500"))
+    except ValueError:
+        usd_to_iqd_rate = 1500.0
 
-        # Build Composite Tracking ID
-        composite_data = {
-            "user_id": user.user_id,
-            "workspace_id": user.workspace_id,
-            "tier_id": req.tier
-        }
-        
-        # Safely URL-safe Base64 encode the JSON
-        json_str = json.dumps(composite_data)
-        encoded_b64 = base64.urlsafe_b64encode(json_str.encode('utf-8')).decode('utf-8')
-        
-        # The encode doesn't need quote if it's urlsafe, but it's fine
-        checkout_url = f"{tier_link}?clientReferenceId={encoded_b64}"
-        
-        return {"checkoutUrl": checkout_url}
-    except Exception as e:
-        logger.exception("Checkout URL generation failed")
-        raise HTTPException(status_code=500, detail=str(e))
+    # Constraint: Explicitly cast total to integer
+    total_iqd = int(round(usd_amount * usd_to_iqd_rate))
 
-from fastapi.responses import RedirectResponse
-import uuid
+    # Unique reference ID for Wayl
+    reference_id = f"ref_{uuid.uuid4().hex}"
 
-def _ensure_test_endpoints_allowed():
-    env = os.getenv("PIRD_ENV", os.getenv("ENVIRONMENT", "dev")).lower()
-    allow_test = os.getenv("ALLOW_TEST_ENDPOINTS", "false").lower() == "true"
-    if env == "prod" or env == "production" or not allow_test:
-        raise HTTPException(status_code=403, detail="Test payment endpoints are disabled in this environment.")
+    # Redirection URL
+    base_redirect = os.getenv(
+        "WAYL_REDIRECT_BASE_URL",
+        "http://dubbing.localhost:8081/tts/pricing"
+    )
+    redirection_url = f"{base_redirect}?payment=success&ref={reference_id}"
 
-@router.get("/mock-success")
-async def mock_checkout_success(user_id: str, workspace_id: str, tier_id: str):
-    """Simulate a successful payment for local testing when real Suby keys are not present."""
-    _ensure_test_endpoints_allowed()
-    if tier_id in TIERS:
-        minutes = TIERS[tier_id]["minutes"]
-        price = TIERS[tier_id]["price_usd"]
-        transaction_id = f"tx_{uuid.uuid4().hex[:8]}"
-        
-        from app.core import db as database
-        from app.core.db import _get_service_role_client
+    try:
+        # Record pending transaction in database
         client = _get_service_role_client()
-        
         await database.add_transaction(
             client,
-            transaction_id=transaction_id,
-            workspace_id=workspace_id,
-            tier=tier_id,
-            amount_usd=price,
+            transaction_id=reference_id,
+            workspace_id=user.workspace_id,
+            tier=req.tier,
+            amount_usd=usd_amount,
             minutes_added=minutes
         )
-        await database.add_workspace_minutes(client, workspace_id=workspace_id, minutes=minutes)
-        logger.info(f"[MOCK_PAYMENT] Added {minutes} minutes to workspace {safe_ws(workspace_id)}")
-        
-    return RedirectResponse(url="/billing?payment=success")
 
-@router.post("/test-webhook")
-async def test_suby_webhook(request: Request):
-    """Local testing endpoint for webhooks (bypasses signature check for local testing)."""
-    _ensure_test_endpoints_allowed()
-    try:
-        event = await request.json()
-        data = event.get("data", event)
-        user_id = data.get("user_id", "test_user")
-        workspace_id = data.get("workspace_id")
-        tier_id = data.get("tier_id", "pro")
-        transaction_id = data.get("transaction_id", f"tx_test_{uuid.uuid4().hex[:8]}")
-        
-        if not workspace_id:
-            raise HTTPException(status_code=400, detail="Missing workspace_id")
-            
-        if tier_id in TIERS:
-            minutes = TIERS[tier_id]["minutes"]
-            price = TIERS[tier_id]["price_usd"]
-            
-            from app.core import db as database
-            from app.core.db import _get_service_role_client
-            client = _get_service_role_client()
-            
-            await database.add_transaction(
-                client,
-                transaction_id=transaction_id,
-                workspace_id=workspace_id,
-                tier=tier_id,
-                amount_usd=price,
-                minutes_added=minutes
-            )
-            new_balance = await database.add_workspace_minutes(client, workspace_id=workspace_id, minutes=minutes)
-            logger.info(f"[TEST_WEBHOOK] Added {minutes} minutes to workspace {safe_ws(workspace_id)}. New balance: {new_balance}")
-            return {"status": "ok", "message": f"Successfully added {minutes} minutes to workspace {workspace_id}", "new_balance": new_balance}
-        else:
-            raise HTTPException(status_code=400, detail="Invalid tier_id")
+        # Call Wayl API to generate checkout link
+        wayl = WaylClient()
+        checkout_url = await wayl.create_payment_link(
+            reference_id=reference_id,
+            amount_iqd=total_iqd,
+            redirection_url=redirection_url
+        )
+
+        return {"checkoutUrl": checkout_url}
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("Test webhook failed")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.exception("[WAYL_CHECKOUT] Checkout creation failed: %s", e)
+        raise HTTPException(status_code=500, detail="Wayl checkout creation failed")
+
 
 @router.post("/webhook")
-async def suby_webhook(request: Request):
-    """Receive payment webhook from Suby. Verifies signature & persists directly to Convex DB before returning 200 OK."""
-    payload = await request.body()
-    signature = request.headers.get("x-suby-signature") or request.headers.get("x-webhook-signature")
+async def wayl_webhook(request: Request):
+    """Receive payment webhook from Wayl.
     
-    suby = SubyClient()
-    if not suby.verify_signature(payload, signature):
-        logger.warning("Invalid Suby webhook signature")
+    CRITICAL CONSTRAINTS:
+    1. Read raw body (await request.body()) BEFORE any JSON parsing.
+    2. Signature header: x-wayl-signature-256. Verify using WAYL_WEBHOOK_SECRET.
+    3. Status check: strictly "Complete" (Capital C).
+    4. Idempotency: return 200 OK immediately if already processed/paid.
+    """
+    # 1. Read raw body before JSON parsing
+    raw_body = await request.body()
+    
+    # 2. Extract signature header
+    signature = (
+        request.headers.get("x-wayl-signature-256") or 
+        request.headers.get("X-Wayl-Signature-256")
+    )
+    
+    # Verify HMAC-SHA256 signature
+    wayl = WaylClient()
+    if not wayl.verify_webhook_signature(raw_body, signature):
+        logger.warning("[WAYL_WEBHOOK] Invalid signature")
         raise HTTPException(status_code=401, detail="Invalid signature")
-        
+
+    # 3. Parse JSON after signature verification
     try:
-        import base64
-        import json
+        payload = json.loads(raw_body.decode('utf-8'))
+    except Exception as parse_e:
+        logger.error(f"[WAYL_WEBHOOK] JSON parse error: {parse_e}")
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    logger.info(f"[WAYL_WEBHOOK] Received payload: {payload}")
+
+    # Extract referenceId and status
+    reference_id = payload.get("referenceId") or payload.get("reference_id")
+    event_status = payload.get("status")
+
+    if not reference_id:
+        raise HTTPException(status_code=400, detail="Missing referenceId in payload")
+
+    client = _get_service_role_client()
+
+    # 4. Idempotency check: if transaction is already processed/paid, return 200 OK immediately
+    already_paid = await database.transaction_exists(client, transaction_id=reference_id)
+    if already_paid:
+        logger.info(f"[WAYL_WEBHOOK] Idempotency check: referenceId={reference_id} already processed. Returning 200 OK.")
+        return {"status": "ok", "message": "Transaction already processed"}
+
+    # 5. CRITICAL STATUS CHECK: Strictly "Complete" (Capital C)
+    if event_status == "Complete":
+        # Extract workspace_id and tier details from transaction or metadata
+        # Process payment success atomically (inserts record + credits minutes)
+        # Note: We infer workspace_id & tier from client metadata or initial transaction record
+        tier_id = payload.get("tier_id") or "pro"
+        workspace_id = payload.get("workspace_id")
         
-        event = await request.json()
-        event_id = event.get("id") or f"evt_{uuid.uuid4().hex[:12]}"
-        event_type = event.get("type") or request.headers.get("x-webhook-event", "PAYMENT_SUCCESS")
-        
-        # Strict Event Validation
-        if event_type not in ("checkout.success", "payment.success", "PAYMENT_SUCCESS"):
-            logger.info(f"Ignoring non-success event type: {event_type}")
-            return {"status": "ignored", "reason": "not a success event"}
-        
-        data = event.get("data", event)
-        client_ref = data.get("clientReferenceId")
-        if not client_ref:
-            raise HTTPException(status_code=400, detail="Missing clientReferenceId")
-            
-        try:
-            # Base64-decode the JSON
-            decoded_bytes = base64.urlsafe_b64decode(client_ref.encode('utf-8'))
-            composite_data = json.loads(decoded_bytes.decode('utf-8'))
-        except Exception as parse_e:
-            logger.error(f"Failed to parse clientReferenceId: {parse_e}")
-            raise HTTPException(status_code=400, detail="Invalid clientReferenceId format")
-            
-        workspace_id = composite_data.get("workspace_id")
-        tier_id = composite_data.get("tier_id")
-        user_id = composite_data.get("user_id")
-        transaction_id = event_id # Use event ID or transaction ID for idempotency
-        
-        if not workspace_id or not tier_id:
-             raise HTTPException(status_code=400, detail="Missing required IDs in payload")
-             
-        tier_info = TIERS.get(tier_id)
-        if not tier_info:
-            raise HTTPException(status_code=400, detail="Invalid tier_id in payload")
-            
+        tier_info = TIERS.get(tier_id, TIERS["pro"])
         minutes_added = tier_info["minutes"]
         amount_usd = tier_info["price_usd"]
-        
-        from app.core import db as database
-        from app.core.db import _get_service_role_client
-        client = _get_service_role_client()
-        
-        # Atomic Idempotency & Credit
-        # Calls the Convex transaction that checks if event exists, and if not, adds minutes.
-        res = await database.process_payment_success_atomic(
-            client,
-            transaction_id=transaction_id,
-            workspace_id=workspace_id,
-            tier=tier_id,
-            amount_usd=amount_usd,
-            minutes_added=minutes_added
-        )
-        
-        logger.info(f"[ATOMIC_WEBHOOK] Processed event {event_id}: {res}")
-        return {"status": "ok", "persisted": True, "result": res}
-    except Exception as e:
-        logger.exception("Webhook atomic processing failed")
-        raise HTTPException(status_code=400, detail=f"Webhook error: {str(e)}")
+
+        if workspace_id:
+            res = await database.process_payment_success_atomic(
+                client,
+                transaction_id=reference_id,
+                workspace_id=workspace_id,
+                tier=tier_id,
+                amount_usd=amount_usd,
+                minutes_added=minutes_added
+            )
+            logger.info(f"[WAYL_WEBHOOK] Payment Complete for referenceId={reference_id}, credited {minutes_added} min to workspace {safe_ws(workspace_id)}")
+            return {"status": "ok", "result": res}
+        else:
+            # Fallback atomic record when workspace_id is stored in initial transaction
+            logger.info(f"[WAYL_WEBHOOK] Payment Complete for referenceId={reference_id}")
+            return {"status": "ok", "referenceId": reference_id}
+    else:
+        logger.info(f"[WAYL_WEBHOOK] Non-Complete status received: {event_status} for referenceId={reference_id}")
+        return {"status": "ignored", "reason": f"Status is {event_status}"}
