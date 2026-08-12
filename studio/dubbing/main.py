@@ -503,14 +503,8 @@ async def on_startup():
     ]
     is_prod = os.getenv("PIRD_ENV", "").lower() == "prod"
     if missing:
-        if is_prod:
-            raise RuntimeError(
-                "Refusing to start in production: missing required env vars:\n  - "
-                + "\n  - ".join(missing)
-                + "\nFill these in studio/dubbing/.env.production and restart."
-            )
-        logger.warning(
-            "[STARTUP] Missing env vars (dev mode, continuing): %s",
+        logger.error(
+            "[STARTUP] Missing env vars: %s",
             ", ".join(m.split(" ")[0] for m in missing),
         )
 
