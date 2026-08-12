@@ -632,6 +632,9 @@ async def auth_me(request: Request):
 
 
 @app.get("/healthz")
+@app.get("/health")
+@app.head("/healthz")
+@app.head("/health")
 async def healthz():
     return {"status": "ok"}
 
