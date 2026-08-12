@@ -1,1 +1,1 @@
-# init
+# Package init for app
