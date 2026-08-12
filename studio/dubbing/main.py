@@ -161,24 +161,53 @@ logger.info("[STARTUP] Dubbing data backend: Convex")
 # PIRD-019: CORS configuration — explicit origin allowlist per RFC 6454.
 # Never combine allow_origins=["*"] with allow_credentials=True.
 _raw_origins = os.getenv("ALLOWED_ORIGINS", "").strip()
+cors_origins = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:8000",
+    "http://localhost:8002",
+    "http://localhost:8081",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:8000",
+    "http://127.0.0.1:8002",
+    "http://127.0.0.1:8081",
+    "https://doblaj.com",
+    "https://www.doblaj.com",
+    "https://api.doblaj.com",
+    "https://checkout.suby.fi",
+]
 if _raw_origins:
-    cors_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
-else:
-    cors_origins = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:8000",
-        "http://localhost:8002",
-        "http://localhost:8081",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:8000",
-        "http://127.0.0.1:8002",
-        "http://127.0.0.1:8081",
-        "https://doblaj.com",
-        "https://www.doblaj.com",
-        "https://checkout.suby.fi",
-    ]
+    for o in _raw_origins.split(","):
+        cleaned = o.strip()
+        if cleaned and cleaned not in cors_origins:
+            cors_origins.append(cleaned)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Part 05 / Video 25: Add security response headers to protect browser clients."""
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; "
+            "style-src 'self' 'unsafe-inline' https:; "
+            "img-src 'self' data: blob: https:; "
+            "media-src 'self' blob: https:; "
+            "connect-src 'self' https: wss:; "
+            "font-src 'self' data: https:; "
+            "object-src 'none'; "
+            "frame-ancestors 'none';"
+        )
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -187,6 +216,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"], 
 )
+
 
 # ---------------------------------------------------------------------------
 # Directories
@@ -422,8 +452,24 @@ try:
         logger.info("[STARTUP] Telegram router loaded OK")
     except Exception as e:
         logger.exception("[STARTUP] Telegram router failed to load: %s", e)
+
+    try:
+        from app.api.routes import support_playbook
+        app.include_router(support_playbook.router, prefix="/api", tags=["support"])
+        logger.info("[STARTUP] Support playbook router loaded OK")
+    except Exception as e:
+        logger.exception("[STARTUP] Support playbook router failed to load: %s", e)
+
+    try:
+        from app.api.routes import security_policy
+        app.include_router(security_policy.router, prefix="/api", tags=["security"])
+        logger.info("[STARTUP] Security policy router loaded OK")
+    except Exception as e:
+        logger.exception("[STARTUP] Security policy router failed to load: %s", e)
         
     logger.info("[STARTUP] Routers loaded OK")
+
+
 except Exception as e:
     logger.exception("Failed to import routers: %s", e)
 
@@ -479,12 +525,19 @@ async def on_startup():
     # RunPod GPU phase finishes a job (status="gpu_finished"), nothing
     # advances it to "completed" unless this worker runs. It polls
     # Convex every 5s and runs ffmpeg mux on each gpu_finished job.
-    try:
-        from app.services.cpu_worker import poll_for_gpu_finished_jobs
-        app.state.cpu_worker_task = asyncio.create_task(poll_for_gpu_finished_jobs())
-        logger.info("[STARTUP] Azure CPU polling worker spawned")
-    except Exception as e:
-        logger.exception("[STARTUP] Failed to spawn CPU worker: %s", e)
+    # TEMP: disable on laptop swap-deploy (CONVEX_URL was pointing at
+    # 127.0.0.1:3210 = dead local; worker hangs forever on its first
+    # query, preventing uvicorn from finishing startup). Set to 1 to
+    # skip. Re-enable once .env points at prod Convex URL.
+    if os.getenv("DISABLE_CPU_WORKER") != "1":
+        try:
+            from app.services.cpu_worker import poll_for_gpu_finished_jobs
+            app.state.cpu_worker_task = asyncio.create_task(poll_for_gpu_finished_jobs())
+            logger.info("[STARTUP] Azure CPU polling worker spawned")
+        except Exception as e:
+            logger.exception("[STARTUP] Failed to spawn CPU worker: %s", e)
+    else:
+        logger.info("[STARTUP] Azure CPU polling worker DISABLED (DISABLE_CPU_WORKER=1)")
 
 
 @app.on_event("shutdown")

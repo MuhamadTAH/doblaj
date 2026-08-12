@@ -26,10 +26,6 @@ TIERS = {
 class CheckoutRequest(BaseModel):
     tier: str
 
-@router.options("/checkout")
-@router.options("/checkout/")
-async def options_checkout_session():
-    return {}
 
 @router.get("/verify-auth-key")
 async def verify_auth_key():

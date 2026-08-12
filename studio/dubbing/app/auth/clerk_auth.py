@@ -1,7 +1,7 @@
 """Clerk JWT authentication for the dubbing service."""
 from dataclasses import dataclass
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Set
 
 import jwt
 from fastapi import Cookie, Header, HTTPException, Request
@@ -89,7 +89,7 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
             logger.error(f"JWT decode failed: {inner_exc} | Issuer: {expected_issuer}")
             raise HTTPException(
                 401, 
-                f"Invalid token: {str(inner_exc)}", 
+                "Invalid authentication token", 
                 headers={"WWW-Authenticate": 'Bearer error="invalid_token"'}
             ) from inner_exc
         
@@ -99,7 +99,7 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
             logger.error(f"Invalid azp claim: {azp}")
             raise HTTPException(
                 401, 
-                f"Invalid azp claim: {azp}", 
+                "Invalid authorized party", 
                 headers={"WWW-Authenticate": 'Bearer error="invalid_token"'}
             )
             
@@ -115,7 +115,7 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
         logging.getLogger(__name__).error(f"JWT validation failed: {exc}")
         raise HTTPException(
             401, 
-            f"Invalid token signature: {exc}", 
+            "Invalid token signature", 
             headers={"WWW-Authenticate": 'Bearer error="invalid_token"'}
         ) from exc
     except HTTPException:
@@ -125,24 +125,41 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
         logging.getLogger(__name__).error(f"Unexpected JWT error: {exc}")
         raise HTTPException(
             401, 
-            f"Authentication failed: {exc}", 
+            "Authentication failed", 
             headers={"WWW-Authenticate": 'Bearer error="invalid_token"'}
         ) from exc
 
 
+
 def _bearer_token(authorization: Optional[str]) -> str:
+    # Part05 / Layer 12: NEVER log the raw Authorization header. The
+    # previous debug line emitted the full JWT at ERROR level, which
+    # leaks bearer tokens to every log sink. Log only metadata — the
+    # scheme, whether a token was present, and the token length.
     import logging
-    logging.getLogger(__name__).error(f"[DEBUG_AUTH] Received authorization header: {authorization}")
-    
-    if authorization:
+    if hasattr(authorization, "default"):
+        authorization = authorization.default
+    if isinstance(authorization, str) and authorization:
         scheme, _, token = authorization.partition(" ")
+
         if scheme.lower() == "bearer" and token and token != "null":
+            logging.getLogger(__name__).info(
+                "[AUTH] bearer token present (scheme=%s, len=%d)",
+                scheme, len(token),
+            )
             return token
-            
+        # Malformed header — log the scheme (not the token) and length.
+        logging.getLogger(__name__).info(
+            "[AUTH] malformed Authorization header (scheme=%r, len=%d)",
+            scheme or None, len(authorization),
+        )
+    else:
+        logging.getLogger(__name__).info("[AUTH] no Authorization header")
+
     raise HTTPException(
-        401, 
-        f"Authentication required. Header received: {authorization}", 
-        headers={"WWW-Authenticate": 'Bearer error="invalid_request", error_description="Missing or invalid Authorization header"'}
+        401,
+        "Authentication required",
+        headers={"WWW-Authenticate": 'Bearer error="invalid_request", error_description="Missing or invalid Authorization header"'},
     )
 
 
@@ -236,9 +253,11 @@ async def require_user(
     request: Request,
     authorization: Optional[str] = Header(None)
 ) -> AuthenticatedUser:
-    # Use request.headers as a fallback if FastAPI dependency injection misses it
-    auth_header = authorization or request.headers.get("authorization")
+    if hasattr(authorization, "default"):
+        authorization = authorization.default
+    auth_header = authorization or (request.headers.get("authorization") if hasattr(request, "headers") and request.headers else None)
     token = _bearer_token(auth_header)
+
     claims = _decode_clerk_jwt(token)
     workspace_id = claims.get("workspace_id") or claims.get("org_id") or claims.get("sub")
     if not workspace_id:
@@ -288,3 +307,91 @@ async def require_user_or_internal(
         )
         
     return await require_user(request=request, authorization=authorization)
+
+
+async def require_admin(
+    request: Request,
+    authorization: Optional[str] = Header(None)
+) -> AuthenticatedUser:
+    """Part 07 / Video 39: Enforce Role-Based Access Control (RBAC) at the API layer."""
+    user = await require_user(request=request, authorization=authorization)
+    allowed_roles = {"org:admin", "admin", "org:service"}
+    if getattr(user, "role", "") not in allowed_roles:
+        import logging
+        logging.getLogger(__name__).warning(
+            f"[RBAC-DENIED] User {user.user_id} with role '{user.role}' attempted admin endpoint"
+        )
+        raise HTTPException(403, "Admin privileges required")
+    return user
+
+
+# Part 08 / Video 45: Granular Permissions RBAC Matrix
+ROLE_PERMISSIONS: Dict[str, Set[str]] = {
+    "org:admin": {"dubbing:read", "dubbing:write", "dubbing:delete", "billing:manage", "admin:all"},
+    "admin": {"dubbing:read", "dubbing:write", "dubbing:delete", "billing:manage", "admin:all"},
+    "org:service": {"dubbing:read", "dubbing:write", "dubbing:delete", "billing:manage", "admin:all"},
+    "org:member": {"dubbing:read", "dubbing:write"},
+    "member": {"dubbing:read", "dubbing:write"},
+    "org:viewer": {"dubbing:read"},
+    "viewer": {"dubbing:read"},
+}
+
+
+def has_permission(user: AuthenticatedUser, permission: str) -> bool:
+    """Check if the user's role grants a specific permission action."""
+    user_role = getattr(user, "role", "viewer") or "viewer"
+    user_perms = ROLE_PERMISSIONS.get(user_role, set())
+    return permission in user_perms or "admin:all" in user_perms
+
+
+def require_permission(permission: str):
+    """Dependency builder enforcing a granular permission action on API routes."""
+    async def _permission_dependency(
+        request: Request,
+        authorization: Optional[str] = Header(None)
+    ) -> AuthenticatedUser:
+        user = await require_user(request=request, authorization=authorization)
+        if not has_permission(user, permission):
+            import logging
+            logging.getLogger(__name__).warning(
+                f"[PERM-DENIED] User {user.user_id} ({user.role}) missing permission '{permission}'"
+            )
+            raise HTTPException(403, f"Permission '{permission}' required")
+        return user
+    return _permission_dependency
+
+
+# Part 10 / Video 60: Instant Session Revocation Helper
+def revoke_all_user_sessions(user_id: str) -> bool:
+    """Revoke all active Clerk sessions for user_id upon security events.
+    
+    Calls Clerk's REST API endpoint /v1/users/{user_id}/logout.
+    """
+    secret = os.getenv("CLERK_SECRET_KEY", "")
+    if not secret:
+        import logging
+        logging.getLogger(__name__).warning("[SESSION-REVOKE] CLERK_SECRET_KEY unset — session revocation skipped")
+        return False
+    try:
+        import httpx
+        with httpx.Client(timeout=10.0) as c:
+            r = c.post(
+                f"https://api.clerk.com/v1/users/{user_id}/logout",
+                headers={"Authorization": f"Bearer {secret}"},
+            )
+            if r.status_code < 400:
+                import logging
+                logging.getLogger(__name__).info(f"[SESSION-REVOKE] Revoked active sessions for user {user_id}")
+                return True
+            import logging
+            logging.getLogger(__name__).warning(
+                f"[SESSION-REVOKE] Clerk logout returned status {r.status_code} for user {user_id}"
+            )
+            return False
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"[SESSION-REVOKE] Session revocation failed for {user_id}: {e}")
+        return False
+
+
+
