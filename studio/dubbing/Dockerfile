@@ -24,4 +24,4 @@ COPY . .
 EXPOSE 8000
 
 # Start FastAPI web server on Railway
-CMD ["sh", "-c", "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["python", "main.py"]
