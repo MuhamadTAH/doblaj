@@ -56,14 +56,38 @@ export default function BillingPage() {
     ? new Date(userData.plan_expiry).toLocaleDateString() 
     : (isInfinite || userData?.plan_expiry === "Unlimited" ? "Unlimited" : "N/A");
 
+  const TIER_DETAILS: Record<string, { packageName: string; amountDisplay: string; minutes: string }> = {
+    test_500iqd: { packageName: "Test Package", amountDisplay: "1,000 IQD", minutes: "+1 min" },
+    test_1000iqd: { packageName: "Test Package", amountDisplay: "1,000 IQD", minutes: "+1 min" },
+    starter: { packageName: "Starter Package", amountDisplay: "15,000 IQD ($10)", minutes: "+5 min" },
+    pro: { packageName: "Pro Package", amountDisplay: "30,000 IQD ($20)", minutes: "+15 min" },
+    creator: { packageName: "Creator Package", amountDisplay: "150,000 IQD ($99)", minutes: "+120 min" },
+  };
+
   // Real billing history
-  const billingHistory = userData?.transactions?.map((tx: any) => ({
-    id: tx.transactionId || tx.legacyId || tx._id || "N/A",
-    date: tx.createdAt ? new Date(typeof tx.createdAt === 'number' ? tx.createdAt : tx.createdAt).toLocaleDateString() : "N/A",
-    amount: tx.amountUsd !== undefined && tx.amountUsd !== null ? `$${Number(tx.amountUsd).toFixed(2)}` : (tx.amount ? `$${tx.amount}` : "$0.00"),
-    status: tx.status ? (tx.status.charAt(0).toUpperCase() + tx.status.slice(1)) : "Paid",
-    method: "Wayl"
-  })) || [];
+  const billingHistory = userData?.transactions?.map((tx: any) => {
+    let rawId = (tx.transactionId || tx.legacyId || tx._id || "INV-001").toString().split("/")[0].split("?")[0];
+    let cleanId = rawId.replace(/^ref_/, "INV-").toUpperCase();
+    if (cleanId.length > 12) {
+      cleanId = cleanId.substring(0, 12);
+    }
+
+    const tierKey = (tx.tier || "test_1000iqd").toLowerCase();
+    const tierInfo = TIER_DETAILS[tierKey] || {
+      packageName: tx.tier ? `${tx.tier.charAt(0).toUpperCase() + tx.tier.slice(1)} Package` : "Doblaj Package",
+      amountDisplay: tx.amountUsd ? `$${Number(tx.amountUsd).toFixed(2)}` : (tx.fixed_iqd ? `${tx.fixed_iqd} IQD` : "1,000 IQD"),
+      minutes: tx.minutesAdded ? `+${tx.minutesAdded} min` : "+1 min",
+    };
+
+    return {
+      id: cleanId,
+      packageName: tierInfo.packageName,
+      date: tx.createdAt ? new Date(typeof tx.createdAt === 'number' ? tx.createdAt : tx.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
+      amount: tierInfo.amountDisplay,
+      minutes: tierInfo.minutes,
+      status: tx.status ? (tx.status.charAt(0).toUpperCase() + tx.status.slice(1)) : "Paid",
+    };
+  }) || [];
 
   return (
     <div className="flex flex-col items-center min-h-[calc(100vh-4rem)] p-6 bg-ink-900/10">
@@ -172,21 +196,23 @@ export default function BillingPage() {
                     <thead className="text-xs text-ink-400 uppercase bg-ink-800/50 rounded-t-lg">
                       <tr>
                         <th className="px-6 py-4 font-semibold rounded-tl-lg">Invoice ID</th>
+                        <th className="px-6 py-4 font-semibold">Package</th>
                         <th className="px-6 py-4 font-semibold">Date</th>
                         <th className="px-6 py-4 font-semibold">Amount</th>
-                        <th className="px-6 py-4 font-semibold">Method</th>
+                        <th className="px-6 py-4 font-semibold">Minutes</th>
                         <th className="px-6 py-4 font-semibold text-right rounded-tr-lg">Status</th>
                       </tr>
                     </thead>
                     <tbody>
                       {billingHistory.map((invoice, idx) => (
                         <tr key={idx} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                          <td className="px-6 py-4 font-medium text-white">{invoice.id}</td>
+                          <td className="px-6 py-4 font-mono text-xs font-semibold text-brand-400">{invoice.id}</td>
+                          <td className="px-6 py-4 font-medium text-white">{invoice.packageName}</td>
                           <td className="px-6 py-4">{invoice.date}</td>
-                          <td className="px-6 py-4">{invoice.amount}</td>
-                          <td className="px-6 py-4">{invoice.method}</td>
+                          <td className="px-6 py-4 font-semibold text-amber-400">{invoice.amount}</td>
+                          <td className="px-6 py-4 font-medium text-emerald-400">{invoice.minutes}</td>
                           <td className="px-6 py-4 text-right">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
                               {invoice.status}
                             </span>
                           </td>

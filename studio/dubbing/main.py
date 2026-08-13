@@ -577,18 +577,19 @@ async def auth_me(request: Request):
         # Process payment sync if returning with payment=success or ref parameter
         ref_id = request.query_params.get("ref") or request.query_params.get("referenceId")
         if ref_id:
+            clean_ref = ref_id.split("/")[0].split("?")[0]
             try:
                 service_client = database._get_service_role_client()
                 await database.process_payment_success_atomic(
                     service_client,
-                    transaction_id=ref_id,
+                    transaction_id=clean_ref,
                     workspace_id=user.workspace_id,
                     tier="test_1000iqd",
-                    amount_usd=1,
+                    amount_usd=0.67,
                     minutes_added=1
                 )
             except Exception as sync_err:
-                logger.warning(f"[AUTH_ME] Payment sync warning for ref {ref_id}: {sync_err}")
+                logger.warning(f"[AUTH_ME] Payment sync warning for ref {clean_ref}: {sync_err}")
 
         remaining_minutes = await database.get_workspace_minutes(user_client, workspace_id=user.workspace_id)
         
