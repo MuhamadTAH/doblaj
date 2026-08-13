@@ -71,10 +71,9 @@ async def create_checkout_session(
     reference_id = f"ref_{uuid.uuid4().hex}"
 
     # Redirection URL
-    base_redirect = os.getenv(
-        "WAYL_REDIRECT_BASE_URL",
-        "http://dubbing.localhost:8081/tts/pricing"
-    )
+    pird_env = os.getenv("PIRD_ENV", "dev").lower()
+    default_redirect = "https://doblaj.com/pricing" if pird_env in ("prod", "production") else "http://dubbing.localhost:8081/tts/pricing"
+    base_redirect = os.getenv("WAYL_REDIRECT_BASE_URL", default_redirect)
     redirection_url = f"{base_redirect}?payment=success&ref={reference_id}"
 
     try:
