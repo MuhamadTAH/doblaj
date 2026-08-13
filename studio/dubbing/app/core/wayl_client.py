@@ -11,8 +11,19 @@ class WaylClient:
     def __init__(self):
         self.api_token = os.getenv("WAYL_API_TOKEN", "")
         self.webhook_secret = os.getenv("WAYL_WEBHOOK_SECRET", "")
-        self.api_url = "https://api.thewayl.com/api/v1/links"
-        self.verify_url = "https://api.thewayl.com/api/v1/verify-auth-key"
+
+    def _get_env(self) -> str:
+        wayl_env_override = os.getenv("WAYL_ENV", "").lower()
+        pird_env = os.getenv("PIRD_ENV", "dev").lower()
+        if wayl_env_override in ("live", "test"):
+            return wayl_env_override
+        return "live" if pird_env in ("prod", "production") else "test"
+
+    def _get_base_url(self) -> str:
+        # According to Wayl OpenAPI Spec:
+        # Production Server (live) -> https://api.thewayl.com
+        # Testing Server (test)    -> https://api.thewayl-staging.com
+        return "https://api.thewayl.com" if self._get_env() == "live" else "https://api.thewayl-staging.com"
 
     async def verify_auth_key(self) -> Dict[str, Any]:
         """Execute a test call to GET /api/v1/verify-auth-key using WAYL_API_TOKEN."""
@@ -20,8 +31,9 @@ class WaylClient:
             "X-WAYL-AUTHENTICATION": self.api_token,
             "Content-Type": "application/json"
         }
+        url = f"{self._get_base_url()}/api/v1/verify-auth-key"
         async with httpx.AsyncClient(timeout=15.0) as client:
-            res = await client.get(self.verify_url, headers=headers)
+            res = await client.get(url, headers=headers)
             if res.status_code != 200:
                 logger.error(f"[WAYL] Key verification failed: {res.status_code} - {res.text}")
                 res.raise_for_status()
@@ -34,10 +46,10 @@ class WaylClient:
         redirection_url: str,
         webhook_url: Optional[str] = None
     ) -> str:
-        """Make a POST request to https://api.thewayl.com/api/v1/links to create a payment link.
+        """Make a POST request to /api/v1/links to create a payment link.
         
         Headers: "X-WAYL-AUTHENTICATION": os.getenv("WAYL_API_TOKEN")
-        Payload: env, referenceId, total (integer in IQD), currency ("IQD"), webhookUrl, webhookSecret, redirectionUrl
+        Payload: env, referenceId, total (integer in IQD), currency ("IQD"), lineItem, webhookUrl, webhookSecret, redirectionUrl
         """
         if not self.api_token:
             logger.error("[WAYL] WAYL_API_TOKEN is missing in environment variables")
@@ -47,12 +59,8 @@ class WaylClient:
             base_webhook = os.getenv("DUBBING_URL", "https://api.doblaj.com")
             webhook_url = f"{base_webhook.rstrip('/')}/api/payments/webhook"
 
-        wayl_env_override = os.getenv("WAYL_ENV", "").lower()
-        pird_env = os.getenv("PIRD_ENV", "dev").lower()
-        if wayl_env_override in ("live", "test"):
-            wayl_env = wayl_env_override
-        else:
-            wayl_env = "live" if pird_env in ("prod", "production") else "test"
+        wayl_env = self._get_env()
+        target_api_url = f"{self._get_base_url()}/api/v1/links"
 
         # Wayl requires minimum 1000 IQD
         final_amount = max(1000, int(amount_iqd))
@@ -79,12 +87,7 @@ class WaylClient:
             "Content-Type": "application/json"
         }
 
-        # According to Wayl OpenAPI Spec:
-        # Production Server (env: "live") -> https://api.thewayl.com/api/v1/links
-        # Testing Server (env: "test")    -> https://api.thewayl-staging.com/api/v1/links
-        target_api_url = "https://api.thewayl.com/api/v1/links" if wayl_env == "live" else "https://api.thewayl-staging.com/api/v1/links"
-
-        logger.info(f"[WAYL] Creating payment link on {target_api_url} with env={wayl_env} for referenceId={reference_id}, total={amount_iqd} IQD")
+        logger.info(f"[WAYL] Creating payment link on {target_api_url} with env={wayl_env} for referenceId={reference_id}, total={final_amount} IQD")
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             res = await client.post(target_api_url, json=payload, headers=headers)
