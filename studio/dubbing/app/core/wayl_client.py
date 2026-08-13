@@ -60,9 +60,9 @@ class WaylClient:
             "currency": "IQD",  # Strictly hardcoded as IQD
             "lineItem": [
                 {
-                    "name": f"Doblaj Credits Package ({final_amount} IQD)",
-                    "price": final_amount,
-                    "quantity": 1
+                    "label": f"Doblaj Credits Package ({final_amount} IQD)",
+                    "amount": final_amount,
+                    "type": "increase"
                 }
             ],
             "webhookUrl": webhook_url,
