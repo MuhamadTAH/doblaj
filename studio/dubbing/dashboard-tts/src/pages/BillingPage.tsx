@@ -31,7 +31,8 @@ export default function BillingPage() {
     
     async function fetchData() {
       try {
-        const res = await secureAuthFetch(getToken, `${API_BASE}/api/auth/me`);
+        const queryParams = window.location.search;
+        const res = await secureAuthFetch(getToken, `${API_BASE}/api/auth/me${queryParams}`);
         const data = await res.json();
         if (isMounted && data.id) {
           setUserData(data);
