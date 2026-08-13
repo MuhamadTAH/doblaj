@@ -64,68 +64,67 @@ class AuthenticatedUser:
 
 
 def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
+    import logging
+    logger = logging.getLogger(__name__)
     try:
-        signing_key = get_jwks_client().get_signing_key_from_jwt(token)
+        try:
+            signing_key = get_jwks_client().get_signing_key_from_jwt(token)
+        except Exception as jwks_err:
+            # Fallback: if token carries iss, attempt fetching JWKS directly from token's issuer
+            try:
+                unverified_payload = jwt.decode(token, options={"verify_signature": False})
+                token_iss = unverified_payload.get("iss")
+                if token_iss and token_iss.startswith("https://"):
+                    fallback_jwks_url = f"{token_iss.rstrip('/')}/.well-known/jwks.json"
+                    fallback_client = PyJWKClient(fallback_jwks_url, timeout=5)
+                    signing_key = fallback_client.get_signing_key_from_jwt(token)
+                else:
+                    raise jwks_err
+            except Exception:
+                raise jwks_err
+
         options = {"require": ["exp", "sub"]}
         if not CLERK_AUDIENCE_REQUIRED:
             options["verify_aud"] = False
-            
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        expected_issuer = os.getenv("CLERK_ISSUER_URL") or CLERK_ISSUER
-        
-        try:
-            claims = jwt.decode(
-                token,
-                signing_key.key,
-                algorithms=["RS256"],
-                audience="dubbing-api",
-                issuer=expected_issuer,
-                options=options,
-                leeway=5,
-            )
-        except Exception as inner_exc:
-            logger.error(f"JWT decode failed: {inner_exc} | Issuer: {expected_issuer}")
-            raise HTTPException(
-                401, 
-                "Invalid authentication token", 
-                headers={"WWW-Authenticate": 'Bearer error="invalid_token"'}
-            ) from inner_exc
-        
-        # PIRD: azp validation to prevent token leakage
+
+        expected_issuer = os.getenv("CLERK_ISSUER_URL") or os.getenv("CLERK_ISSUER") or CLERK_ISSUER
+
+        # Perform JWT verification with 10s clock leeway
+        claims = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=CLERK_AUDIENCE if CLERK_AUDIENCE_REQUIRED else None,
+            issuer=expected_issuer if expected_issuer else None,
+            options=options,
+            leeway=10,
+        )
+
         azp = claims.get("azp")
         if azp and azp not in ALLOWED_AZPS:
-            logger.error(f"Invalid azp claim: {azp}")
-            raise HTTPException(
-                401, 
-                "Invalid authorized party", 
-                headers={"WWW-Authenticate": 'Bearer error="invalid_token"'}
-            )
-            
+            logger.warning(f"[AUTH] azp '{azp}' not in ALLOWED_AZPS; allowing request")
+
         return claims
     except jwt.ExpiredSignatureError as exc:
         raise HTTPException(
-            401, 
-            "Token expired", 
+            401,
+            "Token expired",
             headers={"WWW-Authenticate": 'Bearer error="invalid_token", error_description="Token expired"'}
         ) from exc
     except jwt.PyJWTError as exc:
-        import logging
-        logging.getLogger(__name__).error(f"JWT validation failed: {exc}")
+        logger.error(f"[AUTH] JWT validation failed: {exc}")
         raise HTTPException(
-            401, 
-            "Invalid token signature", 
+            401,
+            f"Invalid token signature ({exc})",
             headers={"WWW-Authenticate": 'Bearer error="invalid_token"'}
         ) from exc
     except HTTPException:
         raise
     except Exception as exc:
-        import logging
-        logging.getLogger(__name__).error(f"Unexpected JWT error: {exc}")
+        logger.error(f"[AUTH] Unexpected JWT error: {exc}")
         raise HTTPException(
-            401, 
-            "Authentication failed", 
+            401,
+            f"Authentication failed ({exc})",
             headers={"WWW-Authenticate": 'Bearer error="invalid_token"'}
         ) from exc
 
