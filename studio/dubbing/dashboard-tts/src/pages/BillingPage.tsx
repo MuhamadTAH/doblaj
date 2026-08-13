@@ -56,12 +56,12 @@ export default function BillingPage() {
     : (isInfinite || userData?.plan_expiry === "Unlimited" ? "Unlimited" : "N/A");
 
   // Real billing history
-  const billingHistory = userData?.transactions?.map((tx) => ({
-    id: tx.legacyId || "N/A",
-    date: tx.createdAt ? new Date(tx.createdAt).toLocaleDateString() : "N/A",
-    amount: tx.amountUsd ? `$${tx.amountUsd.toFixed(2)}` : "N/A",
-    status: "Paid",
-    method: "Credit Card"
+  const billingHistory = userData?.transactions?.map((tx: any) => ({
+    id: tx.transactionId || tx.legacyId || tx._id || "N/A",
+    date: tx.createdAt ? new Date(typeof tx.createdAt === 'number' ? tx.createdAt : tx.createdAt).toLocaleDateString() : "N/A",
+    amount: tx.amountUsd !== undefined && tx.amountUsd !== null ? `$${Number(tx.amountUsd).toFixed(2)}` : (tx.amount ? `$${tx.amount}` : "$0.00"),
+    status: tx.status ? (tx.status.charAt(0).toUpperCase() + tx.status.slice(1)) : "Paid",
+    method: "Wayl"
   })) || [];
 
   return (

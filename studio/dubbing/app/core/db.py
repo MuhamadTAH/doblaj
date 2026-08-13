@@ -28,6 +28,7 @@ add_workspace_minutes = backend.add_workspace_minutes
 deduct_workspace_minutes = backend.deduct_workspace_minutes
 add_transaction = backend.add_transaction
 transaction_exists = backend.transaction_exists
+list_transactions = backend.list_transactions
 create_step_telemetry = backend.create_step_telemetry
 update_job_cost = backend.update_job_cost
 _internal_args = backend._internal_args
