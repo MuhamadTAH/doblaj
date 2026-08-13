@@ -122,3 +122,46 @@ class WaylClient:
         except Exception as e:
             logger.error(f"[WAYL] Signature verification error: {e}")
             return False
+
+    async def create_refund(
+        self,
+        reference_id: str,
+        amount_iqd: int,
+        reason: str
+    ) -> Dict[str, Any]:
+        """Request a refund for a completed payment via Wayl API POST /api/v1/refunds.
+        
+        Requirements per Wayl Spec:
+        - referenceId: Order reference ID (e.g. ref_xxx)
+        - amount: IQD amount (minimum 1000)
+        - reason: Minimum 100 characters string
+        """
+        if not self.api_token:
+            raise ValueError("WAYL_API_TOKEN environment variable is not configured on the server")
+
+        clean_reason = reason.strip()
+        if len(clean_reason) < 100:
+            clean_reason = (clean_reason + " — Customer refund processed via Doblaj platform administration portal.").ljust(100, ".")
+
+        final_amount = max(1000, int(amount_iqd))
+        target_url = f"{self._get_base_url()}/api/v1/refunds"
+
+        payload = {
+            "referenceId": reference_id,
+            "amount": final_amount,
+            "reason": clean_reason[:1500],
+        }
+
+        headers = {
+            "X-WAYL-AUTHENTICATION": self.api_token,
+            "Content-Type": "application/json"
+        }
+
+        logger.info(f"[WAYL] Initiating refund for referenceId={reference_id}, amount={final_amount} IQD")
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            res = await client.post(target_url, json=payload, headers=headers)
+            if res.status_code not in (200, 201):
+                logger.error(f"[WAYL] Refund creation failed: {res.status_code} - {res.text}")
+                res.raise_for_status()
+            return res.json()

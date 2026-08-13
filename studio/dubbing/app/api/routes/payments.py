@@ -28,6 +28,12 @@ class CheckoutRequest(BaseModel):
     tier: str
 
 
+class RefundRequest(BaseModel):
+    reference_id: str
+    amount_iqd: int = 1000
+    reason: str
+
+
 @router.get("/verify-auth-key")
 async def verify_auth_key():
     """Audit Test 1: Verify WAYL_API_TOKEN with Wayl API."""
@@ -182,8 +188,27 @@ async def wayl_webhook(request: Request):
             return {"status": "ok", "result": res}
         else:
             # Fallback atomic record when workspace_id is stored in initial transaction
-            logger.info(f"[WAYL_WEBHOOK] Payment Complete for referenceId={reference_id}")
-            return {"status": "ok", "referenceId": reference_id}
-    else:
-        logger.info(f"[WAYL_WEBHOOK] Non-Complete status received: {event_status} for referenceId={reference_id}")
-        return {"status": "ignored", "reason": f"Status is {event_status}"}
+            logger.info(f"[WAYL_WEBHOOK] Successfully processed payment for referenceId={reference_id}")
+        return {"status": "ok", "message": "Payment processed successfully"}
+    
+    logger.info(f"[WAYL_WEBHOOK] Ignored status={event_status} for referenceId={reference_id}")
+    return {"status": "ok", "message": f"Status {event_status} ignored"}
+
+
+@router.post("/refund")
+async def process_refund(
+    req: RefundRequest,
+    user: AuthenticatedUser = Depends(require_user)
+):
+    """Process a payment refund via Wayl API POST /api/v1/refunds."""
+    wayl = WaylClient()
+    try:
+        res = await wayl.create_refund(
+            reference_id=req.reference_id,
+            amount_iqd=req.amount_iqd,
+            reason=req.reason
+        )
+        return {"status": "success", "data": res}
+    except Exception as e:
+        logger.error(f"[REFUND_ERROR] Refund failed: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
