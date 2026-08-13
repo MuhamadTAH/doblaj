@@ -66,16 +66,25 @@ class AuthenticatedUser:
 def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
     import logging
     logger = logging.getLogger(__name__)
+    token_iss_raw = ""
+    expected_issuer_raw = ""
     try:
+        unverified_payload = {}
+        try:
+            unverified_payload = jwt.decode(token, options={"verify_signature": False})
+        except Exception:
+            pass
+
+        token_iss_raw = unverified_payload.get("iss", "")
+        token_iss = token_iss_raw.rstrip("/")
+
         try:
             signing_key = get_jwks_client().get_signing_key_from_jwt(token)
         except Exception as jwks_err:
             # Fallback: if token carries iss, attempt fetching JWKS directly from token's issuer
             try:
-                unverified_payload = jwt.decode(token, options={"verify_signature": False})
-                token_iss = unverified_payload.get("iss")
-                if token_iss and token_iss.startswith("https://"):
-                    fallback_jwks_url = f"{token_iss.rstrip('/')}/.well-known/jwks.json"
+                if token_iss_raw and token_iss_raw.startswith("https://"):
+                    fallback_jwks_url = f"{token_iss_raw.rstrip('/')}/.well-known/jwks.json"
                     fallback_client = PyJWKClient(fallback_jwks_url, timeout=5)
                     signing_key = fallback_client.get_signing_key_from_jwt(token)
                 else:
@@ -87,7 +96,23 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
         if not CLERK_AUDIENCE_REQUIRED:
             options["verify_aud"] = False
 
-        expected_issuer = os.getenv("CLERK_ISSUER_URL") or os.getenv("CLERK_ISSUER") or CLERK_ISSUER
+        expected_issuer_raw = os.getenv("CLERK_ISSUER_URL") or os.getenv("CLERK_ISSUER") or CLERK_ISSUER or ""
+        expected_issuer = expected_issuer_raw.rstrip("/")
+
+        # Compare normalized issuer strings (ignore trailing slash / scheme differences)
+        if expected_issuer and token_iss:
+            norm_token_iss = token_iss.replace("https://", "").replace("http://", "")
+            norm_expected_iss = expected_issuer.replace("https://", "").replace("http://", "")
+            if norm_token_iss == norm_expected_iss:
+                verify_issuer = token_iss_raw
+            else:
+                logger.error(f"[AUTH] Issuer mismatch: token has '{token_iss}', env expected '{expected_issuer}'")
+                verify_issuer = expected_issuer_raw
+        elif expected_issuer:
+            verify_issuer = expected_issuer_raw
+        else:
+            options["verify_iss"] = False
+            verify_issuer = None
 
         # Perform JWT verification with 10s clock leeway
         claims = jwt.decode(
@@ -95,7 +120,7 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
             signing_key.key,
             algorithms=["RS256"],
             audience=CLERK_AUDIENCE if CLERK_AUDIENCE_REQUIRED else None,
-            issuer=expected_issuer if expected_issuer else None,
+            issuer=verify_issuer,
             options=options,
             leeway=10,
         )
@@ -112,10 +137,10 @@ def _decode_clerk_jwt(token: str) -> Dict[str, Any]:
             headers={"WWW-Authenticate": 'Bearer error="invalid_token", error_description="Token expired"'}
         ) from exc
     except jwt.PyJWTError as exc:
-        logger.error(f"[AUTH] JWT validation failed: {exc}")
+        logger.error(f"[AUTH] JWT validation failed: {exc} | token_iss='{token_iss_raw}', expected='{expected_issuer_raw}'")
         raise HTTPException(
             401,
-            f"Invalid token signature ({exc})",
+            f"Invalid token signature ({exc}: token_iss='{token_iss_raw}', expected='{expected_issuer_raw}')",
             headers={"WWW-Authenticate": 'Bearer error="invalid_token"'}
         ) from exc
     except HTTPException:
