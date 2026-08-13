@@ -71,7 +71,9 @@ async def create_checkout_session(
     reference_id = f"ref_{uuid.uuid4().hex}"
 
     # Redirection URL
-    base_redirect = os.getenv("WAYL_REDIRECT_BASE_URL", "https://doblaj.com/billing")
+    base_redirect = os.getenv("WAYL_REDIRECT_BASE_URL", "").strip()
+    if not base_redirect or "localhost" in base_redirect:
+        base_redirect = "https://doblaj.com/billing"
     redirection_url = f"{base_redirect}?payment=success&ref={reference_id}"
 
     try:
