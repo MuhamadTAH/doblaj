@@ -187,7 +187,7 @@ export default function PricingPage() {
             disabled={loadingTier === "test_500iqd"}
             className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-ink-950 font-bold text-sm transition-all shadow-md hover:scale-105 disabled:opacity-50 shrink-0"
           >
-            {loadingTier === "test_500iqd" ? "Redirecting..." : "Test Pay 500 IQD"}
+            {loadingTier === "test_500iqd" ? "Redirecting..." : "Test Pay 1,000 IQD"}
           </button>
         </motion.div>
 

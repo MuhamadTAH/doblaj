@@ -17,7 +17,8 @@ router = APIRouter()
 
 # Pricing Tiers Config
 TIERS = {
-    "test_500iqd": {"minutes": 1, "price_usd": 0.33, "fixed_iqd": 500},
+    "test_500iqd": {"minutes": 1, "price_usd": 0.67, "fixed_iqd": 1000},
+    "test_1000iqd": {"minutes": 1, "price_usd": 0.67, "fixed_iqd": 1000},
     "starter": {"minutes": 5, "price_usd": 10},
     "pro": {"minutes": 15, "price_usd": 20},
     "creator": {"minutes": 120, "price_usd": 99},

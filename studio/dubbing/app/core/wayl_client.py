@@ -48,13 +48,23 @@ class WaylClient:
             webhook_url = f"{base_webhook.rstrip('/')}/api/payments/webhook"
 
         pird_env = os.getenv("PIRD_ENV", "dev").lower()
-        wayl_env = "prod" if pird_env in ("prod", "production") else "dev"
+        wayl_env = "live" if pird_env in ("prod", "production") else "test"
+
+        # Wayl requires minimum 1000 IQD
+        final_amount = max(1000, int(amount_iqd))
 
         payload = {
             "env": wayl_env,
             "referenceId": reference_id,
-            "total": int(amount_iqd),
+            "total": final_amount,
             "currency": "IQD",  # Strictly hardcoded as IQD
+            "lineItem": [
+                {
+                    "name": f"Doblaj Credits Package ({final_amount} IQD)",
+                    "price": final_amount,
+                    "quantity": 1
+                }
+            ],
             "webhookUrl": webhook_url,
             "webhookSecret": self.webhook_secret,
             "redirectionUrl": redirection_url,
