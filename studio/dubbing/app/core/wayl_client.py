@@ -47,8 +47,12 @@ class WaylClient:
             base_webhook = os.getenv("DUBBING_URL", "https://api.doblaj.com")
             webhook_url = f"{base_webhook.rstrip('/')}/api/payments/webhook"
 
+        wayl_env_override = os.getenv("WAYL_ENV", "").lower()
         pird_env = os.getenv("PIRD_ENV", "dev").lower()
-        wayl_env = "live" if pird_env in ("prod", "production") else "test"
+        if wayl_env_override in ("live", "test"):
+            wayl_env = wayl_env_override
+        else:
+            wayl_env = "live" if pird_env in ("prod", "production") else "test"
 
         # Wayl requires minimum 1000 IQD
         final_amount = max(1000, int(amount_iqd))
