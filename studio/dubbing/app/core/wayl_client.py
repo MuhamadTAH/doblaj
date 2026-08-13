@@ -79,10 +79,15 @@ class WaylClient:
             "Content-Type": "application/json"
         }
 
-        logger.info(f"[WAYL] Creating payment link for referenceId={reference_id}, total={amount_iqd} IQD")
+        # According to Wayl OpenAPI Spec:
+        # Production Server (env: "live") -> https://api.thewayl.com/api/v1/links
+        # Testing Server (env: "test")    -> https://api.thewayl-staging.com/api/v1/links
+        target_api_url = "https://api.thewayl.com/api/v1/links" if wayl_env == "live" else "https://api.thewayl-staging.com/api/v1/links"
+
+        logger.info(f"[WAYL] Creating payment link on {target_api_url} with env={wayl_env} for referenceId={reference_id}, total={amount_iqd} IQD")
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            res = await client.post(self.api_url, json=payload, headers=headers)
+            res = await client.post(target_api_url, json=payload, headers=headers)
             if res.status_code not in (200, 201):
                 logger.error(f"[WAYL] Payment link creation failed: {res.status_code} - {res.text}")
                 res.raise_for_status()
