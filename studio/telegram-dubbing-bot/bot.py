@@ -317,6 +317,36 @@ async def query_telegram_balance(chat_id: int) -> Dict[str, Any]:
 
 import re
 
+def normalize_numerals(text: str) -> str:
+    arabic_numerals = "٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹"
+    latin_numerals = "01234567890123456789"
+    trans = str.maketrans(arabic_numerals, latin_numerals)
+    return text.translate(trans)
+
+def parse_deal_request(text: str) -> tuple[Optional[int], Optional[float]]:
+    """Detect if the user is asking to create a custom payment link / deal in natural language."""
+    text_clean = normalize_numerals(text.lower())
+    
+    link_keywords = ["link", "payment", "pay", "deal", "invoice", "make", "create", "generate", "بکە", "لینک", "خولەک", "دۆلار", "رابط", "دفع", "سوي", "اعمل", "کڕین"]
+    if not any(k in text_clean for k in link_keywords):
+        return None, None
+        
+    min_match = re.search(r"(\d+)\s*(?:min|mins|minute|minutes|m\b|خولەک|خوله ک|دقيقة|دقائق)", text_clean)
+    usd_match = re.search(r"(?:\$|usd\s*|dollar\s*)?(\d+(?:\.\d+)?)\s*(?:\$|usd|dollar|dollars|دۆلار|دولار)", text_clean)
+    if not usd_match:
+        usd_match = re.search(r"\$(\d+(?:\.\d+)?)", text_clean)
+        
+    if min_match and usd_match:
+        try:
+            mins = int(min_match.group(1))
+            usd = float(usd_match.group(1))
+            if mins > 0 and usd > 0:
+                return mins, usd
+        except (ValueError, IndexError):
+            pass
+            
+    return None, None
+
 def clean_ai_output(text: str) -> str:
     if not text:
         return ""
@@ -874,6 +904,28 @@ async def handle_text_questions(message: Message, state: FSMContext):
         
     logger.info({"service": "ai_chat", "chat_id": message.chat.id, "text": user_text})
     
+    # 1. Natural Language Custom Deal / Payment Link Generator
+    deal_mins, deal_usd = parse_deal_request(user_text)
+    if deal_mins and deal_usd:
+        link_data = await create_telegram_payment_link(message.chat.id, minutes=deal_mins, amount_usd=deal_usd)
+        if link_data and "checkout_url" in link_data:
+            checkout_url = link_data["checkout_url"]
+            iqd = link_data.get("amount_iqd", int(deal_usd * 1500))
+            text = (
+                f"🎉 **Custom Deal Payment Link Ready!**\n\n"
+                f"🎙️ **Minutes:** +{deal_mins} Dubbing Minutes\n"
+                f"💵 **Price:** ${deal_usd} ({iqd:,} IQD)\n"
+                f"⏳ **Expires in:** 30 Minutes\n\n"
+                f"👉 [Click here to complete payment on Wayl]({checkout_url})\n\n"
+                f"🔒 *Valid Wayl checkout link. Credits added automatically upon payment.*"
+            )
+            pay_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=f"💳 Pay ${deal_usd} on Wayl", url=checkout_url)],
+                [InlineKeyboardButton(text="🔙 Main Menu", callback_data="main_menu")]
+            ])
+            await message.answer(text, reply_markup=pay_kb, parse_mode="Markdown")
+            return
+            
     if bot_instance:
         try:
             await bot_instance.send_chat_action(chat_id=message.chat.id, action="typing")
