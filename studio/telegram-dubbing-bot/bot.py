@@ -338,23 +338,27 @@ CRITICAL GUARDRAIL RULES:
 """
 
 async def call_payment_ai(user_message: str) -> str:
-    openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
-    openrouter_model = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat")
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
-    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+    openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
+    openrouter_model = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-lightning:free")
+    gemini_api_key = os.getenv("GEMINI_API_KEY", "")
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "")
     
-    # 1. OpenRouter (DeepSeek V3 / R1 / Flash)
-    if openrouter_api_key:
+    clean_key = openrouter_api_key.strip().strip('"').strip("'")
+    clean_model = openrouter_model.strip().strip('"').strip("'") if openrouter_model else "nvidia/nemotron-3.5-lightning:free"
+    
+    # 1. OpenRouter (Supports all models: nvidia, deepseek, llama, etc.)
+    if clean_key:
         try:
             url = "https://openrouter.ai/api/v1/chat/completions"
             headers = {
-                "Authorization": f"Bearer {openrouter_api_key.strip()}",
+                "Authorization": f"Bearer {clean_key}",
                 "HTTP-Referer": "https://doblaj.com",
                 "X-Title": "Doblaj Telegram Bot",
                 "Content-Type": "application/json"
             }
+            # Many OpenRouter models (including nvidia/nemotron, free models) perform best with standard role formatting
             payload = {
-                "model": openrouter_model,
+                "model": clean_model,
                 "messages": [
                     {"role": "system", "content": AI_PAYMENT_SYSTEM_PROMPT},
                     {"role": "user", "content": user_message}
@@ -362,24 +366,39 @@ async def call_payment_ai(user_message: str) -> str:
                 "temperature": 0.3,
                 "max_tokens": 400
             }
-            async with httpx.AsyncClient(timeout=20.0) as client:
+            async with httpx.AsyncClient(timeout=25.0) as client:
                 resp = await client.post(url, json=payload, headers=headers)
+                logger.info({"service": "ai", "message": f"OpenRouter [{clean_model}] response code: {resp.status_code}"})
+                
+                # If model rejected "system" role (some free models return 400 on system prompt), retry with merged prompt
+                if resp.status_code == 400:
+                    logger.warning({"service": "ai", "message": f"Retrying OpenRouter with merged prompt for {clean_model}"})
+                    merged_payload = {
+                        "model": clean_model,
+                        "messages": [
+                            {"role": "user", "content": f"{AI_PAYMENT_SYSTEM_PROMPT}\n\nUser Question: {user_message}"}
+                        ],
+                        "temperature": 0.3,
+                        "max_tokens": 400
+                    }
+                    resp = await client.post(url, json=merged_payload, headers=headers)
+
                 if resp.status_code == 200:
                     data = resp.json()
                     choices = data.get("choices", [])
                     if choices:
                         content = choices[0].get("message", {}).get("content", "")
-                        if content:
-                            return content
+                        if content and content.strip():
+                            return content.strip()
                 else:
-                    logger.warning({"service": "ai", "message": f"OpenRouter status {resp.status_code}: {resp.text}"})
+                    logger.error({"service": "ai", "message": f"OpenRouter returned {resp.status_code}: {resp.text}"})
         except Exception as e:
-            logger.warning({"service": "ai", "message": f"OpenRouter call notice: {e}"})
+            logger.error({"service": "ai", "message": f"OpenRouter call error: {e}"})
 
     # 2. Gemini fallback
     if gemini_api_key:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key.strip()}"
             payload = {
                 "system_instruction": {"parts": [{"text": AI_PAYMENT_SYSTEM_PROMPT}]},
                 "contents": [{"parts": [{"text": user_message}]}],
@@ -393,7 +412,7 @@ async def call_payment_ai(user_message: str) -> str:
                     if candidates:
                         parts = candidates[0].get("content", {}).get("parts", [])
                         if parts:
-                            return parts[0].get("text", "")
+                            return parts[0].get("text", "").strip()
         except Exception as e:
             logger.warning({"service": "ai", "message": f"Gemini call notice: {e}"})
 
@@ -402,7 +421,7 @@ async def call_payment_ai(user_message: str) -> str:
         try:
             url = "https://api.anthropic.com/v1/messages"
             headers = {
-                "x-api-key": anthropic_api_key,
+                "x-api-key": anthropic_api_key.strip(),
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json"
             }
@@ -418,7 +437,7 @@ async def call_payment_ai(user_message: str) -> str:
                     data = resp.json()
                     content = data.get("content", [])
                     if content:
-                        return content[0].get("text", "")
+                        return content[0].get("text", "").strip()
         except Exception as e:
             logger.warning({"service": "ai", "message": f"Anthropic call notice: {e}"})
 
@@ -628,7 +647,7 @@ async def on_main_menu(callback: CallbackQuery):
     )
     await callback.message.edit_text(welcome_text, reply_markup=get_main_keyboard())
 
-@router.message(DubbingConfig.waiting_for_video, F.video | F.document)
+@router.message(F.video | F.document)
 async def handle_video_upload(message: Message, state: FSMContext):
     if is_shutting_down:
         await message.reply("⚠️ Service is shutting down for updates. Please try again later.")
@@ -752,19 +771,32 @@ async def handle_video_upload(message: Message, state: FSMContext):
                 logger.error({"service": "upload", "message": f"Failed to refund minutes: {refund_e}"})
 
 @router.message(F.text)
-async def handle_text_questions(message: Message):
+async def handle_text_questions(message: Message, state: FSMContext):
     """Handle general user questions using the Scoped Payment AI Assistant."""
     user_text = (message.text or "").strip()
     if not user_text or user_text.startswith("/"):
         return
         
+    logger.info({"service": "ai_chat", "chat_id": message.chat.id, "text": user_text})
+    
     if bot_instance:
         try:
             await bot_instance.send_chat_action(chat_id=message.chat.id, action="typing")
         except Exception:
             pass
             
-    ai_response = await call_payment_ai(user_text)
+    try:
+        ai_response = await call_payment_ai(user_text)
+    except Exception as e:
+        logger.error({"service": "ai_chat", "error": str(e)})
+        ai_response = (
+            "💡 **Doblaj Packages / پاکێجەکانی دۆبلاژ:**\n\n"
+            "• ⚡ **Starter:** 5 min for $10 (15,000 IQD)\n"
+            "• 🚀 **Pro:** 15 min for $20 (30,000 IQD)\n"
+            "• 👑 **Creator:** 120 min for $99 (148,500 IQD)\n"
+            "• 🧪 **Test:** 1 min for 1,000 IQD\n\n"
+            "Click /plans to choose your package and pay securely via Wayl!"
+        )
     
     quick_kb = InlineKeyboardMarkup(inline_keyboard=[
         [
