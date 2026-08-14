@@ -300,7 +300,35 @@ async def get_live_store_context() -> tuple[str, list]:
     except Exception as e:
         return f"\n(Store context unavailable: {e})\n", []
 
-async def call_payment_ai(user_message: str) -> str:
+AI_TOOLS_SCHEMA = [
+    {
+        "type": "function",
+        "function": {
+            "name": "create_payment_link",
+            "description": "Call this tool whenever the Founder or user asks to create a payment link, generate a deal, or buy minutes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "minutes": {
+                        "type": "integer",
+                        "description": "Number of dubbing minutes for the package or custom deal (e.g. 1, 5, 10, 15, 50, 120)."
+                    },
+                    "amount_usd": {
+                        "type": "number",
+                        "description": "Price in USD (e.g. 0.67, 10.0, 20.0, 99.0)."
+                    },
+                    "tier": {
+                        "type": "string",
+                        "enum": ["starter", "pro", "creator", "test_1000iqd", "custom"],
+                        "description": "Standard tier if matching (starter=5min/$10, pro=15min/$20, creator=120min/$99, test_1000iqd=1min/1000iqd) or 'custom'."
+                    }
+                }
+            }
+        }
+    }
+]
+
+async def call_payment_ai(user_message: str, chat_id: int = 0) -> str:
     msg_lower = user_message.lower()
     analytics_keywords = [
         "order", "orders", "sale", "sales", "revenue", "week", "profit", 
@@ -310,7 +338,7 @@ async def call_payment_ai(user_message: str) -> str:
     
     store_context, links = await get_live_store_context()
     
-    # 1. If it's a direct analytics/orders question, return instant 100% verified accurate report
+    # 1. Direct analytics shortcut
     if any(k in msg_lower for k in analytics_keywords) and links:
         return format_admin_sales_report(links)
     
@@ -322,7 +350,10 @@ async def call_payment_ai(user_message: str) -> str:
     clean_key = openrouter_api_key.strip().strip('"').strip("'")
     clean_model = openrouter_model.strip().strip('"').strip("'") if openrouter_model else "deepseek/deepseek-chat"
     
-    dynamic_prompt = f"{AI_EXECUTIVE_SYSTEM_PROMPT}\n{store_context}"
+    dynamic_prompt = (
+        f"{AI_EXECUTIVE_SYSTEM_PROMPT}\n{store_context}\n\n"
+        f"TOOL USAGE: You have the `create_payment_link` tool available. If the user asks to generate/make/send a payment link for any number of minutes and dollars in any language, execute `create_payment_link` immediately."
+    )
     
     if clean_key:
         try:
@@ -339,13 +370,15 @@ async def call_payment_ai(user_message: str) -> str:
                     {"role": "system", "content": dynamic_prompt},
                     {"role": "user", "content": user_message}
                 ],
+                "tools": AI_TOOLS_SCHEMA,
                 "temperature": 0.2,
                 "max_tokens": 800
             }
             async with httpx.AsyncClient(timeout=25.0) as client:
                 resp = await client.post(url, json=payload, headers=headers)
                 if resp.status_code == 400:
-                    merged_payload = {
+                    # Retry without tools if model rejected tool schemas
+                    no_tools_payload = {
                         "model": clean_model,
                         "messages": [
                             {"role": "user", "content": f"{dynamic_prompt}\n\nUser Question: {user_message}\n\nDirect Answer (no thinking notes):"}
@@ -353,13 +386,44 @@ async def call_payment_ai(user_message: str) -> str:
                         "temperature": 0.2,
                         "max_tokens": 800
                     }
-                    resp = await client.post(url, json=merged_payload, headers=headers)
+                    resp = await client.post(url, json=no_tools_payload, headers=headers)
 
                 if resp.status_code == 200:
                     data = resp.json()
                     choices = data.get("choices", [])
                     if choices:
-                        raw_content = choices[0].get("message", {}).get("content", "")
+                        msg_obj = choices[0].get("message", {})
+                        
+                        # Handle AI Function / Tool Calls
+                        tool_calls = msg_obj.get("tool_calls", [])
+                        if tool_calls and chat_id:
+                            fn = tool_calls[0].get("function", {})
+                            if fn.get("name") == "create_payment_link":
+                                import json
+                                try:
+                                    args = json.loads(fn.get("arguments", "{}"))
+                                except Exception:
+                                    args = {}
+                                mins = args.get("minutes")
+                                usd = args.get("amount_usd")
+                                tier = args.get("tier")
+                                
+                                link_res = await create_telegram_payment_link(chat_id, tier=tier, minutes=mins, amount_usd=usd)
+                                if link_res and "checkout_url" in link_res:
+                                    c_url = link_res["checkout_url"]
+                                    m = link_res.get("minutes", mins or 1)
+                                    u = link_res.get("amount_usd", usd or 1)
+                                    iqd = link_res.get("amount_iqd", int(u * 1500))
+                                    return (
+                                        f"🎉 **Payment Link Generated via AI!**\n\n"
+                                        f"🎙️ **Minutes:** +{m} Dubbing Minutes\n"
+                                        f"💵 **Price:** ${u} ({iqd:,} IQD)\n"
+                                        f"⏳ **Expires in:** 30 Minutes\n\n"
+                                        f"👉 [Click here to complete payment on Wayl]({c_url})\n\n"
+                                        f"🔒 *Valid Wayl checkout link generated directly via AI.*"
+                                    )
+                                    
+                        raw_content = msg_obj.get("content", "")
                         cleaned = clean_ai_output(raw_content)
                         if cleaned:
                             return cleaned
@@ -704,7 +768,7 @@ async def handle_text_questions(message: Message, state: FSMContext):
             pass
             
     try:
-        ai_response = await call_payment_ai(user_text)
+        ai_response = await call_payment_ai(user_text, chat_id=message.chat.id)
     except Exception as e:
         logger.error(f"[AI_CHAT] Error: {e}")
         ai_response = (
