@@ -28,6 +28,14 @@ class CheckoutRequest(BaseModel):
     tier: str
 
 
+class TelegramLinkRequest(BaseModel):
+    telegram_chat_id: str
+    tier: Optional[str] = None
+    minutes: Optional[int] = None
+    amount_usd: Optional[float] = None
+    expires_in: Optional[str] = "30m"
+
+
 class RefundRequest(BaseModel):
     reference_id: str
     amount_iqd: int = 1000
@@ -221,6 +229,91 @@ async def create_checkout_session(
         if hasattr(e, "response") and hasattr(e.response, "text"):
             error_detail = f"Wayl API ({e.response.status_code}): {e.response.text}"
         raise HTTPException(status_code=500, detail=f"Wayl checkout failed: {error_detail}")
+
+
+@router.post("/create-telegram-link")
+@router.post("/create-telegram-link/")
+async def create_telegram_payment_link(req: TelegramLinkRequest, request: Request):
+    """Generate an expiring Wayl payment link (default: 30m) directly from Telegram."""
+    # 1. Resolve tier or custom parameters
+    if req.tier and req.tier in TIERS:
+        tier_info = TIERS[req.tier]
+        usd_amount = float(tier_info["price_usd"])
+        minutes = int(tier_info["minutes"])
+        tier_name = req.tier
+        fixed_iqd = tier_info.get("fixed_iqd")
+    elif req.minutes and req.amount_usd:
+        usd_amount = float(req.amount_usd)
+        minutes = int(req.minutes)
+        tier_name = f"custom_{minutes}m"
+        fixed_iqd = None
+    else:
+        raise HTTPException(status_code=400, detail="Must provide a valid 'tier' or 'minutes' + 'amount_usd'")
+
+    try:
+        usd_to_iqd_rate = float(os.getenv("USD_TO_IQD_RATE", "1500"))
+    except ValueError:
+        usd_to_iqd_rate = 1500.0
+
+    if fixed_iqd:
+        total_iqd = int(fixed_iqd)
+    else:
+        total_iqd = int(round(usd_amount * usd_to_iqd_rate))
+
+    # 2. Resolve linked workspace for this Telegram chat ID
+    workspace_id = None
+    try:
+        workspace_id = await database.get_workspace_by_telegram_id(req.telegram_chat_id)
+    except Exception as e:
+        logger.warning(f"[PAYMENTS_TG] Could not lookup workspace by telegram ID: {e}")
+
+    if not workspace_id:
+        workspace_id = f"tg_{req.telegram_chat_id}"
+
+    # 3. Create Unique Reference ID
+    reference_id = f"ref_tg_{req.telegram_chat_id}_{uuid.uuid4().hex[:8]}"
+
+    # 4. Redirection URL (Lands on /dubbing with payment success params)
+    base_redirect = os.getenv("DUBBING_FRONTEND_URL", "https://doblaj.com").strip()
+    redirection_url = f"{base_redirect.rstrip('/')}/dubbing?payment=success&ref={reference_id}"
+
+    # 5. Record pending transaction in Convex
+    client = _get_service_role_client()
+    try:
+        await database.add_transaction(
+            client,
+            transaction_id=reference_id,
+            workspace_id=workspace_id,
+            tier=tier_name,
+            amount_usd=usd_amount,
+            minutes_added=minutes
+        )
+    except Exception as tx_e:
+        logger.warning(f"[PAYMENTS_TG] add_transaction notice: {tx_e}")
+
+    # 6. Generate Wayl link with 30m expiration
+    wayl = WaylClient()
+    try:
+        checkout_url = await wayl.create_payment_link(
+            reference_id=reference_id,
+            amount_iqd=total_iqd,
+            redirection_url=redirection_url,
+            expires_in=req.expires_in or "30m"
+        )
+    except Exception as e:
+        logger.exception("[PAYMENTS_TG] Failed to create Wayl payment link: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to generate payment link: {str(e)}")
+
+    return {
+        "checkout_url": checkout_url,
+        "reference_id": reference_id,
+        "amount_iqd": total_iqd,
+        "amount_usd": usd_amount,
+        "minutes": minutes,
+        "tier": tier_name,
+        "expires_in": req.expires_in or "30m",
+        "redirection_url": redirection_url
+    }
 
 
 

@@ -119,5 +119,33 @@ async def refund_job_minutes(req: JobRefundRequest, user: AuthenticatedUser = De
         
     # Refund minutes via Convex
     await convex_db.add_workspace_minutes(workspace_id=workspace_id, minutes=req.minutes_to_refund)
-    
-    return {"status": "success", "refunded": req.minutes_to_refund, "workspace_id": workspace_id}
+    return {"status": "ok", "refunded_minutes": req.minutes_to_refund, "workspace_id": workspace_id}
+
+
+@router.get("/balance/{telegram_chat_id}")
+async def get_telegram_user_balance(telegram_chat_id: str):
+    """Retrieve remaining minutes balance for a Telegram user."""
+    workspace_id = await db.get_workspace_by_telegram_id(telegram_chat_id)
+    if not workspace_id:
+        return {
+            "is_linked": False,
+            "remaining_minutes": 0,
+            "workspace_id": None,
+            "message": "Account not linked to a Doblaj workspace"
+        }
+        
+    try:
+        minutes = await convex_db.get_workspace_minutes(workspace_id=workspace_id)
+        return {
+            "is_linked": True,
+            "remaining_minutes": int(minutes),
+            "workspace_id": workspace_id
+        }
+    except Exception as e:
+        logger.error(f"[TELEGRAM_BALANCE] Error getting minutes for {workspace_id}: {e}")
+        return {
+            "is_linked": True,
+            "remaining_minutes": 0,
+            "workspace_id": workspace_id,
+            "error": str(e)
+        }

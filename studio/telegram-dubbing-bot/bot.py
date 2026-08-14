@@ -20,8 +20,8 @@ from aiohttp import web
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.telegram import TelegramAPIServer
 from aiogram.client.session.aiohttp import AiohttpSession
-from aiogram.types import Message, FSInputFile
-from aiogram.filters import CommandStart
+from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -249,8 +249,151 @@ async def internal_webhook(request: web.Request):
         return web.Response(status=500, text="Internal Error")
 
 # =====================================================================
-# 7. AIOGRAM ROUTER & UPLOAD LOGIC
+# 7. HYBRID UI & PAYMENT / AI LOGIC
 # =====================================================================
+TELEGRAM_ADMIN_IDS = [x.strip() for x in os.getenv("TELEGRAM_ADMIN_IDS", "").split(",") if x.strip()]
+
+def get_main_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📦 Pricing Plans / پاکێجەکان", callback_data="view_plans"),
+            InlineKeyboardButton(text="💳 Buy Minutes / کڕینی باڵانس", callback_data="buy_menu")
+        ],
+        [
+            InlineKeyboardButton(text="📊 My Balance / باڵانسی من", callback_data="check_balance"),
+            InlineKeyboardButton(text="💬 Payment AI / پرسیارکردن", callback_data="ask_ai")
+        ]
+    ])
+
+def get_plans_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="⚡ Starter: 5 min ($10 / 15,000 IQD)", callback_data="buy_tier:starter")
+        ],
+        [
+            InlineKeyboardButton(text="🚀 Pro: 15 min ($20 / 30,000 IQD)", callback_data="buy_tier:pro")
+        ],
+        [
+            InlineKeyboardButton(text="👑 Creator: 120 min ($99 / 148,500 IQD)", callback_data="buy_tier:creator")
+        ],
+        [
+            InlineKeyboardButton(text="🧪 Test Package: 1 min (1,000 IQD)", callback_data="buy_tier:test_1000iqd")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 Back to Menu / گەڕانەوە", callback_data="main_menu")
+        ]
+    ])
+
+async def request_telegram_payment_link(chat_id: int, tier: Optional[str] = None, minutes: Optional[int] = None, amount_usd: Optional[float] = None) -> Optional[Dict[str, Any]]:
+    url = f"{DUBBING_BACKEND_URL.rstrip('/')}/api/payments/create-telegram-link"
+    headers = {"x-internal-key": INTERNAL_API_KEY} if INTERNAL_API_KEY else {}
+    payload = {
+        "telegram_chat_id": str(chat_id),
+        "tier": tier,
+        "minutes": minutes,
+        "amount_usd": amount_usd,
+        "expires_in": "30m"
+    }
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            if resp.status_code == 200:
+                return resp.json()
+            logger.error({"service": "payments", "message": f"Create link error: {resp.status_code} {resp.text}"})
+    except Exception as e:
+        logger.error({"service": "payments", "message": f"Failed to call create-telegram-link: {e}"})
+    return None
+
+async def query_telegram_balance(chat_id: int) -> Dict[str, Any]:
+    url = f"{DUBBING_BACKEND_URL.rstrip('/')}/api/telegram/balance/{chat_id}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                return resp.json()
+    except Exception as e:
+        logger.error({"service": "balance", "message": f"Failed to query balance: {e}"})
+    return {"is_linked": False, "remaining_minutes": 0}
+
+AI_PAYMENT_SYSTEM_PROMPT = """You are the official Doblaj Payment & Pricing AI Assistant.
+Your role is EXCLUSIVELY to assist users with:
+1. Explaining Doblaj minutes packages:
+   - Test Package: 1 minute for 1,000 IQD (~$0.67)
+   - Starter Package: 5 minutes for $10 (15,000 IQD)
+   - Pro Package: 15 minutes for $20 (30,000 IQD)
+   - Creator Package: 120 minutes for $99 (148,500 IQD)
+2. Explaining payment methods: Wayl Payment Gateway (supports local Iraqi bank cards, FIB, Qi Card, Visa, Mastercard).
+3. Explaining how minutes work: 1 minute of balance = 1 minute of video dubbing with AI voice cloning (preserving original voice & tone) from Kurdish Sorani to Iraqi Arabic.
+4. Explaining link expiration: All payment links are securely generated and expire in 30 minutes. Once paid, the user is redirected to doblaj.com/dubbing and their account is credited immediately.
+
+CRITICAL GUARDRAIL RULES:
+- You must ONLY discuss Doblaj pricing, plans, minutes, and payments.
+- If a user asks about anything unrelated (such as writing code, recipes, weather, general world news, competitors, or other topics), politely decline and state:
+  "I am the Doblaj Payment Assistant. I can only assist you with our pricing packages, dubbing minutes, and payment methods."
+- Always respond in the EXACT language and dialect the user writes in:
+  - If Kurdish Sorani -> Respond warmly and naturally in Kurdish Sorani.
+  - If Iraqi Arabic -> Respond naturally in Iraqi Arabic (العامية العراقية).
+  - If English -> Respond in professional English.
+- Keep answers concise, clear, and focused on helping the user choose the best package.
+"""
+
+async def call_payment_ai(user_message: str) -> str:
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+    
+    if gemini_api_key:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
+            payload = {
+                "system_instruction": {"parts": [{"text": AI_PAYMENT_SYSTEM_PROMPT}]},
+                "contents": [{"parts": [{"text": user_message}]}],
+                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 400}
+            }
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            return parts[0].get("text", "")
+        except Exception as e:
+            logger.warning({"service": "ai", "message": f"Gemini call notice: {e}"})
+
+    if anthropic_api_key:
+        try:
+            url = "https://api.anthropic.com/v1/messages"
+            headers = {
+                "x-api-key": anthropic_api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            }
+            payload = {
+                "model": "claude-3-5-haiku-20241022",
+                "max_tokens": 400,
+                "system": AI_PAYMENT_SYSTEM_PROMPT,
+                "messages": [{"role": "user", "content": user_message}]
+            }
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    content = data.get("content", [])
+                    if content:
+                        return content[0].get("text", "")
+        except Exception as e:
+            logger.warning({"service": "ai", "message": f"Anthropic call notice: {e}"})
+
+    return (
+        "💡 **Doblaj Packages / پاکێجەکانی دۆبلاژ:**\n\n"
+        "• ⚡ **Starter:** 5 min for $10 (15,000 IQD)\n"
+        "• 🚀 **Pro:** 15 min for $20 (30,000 IQD)\n"
+        "• 👑 **Creator:** 120 min for $99 (148,500 IQD)\n"
+        "• 🧪 **Test:** 1 min for 1,000 IQD\n\n"
+        "Click /plans to choose your package and pay securely via Wayl!"
+    )
+
 class DubbingConfig(StatesGroup):
     waiting_for_video = State()
 
@@ -270,75 +413,183 @@ async def log_all_incoming_messages(handler, event: Message, data: dict):
 @router.message(CommandStart())
 async def handle_start(message: Message, state: FSMContext):
     await state.clear()
-    
     chat_id = message.chat.id
     username = message.from_user.username if message.from_user else "unknown"
-    logger.info({
-        "service": "handle_start",
-        "message": f"Processing /start command from chat_id={chat_id} (@{username})",
-        "full_text": message.text
-    })
 
     args = message.text.split()
     if len(args) > 1:
         nonce = args[1]
-        logger.info({
-            "service": "auth",
-            "message": f"Deep link detected. Verifying nonce: {nonce} for chat_id={chat_id}"
-        })
         headers = {"x-internal-key": INTERNAL_API_KEY} if INTERNAL_API_KEY else {}
         verify_url = f"{DUBBING_BACKEND_URL.rstrip('/')}/api/telegram/link-verify"
-        
-        logger.info({
-            "service": "auth",
-            "message": f"Calling backend verify_url: {verify_url}",
-            "headers_present": list(headers.keys())
-        })
-        
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(
-                    verify_url, 
-                    json={"nonce": nonce, "telegram_chat_id": str(chat_id)}, 
-                    headers=headers
-                )
-                logger.info({
-                    "service": "auth",
-                    "status_code": resp.status_code,
-                    "response_body": resp.text
-                })
-                
+                resp = await client.post(verify_url, json={"nonce": nonce, "telegram_chat_id": str(chat_id)}, headers=headers)
                 if resp.status_code == 200:
-                    reply_text = "✅ Your Telegram account has been successfully linked to your Doblaj workspace!\nYou can now upload videos here to dub them."
+                    await message.answer("✅ Your Telegram account has been successfully linked to your Doblaj workspace!\nYou can now upload videos here to dub them.", reply_markup=get_main_keyboard())
                 elif resp.status_code == 409:
-                    reply_text = "⚠️ This workspace is already linked to another Telegram account."
+                    await message.answer("⚠️ This workspace is already linked to another Telegram account.", reply_markup=get_main_keyboard())
                 else:
-                    reply_text = f"⚠️ Invalid or expired link token (HTTP {resp.status_code}). Please generate a new one from the dashboard."
-                
-                await message.answer(reply_text)
-                logger.info({"service": "auth", "message": f"Sent verification response to chat_id={chat_id}"})
-                
+                    await message.answer(f"⚠️ Invalid or expired link token. Please generate a new one from the dashboard.", reply_markup=get_main_keyboard())
         except Exception as e:
-            logger.error({
-                "service": "auth",
-                "message": f"Error calling backend verify endpoint: {e}",
-                "traceback": traceback.format_exc()
-            })
-            await message.answer("⚠️ Error communicating with the server. Please try again later.")
+            logger.error({"service": "auth", "message": f"Error calling verify endpoint: {e}"})
+            await message.answer("⚠️ Error communicating with the server. Please try again later.", reply_markup=get_main_keyboard())
         return
 
-    await state.set_state(DubbingConfig.waiting_for_video)
-    
     welcome_text = (
-        "👋 Welcome to the AI Video Dubbing Bot!\n"
-        "Please upload a video file (MP4, MOV, MKV, WEBM, AVI, max 2000 MB) to start translating and dubbing.\n\n"
-        "🇮🇶 مرحباً بك في بوت الدبلجة الفورية بالفيديو!\n"
-        "يرجى رفع مقطع فيديو بحد أقصى 2000 MB للبدء في الترجمة والدبلجة.\n\n"
-        "☀️ بەخێربێن بۆ بۆتی دۆبلاژکردنی ڤیدیۆ بە ژیری دەستکرد!\n"
-        "تکایە ڤیدیۆیەک بباربکە بۆ دەستپێکردنی وەرگێڕان و دۆبلاژکردن."
+        "👋 **Welcome to Doblaj Studio! / بەخێربێن بۆ دۆبلاژ ستۆدیۆ**\n\n"
+        "🎬 The #1 AI Video Dubbing platform for Kurdish Sorani to Iraqi Arabic.\n"
+        "💎 Fast, seamless, with original voice preservation.\n\n"
+        "Choose an option below to buy minutes, check your balance, or chat with our Payment AI:"
     )
-    await message.answer(welcome_text)
-    logger.info({"service": "handle_start", "message": f"Sent welcome message to chat_id={chat_id}"})
+    await message.answer(welcome_text, reply_markup=get_main_keyboard())
+
+@router.message(Command("plans"))
+async def handle_plans_cmd(message: Message):
+    text = (
+        "📦 **Doblaj Official Pricing Packages / پاکێجەکانی دۆبلاژ**\n\n"
+        "⚡ **Starter Package:** 5 Minutes — **$10** (15,000 IQD)\n"
+        "🚀 **Pro Package:** 15 Minutes — **$20** (30,000 IQD)\n"
+        "👑 **Creator Package:** 120 Minutes — **$99** (148,500 IQD)\n"
+        "🧪 **Test Package:** 1 Minute — **1,000 IQD**\n\n"
+        "🔒 *All payments processed securely via Wayl. Links expire in 30 minutes.*"
+    )
+    await message.answer(text, reply_markup=get_plans_keyboard())
+
+@router.message(Command("buy"))
+async def handle_buy_cmd(message: Message):
+    await message.answer("💳 **Select a package to generate your secure Wayl payment link:**", reply_markup=get_plans_keyboard())
+
+@router.message(Command("balance"))
+async def handle_balance_cmd(message: Message):
+    chat_id = message.chat.id
+    bal_data = await query_telegram_balance(chat_id)
+    rem = bal_data.get("remaining_minutes", 0)
+    is_linked = bal_data.get("is_linked", False)
+    
+    if is_linked:
+        text = f"📊 **Your Balance / باڵانسی تۆ:**\n\n🎙️ **{rem} Minutes** remaining in your workspace.\n\nReady to dub videos or top up anytime!"
+    else:
+        text = f"📊 **Your Balance:**\n\n⚠️ Your Telegram account is not yet linked to a web account.\nYou can still purchase minutes by tapping **Buy Minutes** below, and they will be linked to your chat ID!"
+        
+    await message.answer(text, reply_markup=get_main_keyboard())
+
+@router.message(Command("deal"))
+async def handle_deal_cmd(message: Message):
+    chat_id = str(message.chat.id)
+    if TELEGRAM_ADMIN_IDS and chat_id not in TELEGRAM_ADMIN_IDS:
+        await message.answer("⛔ Access Denied. This command is restricted to administrators.")
+        return
+        
+    parts = message.text.split()
+    if len(parts) < 3:
+        await message.answer("ℹ️ **Usage:** `/deal <minutes> <amount_usd>`\n*Example:* `/deal 500 200` (500 minutes for $200)")
+        return
+        
+    try:
+        minutes = int(parts[1])
+        amount_usd = float(parts[2])
+    except ValueError:
+        await message.answer("⚠️ Please provide valid numbers for minutes and USD amount.")
+        return
+
+    link_data = await request_telegram_payment_link(message.chat.id, minutes=minutes, amount_usd=amount_usd)
+    if link_data and "checkout_url" in link_data:
+        checkout_url = link_data["checkout_url"]
+        iqd = link_data.get("amount_iqd", int(amount_usd * 1500))
+        text = (
+            f"🎉 **Custom Deal Link Generated!**\n\n"
+            f"🎙️ **Minutes:** {minutes} min\n"
+            f"💵 **Price:** ${amount_usd} ({iqd:,} IQD)\n"
+            f"⏳ **Expires in:** 30 Minutes\n\n"
+            f"👉 [Click here to Pay on Wayl]({checkout_url})\n\n"
+            f"Once completed, {minutes} minutes will be credited automatically!"
+        )
+        await message.answer(text, parse_mode="Markdown")
+    else:
+        await message.answer("⚠️ Failed to generate custom payment link. Please check backend connection.")
+
+@router.callback_query(F.data == "view_plans")
+async def on_view_plans(callback: CallbackQuery):
+    await callback.answer()
+    text = (
+        "📦 **Doblaj Official Pricing Packages / پاکێجەکانی دۆبلاژ**\n\n"
+        "⚡ **Starter Package:** 5 Minutes — **$10** (15,000 IQD)\n"
+        "🚀 **Pro Package:** 15 Minutes — **$20** (30,000 IQD)\n"
+        "👑 **Creator Package:** 120 Minutes — **$99** (148,500 IQD)\n"
+        "🧪 **Test Package:** 1 Minute — **1,000 IQD**\n\n"
+        "Tap a package to get your instant payment link:"
+    )
+    await callback.message.edit_text(text, reply_markup=get_plans_keyboard())
+
+@router.callback_query(F.data == "buy_menu")
+async def on_buy_menu(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.edit_text("💳 **Choose a package to generate your 30-minute Wayl payment link:**", reply_markup=get_plans_keyboard())
+
+@router.callback_query(F.data == "check_balance")
+async def on_check_balance(callback: CallbackQuery):
+    await callback.answer()
+    bal_data = await query_telegram_balance(callback.message.chat.id)
+    rem = bal_data.get("remaining_minutes", 0)
+    is_linked = bal_data.get("is_linked", False)
+    
+    if is_linked:
+        text = f"📊 **Your Live Balance / باڵانسی تۆ:**\n\n🎙️ **{rem} Minutes** remaining in your workspace."
+    else:
+        text = f"📊 **Your Balance:**\n\n🎙️ **{rem} Minutes** available."
+        
+    await callback.message.edit_text(text, reply_markup=get_main_keyboard())
+
+@router.callback_query(F.data.startswith("buy_tier:"))
+async def on_buy_tier(callback: CallbackQuery):
+    await callback.answer("Generating payment link...")
+    tier = callback.data.split(":", 1)[1]
+    
+    link_data = await request_telegram_payment_link(callback.message.chat.id, tier=tier)
+    if link_data and "checkout_url" in link_data:
+        checkout_url = link_data["checkout_url"]
+        iqd = link_data.get("amount_iqd", 1000)
+        usd = link_data.get("amount_usd", 0.67)
+        mins = link_data.get("minutes", 1)
+        
+        text = (
+            f"✅ **Payment Link Ready! / لینکی پارەدان ئامادەیە**\n\n"
+            f"📦 **Package:** {tier.replace('_', ' ').title()}\n"
+            f"🎙️ **Credits:** +{mins} Dubbing Minutes\n"
+            f"💵 **Total:** {iqd:,} IQD (${usd})\n"
+            f"⏳ **Expires in:** 30 Minutes\n\n"
+            f"👉 [Click here to complete payment on Wayl]({checkout_url})\n\n"
+            f"🔒 *Supports local Bank Cards, FIB, Qi Card, Visa & Mastercard.*"
+        )
+        pay_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💳 Pay Now on Wayl", url=checkout_url)],
+            [InlineKeyboardButton(text="🔙 Back to Packages", callback_data="buy_menu")]
+        ])
+        await callback.message.edit_text(text, reply_markup=pay_kb, parse_mode="Markdown")
+    else:
+        await callback.message.answer("⚠️ Could not generate payment link. Please try again in a few moments.")
+
+@router.callback_query(F.data == "ask_ai")
+async def on_ask_ai(callback: CallbackQuery):
+    await callback.answer()
+    text = (
+        "💬 **Payment & Pricing AI Assistant**\n\n"
+        "Type any question about our plans, pricing, minutes, or payment methods in **Kurdish**, **Arabic**, or **English**!\n\n"
+        "Example questions:\n"
+        "• *\"چۆن دەتوانم باڵانس بکڕم بە FIB؟\"*\n"
+        "• *\"كم سعر باقة الـ 15 دقيقة؟\"*\n"
+        "• *\"How does voice cloning and minutes work?\"*"
+    )
+    await callback.message.answer(text)
+
+@router.callback_query(F.data == "main_menu")
+async def on_main_menu(callback: CallbackQuery):
+    await callback.answer()
+    welcome_text = (
+        "👋 **Doblaj Studio Main Menu / مینیوی سەرەکی**\n\n"
+        "Choose an option below to buy minutes, check your balance, or chat with our Payment AI:"
+    )
+    await callback.message.edit_text(welcome_text, reply_markup=get_main_keyboard())
 
 @router.message(DubbingConfig.waiting_for_video, F.video | F.document)
 async def handle_video_upload(message: Message, state: FSMContext):
@@ -462,6 +713,29 @@ async def handle_video_upload(message: Message, state: FSMContext):
                 logger.info({"service": "upload", "message": f"Refunded {minutes_reserved} minutes for failed job."})
             except Exception as refund_e:
                 logger.error({"service": "upload", "message": f"Failed to refund minutes: {refund_e}"})
+
+@router.message(F.text)
+async def handle_text_questions(message: Message):
+    """Handle general user questions using the Scoped Payment AI Assistant."""
+    user_text = (message.text or "").strip()
+    if not user_text or user_text.startswith("/"):
+        return
+        
+    if bot_instance:
+        try:
+            await bot_instance.send_chat_action(chat_id=message.chat.id, action="typing")
+        except Exception:
+            pass
+            
+    ai_response = await call_payment_ai(user_text)
+    
+    quick_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="💳 Buy Minutes / کڕینی باڵانس", callback_data="buy_menu"),
+            InlineKeyboardButton(text="📦 Pricing Plans", callback_data="view_plans")
+        ]
+    ])
+    await message.answer(ai_response, reply_markup=quick_kb)
 
 # =====================================================================
 # 8. SHUTDOWN SEQUENCE

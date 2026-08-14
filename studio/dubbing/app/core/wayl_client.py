@@ -66,12 +66,13 @@ class WaylClient:
         reference_id: str,
         amount_iqd: int,
         redirection_url: str,
-        webhook_url: Optional[str] = None
+        webhook_url: Optional[str] = None,
+        expires_in: Optional[str] = "30m"
     ) -> str:
         """Make a POST request to /api/v1/links to create a payment link.
         
         Headers: "X-WAYL-AUTHENTICATION": os.getenv("WAYL_API_TOKEN")
-        Payload: env, referenceId, total (integer in IQD), currency ("IQD"), lineItem, webhookUrl, webhookSecret, redirectionUrl
+        Payload: env, referenceId, total (integer in IQD), currency ("IQD"), lineItem, webhookUrl, webhookSecret, redirectionUrl, linkExpiresIn
         """
         if not self.api_token:
             logger.error("[WAYL] WAYL_API_TOKEN is missing in environment variables")
@@ -104,6 +105,8 @@ class WaylClient:
             "webhookSecret": self.webhook_secret,
             "redirectionUrl": redirection_url,
         }
+        if expires_in:
+            payload["linkExpiresIn"] = str(expires_in)
 
         headers = {
             "X-WAYL-AUTHENTICATION": self.api_token,
