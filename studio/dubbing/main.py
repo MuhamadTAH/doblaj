@@ -611,6 +611,7 @@ async def auth_me(request: Request):
         transactions = await database.list_transactions(user_client, workspace_id=user.workspace_id)
         
         # Real-time synchronization with Wayl: Sync all links by live status (Returned vs Complete)
+        wayl_status_map = {}
         try:
             from app.core.wayl_client import WaylClient
             wayl = WaylClient()
@@ -623,53 +624,83 @@ async def auth_me(request: Request):
                     link_status = l.get("status")
                     if not ref_id:
                         continue
+                    
+                    wayl_status_map[ref_id] = link_status
                         
                     # Handle Returned / Refunded link status
                     if link_status in ("Returned", "Refunded"):
                         refund_key = f"REFUND-{ref_id}"
                         has_refund = any(tx.get("legacyId") == refund_key or tx.get("transactionId") == refund_key for tx in transactions)
                         if not has_refund:
-                            await database.process_refund_atomic(
-                                service_client,
-                                transaction_id=ref_id,
-                                workspace_id=user.workspace_id,
-                                amount_usd=0.67,
-                                minutes_deducted=1,
-                                reason="Wayl Order Refunded/Returned"
-                            )
+                            try:
+                                await database.process_refund_atomic(
+                                    service_client,
+                                    transaction_id=ref_id,
+                                    workspace_id=user.workspace_id,
+                                    amount_usd=0.67,
+                                    minutes_deducted=1,
+                                    reason="Wayl Order Refunded/Returned"
+                                )
+                            except Exception as sync_ref_e:
+                                logger.warning(f"[AUTH_ME] process_refund_atomic notice: {sync_ref_e}")
                     # Handle Complete paid status
                     elif link_status == "Complete":
                         has_tx = any(tx.get("legacyId") == ref_id or tx.get("transactionId") == ref_id for tx in transactions)
                         if not has_tx:
-                            await database.process_payment_success_atomic(
-                                service_client,
-                                transaction_id=ref_id,
-                                workspace_id=user.workspace_id,
-                                tier="test_1000iqd",
-                                amount_usd=0.67,
-                                minutes_added=1
-                            )
+                            try:
+                                await database.process_payment_success_atomic(
+                                    service_client,
+                                    transaction_id=ref_id,
+                                    workspace_id=user.workspace_id,
+                                    tier="test_1000iqd",
+                                    amount_usd=0.67,
+                                    minutes_added=1
+                                )
+                            except Exception as sync_pay_e:
+                                logger.warning(f"[AUTH_ME] process_payment_success_atomic notice: {sync_pay_e}")
                 
                 # Refresh transactions after sync
                 transactions = await database.list_transactions(user_client, workspace_id=user.workspace_id)
         except Exception as wayl_sync_e:
             logger.warning(f"[AUTH_ME] Wayl live sync notice: {wayl_sync_e}")
 
+        # Overlay live Wayl statuses onto returned transactions
+        formatted_transactions = []
+        for tx in transactions:
+            tx_obj = dict(tx)
+            raw_ref = (tx.get("transactionId") or tx.get("legacyId") or "").split("/")[0].split("?")[0]
+            clean_ref = raw_ref.replace("REFUND-", "")
+            
+            # If the link was returned/refunded on Wayl, update its status
+            if clean_ref in wayl_status_map and wayl_status_map[clean_ref] in ("Returned", "Refunded"):
+                tx_obj["status"] = "refunded"
+                tx_obj["tier"] = "refund"
+                tx_obj["minutesAdded"] = -1
+                tx_obj["amountUsd"] = -0.67
+            elif tx.get("tier") == "refund" or raw_ref.startswith("REFUND-"):
+                tx_obj["status"] = "refunded"
+                tx_obj["tier"] = "refund"
+                tx_obj["minutesAdded"] = -1
+                tx_obj["amountUsd"] = -0.67
+            else:
+                tx_obj["status"] = "paid"
+                
+            formatted_transactions.append(tx_obj)
+
         remaining_minutes = await database.get_workspace_minutes(user_client, workspace_id=user.workspace_id)
         
-        total_purchased_minutes = sum(tx.get("minutesAdded", 0) for tx in transactions)
+        total_purchased_minutes = sum(tx.get("minutesAdded", 0) for tx in formatted_transactions)
         total_minutes = max(remaining_minutes, total_purchased_minutes)
         if total_minutes == 0 and remaining_minutes > 0:
-            total_minutes = remaining_minutes # Fallback if they were manually granted minutes without a transaction
+            total_minutes = remaining_minutes
             
         used_minutes = max(0, total_minutes - remaining_minutes)
         
         plan_expiry = "None"
         if remaining_minutes >= 100000:
             plan_type = "Enterprise"
-        elif transactions:
-            # Find most recent transaction date and tier
-            recent_tx = max(transactions, key=lambda x: x.get("createdAt", ""))
+        elif formatted_transactions:
+            recent_tx = max(formatted_transactions, key=lambda x: x.get("createdAt", ""))
             plan_type = str(recent_tx.get("tier", "Starter")).capitalize()
             created_at_str = recent_tx.get("createdAt")
             if created_at_str:
@@ -688,7 +719,7 @@ async def auth_me(request: Request):
         remaining_minutes = 999999
         total_minutes = 999999
         used_minutes = 0
-        transactions = []
+        formatted_transactions = []
         plan_type = "Enterprise"
         plan_expiry = "Unlimited"
 
@@ -700,7 +731,7 @@ async def auth_me(request: Request):
         "used_minutes": used_minutes,
         "plan": plan_type,
         "plan_expiry": plan_expiry,
-        "transactions": transactions,
+        "transactions": formatted_transactions,
     }
 
 
