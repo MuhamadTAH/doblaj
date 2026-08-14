@@ -149,3 +149,35 @@ async def get_telegram_user_balance(telegram_chat_id: str):
             "workspace_id": workspace_id,
             "error": str(e)
         }
+
+
+@router.get("/status")
+async def get_telegram_status():
+    """Diagnostic endpoint to inspect Telegram bot runtime configuration."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    openrouter_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    openrouter_model = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-lightning:free").strip()
+    
+    bot_info = None
+    bot_error = None
+    if token:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"https://api.telegram.org/bot{token}/getMe")
+                if resp.status_code == 200:
+                    bot_info = resp.json().get("result")
+                else:
+                    bot_error = f"Telegram API error {resp.status_code}: {resp.text}"
+        except Exception as e:
+            bot_error = str(e)
+            
+    return {
+        "status": "ready" if (token and not bot_error) else "needs_config",
+        "token_configured": bool(token),
+        "token_prefix": token[:6] + "..." if token else None,
+        "bot_info": bot_info,
+        "bot_error": bot_error,
+        "openrouter_configured": bool(openrouter_key),
+        "openrouter_model": openrouter_model,
+        "admin_ids": [x.strip() for x in os.getenv("TELEGRAM_ADMIN_IDS", "").split(",") if x.strip()]
+    }
