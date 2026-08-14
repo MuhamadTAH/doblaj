@@ -25,18 +25,41 @@ class WaylClient:
         return (os.getenv("WAYL_BASE_URL", "https://api.thewayl.com") or "https://api.thewayl.com").strip().rstrip("/")
 
     async def verify_auth_key(self) -> Dict[str, Any]:
-        """Execute a test call to GET /api/v1/verify-auth-key using WAYL_API_TOKEN."""
+        """Test verification against both production and staging Wayl servers."""
+        if not self.api_token:
+            return {
+                "error": "WAYL_API_TOKEN is missing or empty in environment variables",
+                "token_length": 0
+            }
+
         headers = {
             "X-WAYL-AUTHENTICATION": self.api_token,
             "Content-Type": "application/json"
         }
-        url = f"{self._get_base_url()}/api/v1/verify-auth-key"
+
+        results = {}
+        servers = [
+            ("production", "https://api.thewayl.com"),
+            ("staging", "https://api.thewayl-staging.com")
+        ]
+
         async with httpx.AsyncClient(timeout=15.0) as client:
-            res = await client.get(url, headers=headers)
-            if res.status_code != 200:
-                logger.error(f"[WAYL] Key verification failed: {res.status_code} - {res.text}")
-                res.raise_for_status()
-            return res.json()
+            for name, base in servers:
+                try:
+                    res = await client.get(f"{base}/api/v1/verify-auth-key", headers=headers)
+                    results[name] = {
+                        "status_code": res.status_code,
+                        "data": res.json() if "application/json" in res.headers.get("content-type", "") else res.text
+                    }
+                except Exception as e:
+                    results[name] = {"error": str(e)}
+
+        return {
+            "token_preview": f"{self.api_token[:6]}...{self.api_token[-4:]}" if len(self.api_token) > 10 else "TOO_SHORT",
+            "token_length": len(self.api_token),
+            "current_env": self._get_env(),
+            "results": results
+        }
 
     async def create_payment_link(
         self,
@@ -59,7 +82,8 @@ class WaylClient:
             webhook_url = f"{base_webhook.rstrip('/')}/api/payments/webhook"
 
         wayl_env = self._get_env()
-        target_api_url = f"{self._get_base_url()}/api/v1/links"
+        primary_url = f"{self._get_base_url()}/api/v1/links"
+        fallback_url = "https://api.thewayl-staging.com/api/v1/links" if self._get_base_url() == "https://api.thewayl.com" else "https://api.thewayl.com/api/v1/links"
 
         # Wayl requires minimum 1000 IQD
         final_amount = max(1000, int(amount_iqd))
@@ -86,10 +110,17 @@ class WaylClient:
             "Content-Type": "application/json"
         }
 
-        logger.info(f"[WAYL] Creating payment link on {target_api_url} with env={wayl_env} for referenceId={reference_id}, total={final_amount} IQD")
+        token_preview = f"{self.api_token[:6]}...{self.api_token[-4:]} (len={len(self.api_token)})" if len(self.api_token) > 10 else f"(len={len(self.api_token)})"
+        logger.info(f"[WAYL] Creating link on {primary_url} (env={wayl_env}, token={token_preview}) for ref={reference_id}, total={final_amount} IQD")
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            res = await client.post(target_api_url, json=payload, headers=headers)
+            res = await client.post(primary_url, json=payload, headers=headers)
+            
+            # If 401 on primary, try fallback server
+            if res.status_code == 401 and fallback_url:
+                logger.warning(f"[WAYL] 401 Unauthorized on {primary_url}. Retrying with fallback {fallback_url}...")
+                res = await client.post(fallback_url, json=payload, headers=headers)
+
             if res.status_code not in (200, 201):
                 logger.error(f"[WAYL] Payment link creation failed: {res.status_code} - {res.text}")
                 res.raise_for_status()
