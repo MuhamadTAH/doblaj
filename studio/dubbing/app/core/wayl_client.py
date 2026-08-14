@@ -195,3 +195,46 @@ class WaylClient:
                 logger.error(f"[WAYL] Refund creation failed: {res.status_code} - {res.text}")
                 res.raise_for_status()
             return res.json()
+
+    async def list_refunds(self, reference_id: Optional[str] = None) -> list:
+        """Retrieve refund list from Wayl API GET /api/v1/refunds."""
+        if not self.api_token:
+            return []
+        headers = {
+            "X-WAYL-AUTHENTICATION": self.api_token,
+            "Content-Type": "application/json"
+        }
+        url = f"{self._get_base_url()}/api/v1/refunds"
+        params = {}
+        if reference_id:
+            params["referenceId"] = reference_id
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.get(url, headers=headers, params=params)
+                if res.status_code == 200:
+                    data = res.json()
+                    if isinstance(data, dict) and "data" in data and isinstance(data["data"], list):
+                        return data["data"]
+        except Exception as e:
+            logger.warning(f"[WAYL] list_refunds warning: {e}")
+        return []
+
+    async def get_link(self, reference_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve link details from Wayl API GET /api/v1/links/{referenceId}."""
+        if not self.api_token or not reference_id:
+            return None
+        headers = {
+            "X-WAYL-AUTHENTICATION": self.api_token,
+            "Content-Type": "application/json"
+        }
+        url = f"{self._get_base_url()}/api/v1/links/{reference_id}"
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.get(url, headers=headers)
+                if res.status_code == 200:
+                    data = res.json()
+                    if isinstance(data, dict) and "data" in data and isinstance(data["data"], dict):
+                        return data["data"]
+        except Exception as e:
+            logger.warning(f"[WAYL] get_link warning: {e}")
+        return None
