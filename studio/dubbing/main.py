@@ -610,50 +610,45 @@ async def auth_me(request: Request):
         # Fetch current transactions from Convex
         transactions = await database.list_transactions(user_client, workspace_id=user.workspace_id)
         
-        # Real-time synchronization with Wayl: Check for any dashboard refunds or link status changes
+        # Real-time synchronization with Wayl: Sync all links by live status (Returned vs Complete)
         try:
             from app.core.wayl_client import WaylClient
             wayl = WaylClient()
             if wayl.api_token:
-                # 1. Fetch refunds list from Wayl
-                wayl_refunds = await wayl.list_refunds()
-                for rf in wayl_refunds:
-                    rf_ref = (rf.get("referenceId") or "").split("/")[0].split("?")[0]
-                    rf_status = rf.get("status")
-                    if rf_ref and rf_status in ("Refunded", "Requested"):
-                        refund_key = f"REFUND-{rf_ref}"
-                        already_has_refund = any(tx.get("legacyId") == refund_key or tx.get("transactionId") == refund_key for tx in transactions)
-                        if not already_has_refund:
-                            service_client = database._get_service_role_client()
-                            amount_iqd = rf.get("amount", 1000)
-                            amount_usd = round(amount_iqd / 1500.0, 2)
+                wayl_links = await wayl.list_links(take=100)
+                service_client = database._get_service_role_client()
+                
+                for l in wayl_links:
+                    ref_id = (l.get("referenceId") or "").split("/")[0].split("?")[0]
+                    link_status = l.get("status")
+                    if not ref_id:
+                        continue
+                        
+                    # Handle Returned / Refunded link status
+                    if link_status in ("Returned", "Refunded"):
+                        refund_key = f"REFUND-{ref_id}"
+                        has_refund = any(tx.get("legacyId") == refund_key or tx.get("transactionId") == refund_key for tx in transactions)
+                        if not has_refund:
                             await database.process_refund_atomic(
                                 service_client,
-                                transaction_id=rf_ref,
+                                transaction_id=ref_id,
                                 workspace_id=user.workspace_id,
-                                amount_usd=amount_usd,
+                                amount_usd=0.67,
                                 minutes_deducted=1,
-                                reason=rf.get("reason", "Wayl Dashboard Refund")
+                                reason="Wayl Order Refunded/Returned"
                             )
-                
-                # 2. Check individual transaction link status
-                for tx in transactions:
-                    tx_ref = (tx.get("transactionId") or tx.get("legacyId") or "").split("/")[0].split("?")[0]
-                    if tx_ref and not tx_ref.startswith("REFUND-") and tx.get("status") != "refunded":
-                        refund_key = f"REFUND-{tx_ref}"
-                        already_has_refund = any(t.get("legacyId") == refund_key for t in transactions)
-                        if not already_has_refund:
-                            link_data = await wayl.get_link(tx_ref)
-                            if link_data and link_data.get("status") in ("Refunded", "Returned"):
-                                service_client = database._get_service_role_client()
-                                await database.process_refund_atomic(
-                                    service_client,
-                                    transaction_id=tx_ref,
-                                    workspace_id=user.workspace_id,
-                                    amount_usd=tx.get("amountUsd", 0.67),
-                                    minutes_deducted=tx.get("minutesAdded", 1),
-                                    reason="Wayl Refund Status Sync"
-                                )
+                    # Handle Complete paid status
+                    elif link_status == "Complete":
+                        has_tx = any(tx.get("legacyId") == ref_id or tx.get("transactionId") == ref_id for tx in transactions)
+                        if not has_tx:
+                            await database.process_payment_success_atomic(
+                                service_client,
+                                transaction_id=ref_id,
+                                workspace_id=user.workspace_id,
+                                tier="test_1000iqd",
+                                amount_usd=0.67,
+                                minutes_added=1
+                            )
                 
                 # Refresh transactions after sync
                 transactions = await database.list_transactions(user_client, workspace_id=user.workspace_id)

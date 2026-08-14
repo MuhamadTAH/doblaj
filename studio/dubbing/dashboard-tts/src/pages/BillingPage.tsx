@@ -65,49 +65,56 @@ export default function BillingPage() {
     refund: { packageName: "Refund", amountDisplay: "-1,000 IQD", minutes: "-1 min" },
   };
 
-  // Real billing history
-  const billingHistory = userData?.transactions?.map((tx: any) => {
-    let rawId = (tx.transactionId || tx.legacyId || tx._id || "INV-001").toString().split("/")[0].split("?")[0];
-    const isRefund = rawId.startsWith("REFUND-") || 
-      (tx.status && tx.status.toLowerCase() === "refunded") || 
-      (tx.tier && tx.tier.toLowerCase() === "refund") ||
-      (tx.minutesAdded !== undefined && tx.minutesAdded < 0) ||
-      (tx.amountUsd !== undefined && tx.amountUsd < 0);
+  // Real billing history with deduplication
+  const seenIds = new Set<string>();
+  const billingHistory = (userData?.transactions || [])
+    .map((tx: any) => {
+      let rawId = (tx.transactionId || tx.legacyId || tx._id || "INV-001").toString().split("/")[0].split("?")[0];
+      const isRefund = rawId.startsWith("REFUND-") || 
+        (tx.status && tx.status.toLowerCase() === "refunded") || 
+        (tx.tier && tx.tier.toLowerCase() === "refund") ||
+        (tx.minutesAdded !== undefined && tx.minutesAdded < 0) ||
+        (tx.amountUsd !== undefined && tx.amountUsd < 0);
 
-    let cleanId = rawId.replace(/^REFUND-/, "REF-").replace(/^ref_/, "INV-").toUpperCase();
-    if (cleanId.length > 14) {
-      cleanId = cleanId.substring(0, 14);
-    }
+      let cleanId = rawId.replace(/^REFUND-/, "REF-").replace(/^ref_/, "INV-").toUpperCase();
+      if (cleanId.length > 14) {
+        cleanId = cleanId.substring(0, 14);
+      }
 
-    const tierKey = (tx.tier || (isRefund ? "refund" : "test_1000iqd")).toLowerCase();
-    const tierInfo = TIER_DETAILS[tierKey] || {
-      packageName: isRefund ? "Refund" : (tx.tier ? `${tx.tier.charAt(0).toUpperCase() + tx.tier.slice(1)} Package` : "Doblaj Package"),
-      amountDisplay: tx.amountUsd !== undefined ? `${tx.amountUsd < 0 ? "-" : ""}$${Math.abs(Number(tx.amountUsd)).toFixed(2)}` : (tx.fixed_iqd ? `${tx.fixed_iqd} IQD` : "1,000 IQD"),
-      minutes: tx.minutesAdded !== undefined ? `${tx.minutesAdded > 0 ? "+" : ""}${tx.minutesAdded} min` : (isRefund ? "-1 min" : "+1 min"),
-    };
+      const tierKey = (tx.tier || (isRefund ? "refund" : "test_1000iqd")).toLowerCase();
+      const tierInfo = TIER_DETAILS[tierKey] || {
+        packageName: isRefund ? "Refund" : (tx.tier ? `${tx.tier.charAt(0).toUpperCase() + tx.tier.slice(1)} Package` : "Doblaj Package"),
+        amountDisplay: tx.amountUsd !== undefined ? `${tx.amountUsd < 0 ? "-" : ""}$${Math.abs(Number(tx.amountUsd)).toFixed(2)}` : (tx.fixed_iqd ? `${tx.fixed_iqd} IQD` : "1,000 IQD"),
+        minutes: tx.minutesAdded !== undefined ? `${tx.minutesAdded > 0 ? "+" : ""}${tx.minutesAdded} min` : (isRefund ? "-1 min" : "+1 min"),
+      };
 
-    let amountText = tierInfo.amountDisplay;
-    if (isRefund && !amountText.startsWith("-")) {
-      amountText = `-${amountText}`;
-    }
+      let amountText = tierInfo.amountDisplay;
+      if (isRefund && !amountText.startsWith("-")) {
+        amountText = `-${amountText}`;
+      }
 
-    let minutesText = tierInfo.minutes;
-    if (isRefund && !minutesText.startsWith("-")) {
-      minutesText = `-${minutesText.replace(/^\+/, "")}`;
-    }
+      let minutesText = tierInfo.minutes;
+      if (isRefund && !minutesText.startsWith("-")) {
+        minutesText = `-${minutesText.replace(/^\+/, "")}`;
+      }
 
-    let statusText = isRefund ? "Refunded" : (tx.status ? (tx.status.charAt(0).toUpperCase() + tx.status.slice(1)) : "Paid");
+      let statusText = isRefund ? "Refunded" : (tx.status ? (tx.status.charAt(0).toUpperCase() + tx.status.slice(1)) : "Paid");
 
-    return {
-      id: cleanId,
-      packageName: tierInfo.packageName,
-      date: tx.createdAt ? new Date(typeof tx.createdAt === 'number' ? tx.createdAt : tx.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
-      amount: amountText,
-      minutes: minutesText,
-      status: statusText,
-      isRefund: isRefund,
-    };
-  }) || [];
+      return {
+        id: cleanId,
+        packageName: tierInfo.packageName,
+        date: tx.createdAt ? new Date(typeof tx.createdAt === 'number' ? tx.createdAt : tx.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
+        amount: amountText,
+        minutes: minutesText,
+        status: statusText,
+        isRefund: isRefund,
+      };
+    })
+    .filter((item: any) => {
+      if (seenIds.has(item.id)) return false;
+      seenIds.add(item.id);
+      return true;
+    });
 
   return (
     <div className="flex flex-col items-center min-h-[calc(100vh-4rem)] p-6 bg-ink-900/10">
