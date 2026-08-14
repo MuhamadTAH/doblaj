@@ -219,6 +219,26 @@ class WaylClient:
             logger.warning(f"[WAYL] list_refunds warning: {e}")
         return []
 
+    async def list_links(self, take: int = 50) -> list:
+        """Retrieve payment links from Wayl API GET /api/v1/links."""
+        if not self.api_token:
+            return []
+        headers = {
+            "X-WAYL-AUTHENTICATION": self.api_token,
+            "Content-Type": "application/json"
+        }
+        url = f"{self._get_base_url()}/api/v1/links"
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.get(url, headers=headers, params={"take": take})
+                if res.status_code == 200:
+                    data = res.json()
+                    if isinstance(data, dict) and "data" in data and isinstance(data["data"], list):
+                        return data["data"]
+        except Exception as e:
+            logger.warning(f"[WAYL] list_links warning: {e}")
+        return []
+
     async def get_link(self, reference_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve link details from Wayl API GET /api/v1/links/{referenceId}."""
         if not self.api_token or not reference_id:

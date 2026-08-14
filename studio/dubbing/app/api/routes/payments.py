@@ -46,6 +46,116 @@ async def verify_auth_key():
         raise HTTPException(status_code=400, detail=f"Key verification failed: {str(e)}")
 
 
+@router.get("/status-summary")
+async def payment_status_summary():
+    """Diagnostic tool: Fetch all live Wayl links & refunds directly from Wayl API."""
+    wayl = WaylClient()
+    links = await wayl.list_links(take=50)
+    refunds = await wayl.list_refunds()
+    
+    return {
+        "status": "ok",
+        "server_env": wayl._get_env(),
+        "base_url": wayl._get_base_url(),
+        "total_links": len(links),
+        "total_refunds": len(refunds),
+        "links": [
+            {
+                "referenceId": l.get("referenceId"),
+                "status": l.get("status"),
+                "total": l.get("total"),
+                "createdAt": l.get("createdAt"),
+                "paymentMethod": l.get("paymentMethod")
+            }
+            for l in links
+        ],
+        "refunds": [
+            {
+                "id": r.get("id"),
+                "referenceId": r.get("referenceId"),
+                "status": r.get("status"),
+                "amount": r.get("amount"),
+                "reason": r.get("reason"),
+                "createdAt": r.get("createdAt")
+            }
+            for r in refunds
+        ]
+    }
+
+
+@router.post("/sync-all")
+async def sync_all_transactions(user: AuthenticatedUser = Depends(require_user)):
+    """Force complete synchronization between Wayl API and Convex workspace."""
+    wayl = WaylClient()
+    client = _get_service_role_client()
+    
+    links = await wayl.list_links(take=50)
+    refunds = await wayl.list_refunds()
+    
+    synced_paid = 0
+    synced_refunds = 0
+    
+    for l in links:
+        ref_id = (l.get("referenceId") or "").split("/")[0].split("?")[0]
+        status = l.get("status")
+        if ref_id and status == "Complete":
+            exists = await database.transaction_exists(client, transaction_id=ref_id)
+            if not exists:
+                await database.process_payment_success_atomic(
+                    client,
+                    transaction_id=ref_id,
+                    workspace_id=user.workspace_id,
+                    tier="test_1000iqd",
+                    amount_usd=0.67,
+                    minutes_added=1
+                )
+                synced_paid += 1
+                
+    for rf in refunds:
+        rf_ref = (rf.get("referenceId") or "").split("/")[0].split("?")[0]
+        status = rf.get("status")
+        if rf_ref and status in ("Refunded", "Requested"):
+            refund_key = f"REFUND-{rf_ref}"
+            exists = await database.transaction_exists(client, transaction_id=refund_key)
+            if not exists:
+                amount_iqd = rf.get("amount", 1000)
+                amount_usd = round(amount_iqd / 1500.0, 2)
+                await database.process_refund_atomic(
+                    client,
+                    transaction_id=rf_ref,
+                    workspace_id=user.workspace_id,
+                    amount_usd=amount_usd,
+                    minutes_deducted=1,
+                    reason=rf.get("reason", "Wayl Dashboard Sync")
+                )
+                synced_refunds += 1
+                
+    for l in links:
+        ref_id = (l.get("referenceId") or "").split("/")[0].split("?")[0]
+        status = l.get("status")
+        if ref_id and status in ("Refunded", "Returned"):
+            refund_key = f"REFUND-{ref_id}"
+            exists = await database.transaction_exists(client, transaction_id=refund_key)
+            if not exists:
+                await database.process_refund_atomic(
+                    client,
+                    transaction_id=ref_id,
+                    workspace_id=user.workspace_id,
+                    amount_usd=0.67,
+                    minutes_deducted=1,
+                    reason="Wayl Link Refunded"
+                )
+                synced_refunds += 1
+                
+    return {
+        "status": "success",
+        "synced_paid": synced_paid,
+        "synced_refunds": synced_refunds,
+        "total_links_checked": len(links),
+        "total_refunds_checked": len(refunds)
+    }
+
+
 @router.post("/checkout")
 @router.post("/checkout/")
 async def create_checkout_session(
