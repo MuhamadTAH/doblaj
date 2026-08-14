@@ -190,6 +190,34 @@ CRITICAL INSTRUCTIONS:
 - Keep answers concise, clear, and helpful.
 """
 
+async def get_live_store_context() -> str:
+    from app.core.wayl_client import WaylClient
+    try:
+        wayl = WaylClient()
+        links = await wayl.list_links() or []
+        paid = [l for l in links if l.get("status", "").lower() in ("complete", "paid")]
+        refunded = [l for l in links if l.get("status", "").lower() in ("returned", "refunded")]
+        pending = [l for l in links if l.get("status", "").lower() in ("created", "pending")]
+        
+        paid_iqd = sum(int(float(l.get("amount", 0) or 0)) for l in paid)
+        refunded_iqd = sum(int(float(l.get("amount", 0) or 0)) for l in refunded)
+        
+        orders_snippet = "\n".join([
+            f"  - Ref: {str(l.get('referenceId') or l.get('id') or '')[:12]} | Amount: {int(float(l.get('amount', 0) or 0)):,} IQD | Status: {l.get('status')} | Date: {str(l.get('createdAt') or '')[:10]}"
+            for l in links[:8]
+        ])
+        
+        return (
+            f"\nLIVE STORE SALES & ORDERS CONTEXT:\n"
+            f"- Total Orders/Links Created: {len(links)}\n"
+            f"- Completed/Paid Orders: {len(paid)} (Total: {paid_iqd:,} IQD)\n"
+            f"- Refunded Orders: {len(refunded)} (Total: {refunded_iqd:,} IQD)\n"
+            f"- Pending Sessions: {len(pending)}\n"
+            f"- Recent Orders List:\n{orders_snippet}\n"
+        )
+    except Exception as e:
+        return f"\n(Store context unavailable: {e})\n"
+
 async def call_payment_ai(user_message: str) -> str:
     openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
     openrouter_model = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-lightning:free")
@@ -198,6 +226,9 @@ async def call_payment_ai(user_message: str) -> str:
     
     clean_key = openrouter_api_key.strip().strip('"').strip("'")
     clean_model = openrouter_model.strip().strip('"').strip("'") if openrouter_model else "nvidia/nemotron-3.5-lightning:free"
+    
+    store_context = await get_live_store_context()
+    dynamic_prompt = f"{AI_PAYMENT_SYSTEM_PROMPT}\n{store_context}"
     
     if clean_key:
         try:
@@ -211,7 +242,7 @@ async def call_payment_ai(user_message: str) -> str:
             payload = {
                 "model": clean_model,
                 "messages": [
-                    {"role": "system", "content": AI_PAYMENT_SYSTEM_PROMPT},
+                    {"role": "system", "content": dynamic_prompt},
                     {"role": "user", "content": user_message}
                 ],
                 "temperature": 0.3,
@@ -223,7 +254,7 @@ async def call_payment_ai(user_message: str) -> str:
                     merged_payload = {
                         "model": clean_model,
                         "messages": [
-                            {"role": "user", "content": f"{AI_PAYMENT_SYSTEM_PROMPT}\n\nUser Message: {user_message}\n\nDirect Response (do NOT show thinking process):"}
+                            {"role": "user", "content": f"{dynamic_prompt}\n\nUser Message: {user_message}\n\nDirect Response (do NOT show thinking process):"}
                         ],
                         "temperature": 0.3,
                         "max_tokens": 600
@@ -249,7 +280,7 @@ async def call_payment_ai(user_message: str) -> str:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key.strip()}"
             payload = {
-                "system_instruction": {"parts": [{"text": AI_PAYMENT_SYSTEM_PROMPT}]},
+                "system_instruction": {"parts": [{"text": dynamic_prompt}]},
                 "contents": [{"parts": [{"text": user_message}]}],
                 "generationConfig": {"temperature": 0.3, "maxOutputTokens": 400}
             }
@@ -275,9 +306,35 @@ async def call_payment_ai(user_message: str) -> str:
     )
 
 # =====================================================================
-# 4. ROUTER & HANDLERS
+# 4. ROUTER & HANDLERS (STRICT ADMIN ACCESS ONLY)
 # =====================================================================
+def is_admin_user(chat_id: int) -> bool:
+    admin_ids = [
+        x.strip() for x in (
+            os.getenv("TELEGRAM_ADMIN_IDS", "") + "," + os.getenv("TELEGRAM_ALLOWED_CHAT_IDS", "")
+        ).split(",") if x.strip()
+    ]
+    if not admin_ids:
+        return True
+    return str(chat_id) in admin_ids
+
 router = Router()
+
+@router.message.outer_middleware()
+async def admin_guard_message_middleware(handler, event: Message, data: dict):
+    if not is_admin_user(event.chat.id):
+        logger.warning(f"[SECURITY] Unauthorized access blocked: chat_id={event.chat.id}")
+        await event.answer("🔒 **Access Denied.**\nThis bot is private and restricted to verified administrators.")
+        return
+    return await handler(event, data)
+
+@router.callback_query.outer_middleware()
+async def admin_guard_callback_middleware(handler, event: CallbackQuery, data: dict):
+    chat_id = event.message.chat.id if event.message else event.from_user.id
+    if not is_admin_user(chat_id):
+        await event.answer("🔒 Unauthorized.", show_alert=True)
+        return
+    return await handler(event, data)
 
 @router.message(CommandStart())
 async def handle_start(message: Message, state: FSMContext):
@@ -299,12 +356,59 @@ async def handle_start(message: Message, state: FSMContext):
         return
 
     welcome_text = (
-        "👋 **Welcome to Doblaj Studio! / بەخێربێن بۆ دۆبلاژ ستۆدیۆ**\n\n"
-        "🎬 The #1 AI Video Dubbing platform for Kurdish Sorani to Iraqi Arabic.\n"
-        "💎 Fast, seamless, with original voice preservation.\n\n"
-        "Choose an option below to buy minutes, check your balance, or chat with our Payment AI:"
+        "👋 **Welcome Boss! / بەخێربێن بەڕێزم**\n\n"
+        "👑 **Doblaj Private Admin & AI Assistant**\n"
+        "⚡ You have full control over orders, analytics, packages, and custom deals.\n\n"
+        "Choose an option below or type any question:"
     )
     await message.answer(welcome_text, reply_markup=get_main_keyboard())
+
+@router.message(Command("stats"))
+@router.message(Command("orders"))
+async def handle_admin_stats(message: Message):
+    from app.core.wayl_client import WaylClient
+    wayl = WaylClient()
+    try:
+        links = await wayl.list_links() or []
+    except Exception as e:
+        await message.answer(f"⚠️ Error querying Wayl: {e}")
+        return
+        
+    paid_count = 0
+    returned_count = 0
+    pending_count = 0
+    total_paid_iqd = 0
+    
+    rows = []
+    for l in links:
+        st = str(l.get("status", ""))
+        amt = int(float(l.get("amount", 0) or 0))
+        ref = str(l.get("referenceId") or l.get("id") or "")[:12]
+        date_str = str(l.get("createdAt") or "")[:10]
+        
+        if st.lower() in ("complete", "paid"):
+            paid_count += 1
+            total_paid_iqd += amt
+            badge = "✅ Paid"
+        elif st.lower() in ("returned", "refunded"):
+            returned_count += 1
+            badge = "↩️ Refunded"
+        else:
+            pending_count += 1
+            badge = "⏳ Pending"
+            
+        rows.append(f"• `{ref}` | {amt:,} IQD | {date_str} | {badge}")
+        
+    summary_text = (
+        f"📊 **Doblaj Live Orders & Revenue (Last 7 Days)**\n\n"
+        f"💰 **Total Gross Revenue:** {total_paid_iqd:,} IQD\n"
+        f"💳 **Paid Orders:** {paid_count}\n"
+        f"↩️ **Refunded Orders:** {returned_count}\n"
+        f"⏳ **Pending Sessions:** {pending_count}\n"
+        f"📦 **Total Generated:** {len(links)}\n\n"
+        f"**Recent Orders:**\n" + "\n".join(rows[:10])
+    )
+    await message.answer(summary_text, parse_mode="Markdown")
 
 @router.message(Command("plans"))
 async def handle_plans_cmd(message: Message):

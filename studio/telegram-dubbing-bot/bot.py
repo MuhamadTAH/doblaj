@@ -484,20 +484,35 @@ async def call_payment_ai(user_message: str) -> str:
         "Click /plans to choose your package and pay securely via Wayl!"
     )
 
+def is_admin_user(chat_id: int) -> bool:
+    admin_ids = [
+        x.strip() for x in (
+            os.getenv("TELEGRAM_ADMIN_IDS", "") + "," + os.getenv("TELEGRAM_ALLOWED_CHAT_IDS", "")
+        ).split(",") if x.strip()
+    ]
+    if not admin_ids:
+        return True
+    return str(chat_id) in admin_ids
+
 class DubbingConfig(StatesGroup):
     waiting_for_video = State()
 
 router = Router()
 
 @router.message.outer_middleware()
-async def log_all_incoming_messages(handler, event: Message, data: dict):
-    logger.info({
-        "service": "telegram_incoming",
-        "chat_id": event.chat.id,
-        "from_user": event.from_user.username if event.from_user else None,
-        "text": event.text,
-        "content_type": event.content_type
-    })
+async def admin_guard_message_middleware(handler, event: Message, data: dict):
+    if not is_admin_user(event.chat.id):
+        logger.warning(f"[SECURITY] Unauthorized access blocked: chat_id={event.chat.id}")
+        await event.answer("🔒 **Access Denied.**\nThis bot is private and restricted to verified administrators.")
+        return
+    return await handler(event, data)
+
+@router.callback_query.outer_middleware()
+async def admin_guard_callback_middleware(handler, event: CallbackQuery, data: dict):
+    chat_id = event.message.chat.id if event.message else event.from_user.id
+    if not is_admin_user(chat_id):
+        await event.answer("🔒 Unauthorized.", show_alert=True)
+        return
     return await handler(event, data)
 
 @router.message(CommandStart())
