@@ -142,23 +142,60 @@ def clean_ai_output(text: str) -> str:
     # 1. Remove explicit <think> tags
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
     
-    # 2. If the model outputted a raw thinking list ("Here's a thinking process:..."), clean it
-    if "thinking process" in text.lower() or "analyze user input" in text.lower():
-        parts = re.split(r"(?:response:|final response:|direct answer:)", text, flags=re.IGNORECASE)
-        if len(parts) > 1 and parts[-1].strip():
-            return parts[-1].strip()
-        
-        # Filter out numbered analysis points
+    # 2. If the model outputted an explicit or informal thinking process, extract or clean it
+    if any(k in text.lower() for k in ("thinking process", "analyze user input", "wait, let's", "let's count", "let's check", "let's analyze")):
+        parts = re.split(r"(?:response:|final response:|direct answer:|\n\n(?=[A-Z\u0600-\u06FF][a-z\u0600-\u06FF]))", text, flags=re.IGNORECASE)
+        non_thoughts = [
+            p.strip() for p in parts 
+            if p.strip() and not p.lower().startswith(("wait,", "let's", "first,", "okay, so", "thinking process"))
+        ]
+        if non_thoughts:
+            return non_thoughts[-1]
+            
         lines = [
             l for l in text.split("\n") 
-            if not re.search(r"^(?:\d+\.|\*|-|Here's a thinking process|Analyze User Input|Check Constraints|Determine Response|Evaluate if)", l.strip(), re.IGNORECASE)
+            if not re.search(r"^(?:\d+\.|\*|-|Here's a thinking process|Analyze User Input|Check Constraints|Determine Response|Evaluate if|Wait,|Let's count|Let's check|Let's analyze)", l.strip(), re.IGNORECASE)
         ]
         cleaned = "\n".join(lines).strip()
-        if cleaned:
+        if cleaned and not cleaned.lower().startswith(("wait,", "let's")):
             return cleaned
         return ""
 
     return text.strip()
+
+def format_admin_sales_report(links: list) -> str:
+    paid = [l for l in links if str(l.get("status", "")).lower() in ("complete", "paid")]
+    refunded = [l for l in links if str(l.get("status", "")).lower() in ("returned", "refunded")]
+    pending = [l for l in links if str(l.get("status", "")).lower() in ("created", "pending")]
+    
+    paid_iqd = sum(int(float(l.get("amount", 0) or 0)) for l in paid)
+    refunded_iqd = sum(int(float(l.get("amount", 0) or 0)) for l in refunded)
+    
+    rows = []
+    for l in links[:12]:
+        st = str(l.get("status", ""))
+        amt = int(float(l.get("amount", 0) or 0))
+        ref = str(l.get("referenceId") or l.get("id") or "")[:12]
+        date_str = str(l.get("createdAt") or "")[:10]
+        
+        if st.lower() in ("complete", "paid"):
+            badge = "✅ Paid"
+        elif st.lower() in ("returned", "refunded"):
+            badge = "↩️ Refunded"
+        else:
+            badge = "⏳ Pending"
+            
+        rows.append(f"• `{ref}` | **{amt:,} IQD** | {date_str} | {badge}")
+        
+    return (
+        f"📊 **Doblaj Live Orders & Revenue Report (Last 7 Days)**\n\n"
+        f"💰 **Total Gross Revenue:** {paid_iqd:,} IQD\n"
+        f"💳 **Paid / Completed Orders:** {len(paid)}\n"
+        f"↩️ **Refunded Orders:** {len(refunded)} ({refunded_iqd:,} IQD)\n"
+        f"⏳ **Pending Sessions:** {len(pending)}\n"
+        f"📦 **Total Orders Generated:** {len(links)}\n\n"
+        f"**Recent Orders:**\n" + "\n".join(rows)
+    )
 
 AI_EXECUTIVE_SYSTEM_PROMPT = """You are the personal Executive AI Assistant for the Founder & Owner of Doblaj Studio (AI Video Dubbing Platform).
 
@@ -174,7 +211,7 @@ You have full authority to assist the Founder with:
 
 CRITICAL INSTRUCTIONS:
 - You are speaking directly to the FOUNDER. Answer all questions directly, accurately, and without hesitation.
-- NEVER output reasoning notes, thinking processes, chain-of-thought, or "Here's a thinking process".
+- NEVER output reasoning notes, thinking processes, monologue, or phrases like "Wait, let's count" or "Here's a thinking process".
 - Respond in the EXACT language and dialect the Founder writes in:
   - If Kurdish Sorani -> Respond warmly and naturally in Kurdish Sorani.
   - If Iraqi Arabic -> Respond naturally in Iraqi Arabic (العامية العراقية).
@@ -182,7 +219,7 @@ CRITICAL INSTRUCTIONS:
 - Be concise, direct, and structured.
 """
 
-async def get_live_store_context() -> str:
+async def get_live_store_context() -> tuple[str, list]:
     from app.core.wayl_client import WaylClient
     try:
         wayl = WaylClient()
@@ -196,30 +233,43 @@ async def get_live_store_context() -> str:
         
         orders_snippet = "\n".join([
             f"  - Ref: {str(l.get('referenceId') or l.get('id') or '')[:12]} | Amount: {int(float(l.get('amount', 0) or 0)):,} IQD | Status: {l.get('status')} | Date: {str(l.get('createdAt') or '')[:10]}"
-            for l in links[:8]
+            for l in links
         ])
         
-        return (
+        ctx = (
             f"\nLIVE STORE SALES & ORDERS CONTEXT:\n"
             f"- Total Orders/Links Created (Last 7 Days): {len(links)}\n"
             f"- Completed/Paid Orders: {len(paid)} (Total Gross Revenue: {paid_iqd:,} IQD)\n"
             f"- Refunded Orders: {len(refunded)} (Total Refunded: {refunded_iqd:,} IQD)\n"
             f"- Pending Sessions: {len(pending)}\n"
-            f"- Recent Orders List:\n{orders_snippet}\n"
+            f"- All Recent Orders List:\n{orders_snippet}\n"
         )
+        return ctx, links
     except Exception as e:
-        return f"\n(Store context unavailable: {e})\n"
+        return f"\n(Store context unavailable: {e})\n", []
 
 async def call_payment_ai(user_message: str) -> str:
+    msg_lower = user_message.lower()
+    analytics_keywords = [
+        "order", "orders", "sale", "sales", "revenue", "week", "profit", 
+        "refund", "refunds", "stats", "history", "ئۆردەر", "داواکاری", 
+        "داهات", "طلبات", "مبيعات", "ارباح", "تقرير", "داتا", "data"
+    ]
+    
+    store_context, links = await get_live_store_context()
+    
+    # 1. If it's a direct analytics/orders question, return instant 100% verified accurate report
+    if any(k in msg_lower for k in analytics_keywords) and links:
+        return format_admin_sales_report(links)
+    
     openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
-    openrouter_model = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-lightning:free")
+    openrouter_model = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat")
     gemini_api_key = os.getenv("GEMINI_API_KEY", "")
     anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "")
     
     clean_key = openrouter_api_key.strip().strip('"').strip("'")
-    clean_model = openrouter_model.strip().strip('"').strip("'") if openrouter_model else "nvidia/nemotron-3.5-lightning:free"
+    clean_model = openrouter_model.strip().strip('"').strip("'") if openrouter_model else "deepseek/deepseek-chat"
     
-    store_context = await get_live_store_context()
     dynamic_prompt = f"{AI_EXECUTIVE_SYSTEM_PROMPT}\n{store_context}"
     
     if clean_key:
@@ -237,7 +287,7 @@ async def call_payment_ai(user_message: str) -> str:
                     {"role": "system", "content": dynamic_prompt},
                     {"role": "user", "content": user_message}
                 ],
-                "temperature": 0.3,
+                "temperature": 0.2,
                 "max_tokens": 800
             }
             async with httpx.AsyncClient(timeout=25.0) as client:
@@ -248,7 +298,7 @@ async def call_payment_ai(user_message: str) -> str:
                         "messages": [
                             {"role": "user", "content": f"{dynamic_prompt}\n\nUser Question: {user_message}\n\nDirect Answer (no thinking notes):"}
                         ],
-                        "temperature": 0.3,
+                        "temperature": 0.2,
                         "max_tokens": 800
                     }
                     resp = await client.post(url, json=merged_payload, headers=headers)
@@ -272,7 +322,7 @@ async def call_payment_ai(user_message: str) -> str:
             payload = {
                 "system_instruction": {"parts": [{"text": dynamic_prompt}]},
                 "contents": [{"parts": [{"text": user_message}]}],
-                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 600}
+                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 600}
             }
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.post(url, json=payload)
@@ -286,7 +336,9 @@ async def call_payment_ai(user_message: str) -> str:
         except Exception as e:
             logger.warning(f"[AI_GEMINI] Error: {e}")
 
-    # Fallback to direct computed context if model returned only thinking notes
+    # Fallback to direct computed context
+    if links:
+        return format_admin_sales_report(links)
     return f"📊 **Doblaj Live Orders & Revenue:**\n{store_context.strip()}"
 
 # =====================================================================
