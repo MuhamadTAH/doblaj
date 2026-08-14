@@ -62,11 +62,19 @@ def get_plans_keyboard() -> InlineKeyboardMarkup:
 # =====================================================================
 # 3. HELPERS
 # =====================================================================
+import uuid
+
 async def create_telegram_payment_link(chat_id: int, tier: Optional[str] = None, minutes: Optional[int] = None, amount_usd: Optional[float] = None) -> Optional[Dict[str, Any]]:
     from app.core.wayl_client import WaylClient
     from app.core import database as db
+    from app.core import database_convex as convex_db
     
-    workspace_id = await db.get_workspace_by_telegram_id(str(chat_id))
+    workspace_id = None
+    try:
+        workspace_id = await db.get_workspace_by_telegram_id(str(chat_id))
+    except Exception as e:
+        logger.warning(f"[TELEGRAM_PAYMENT] Workspace lookup notice: {e}")
+        
     if not workspace_id:
         workspace_id = f"tg_{chat_id}"
         
@@ -85,9 +93,9 @@ async def create_telegram_payment_link(chat_id: int, tier: Optional[str] = None,
         iqd = t_info["amount_iqd"]
     elif minutes and amount_usd:
         pkg_name = f"Custom Deal: {minutes} Minutes"
-        mins = minutes
-        usd = amount_usd
-        iqd = int(amount_usd * 1500)
+        mins = int(minutes)
+        usd = float(amount_usd)
+        iqd = max(1000, int(usd * 1500))
     else:
         t_info = TIER_PRICING["test_1000iqd"]
         pkg_name = t_info["name"]
@@ -95,32 +103,41 @@ async def create_telegram_payment_link(chat_id: int, tier: Optional[str] = None,
         usd = t_info["amount_usd"]
         iqd = t_info["amount_iqd"]
 
-    wayl = WaylClient()
-    link_data = await wayl.create_payment_link(
-        amount=iqd,
-        currency="IQD",
-        title=f"Doblaj - {pkg_name}",
-        description=f"Add +{mins} minutes to workspace {workspace_id} (Telegram @{chat_id})",
-        redirect_url="https://doblaj.com/dubbing?payment=success",
-        expires_in="30m",
-        metadata={
-            "workspace_id": workspace_id,
-            "telegram_chat_id": str(chat_id),
-            "tier": tier or "custom",
-            "minutes": mins,
-            "amount_usd": usd,
-            "amount_iqd": iqd
-        }
-    )
-    
-    if link_data and ("checkout_url" in link_data or "url" in link_data):
-        checkout_url = link_data.get("checkout_url") or link_data.get("url")
-        return {
-            "checkout_url": checkout_url,
-            "minutes": mins,
-            "amount_usd": usd,
-            "amount_iqd": iqd
-        }
+    reference_id = f"ref_tg_{chat_id}_{uuid.uuid4().hex[:8]}"
+    base_redirect = os.getenv("DUBBING_FRONTEND_URL", "https://doblaj.com").strip()
+    redirection_url = f"{base_redirect.rstrip('/')}/dubbing?payment=success&ref={reference_id}"
+
+    # Record in database
+    try:
+        await convex_db.add_transaction(
+            transaction_id=reference_id,
+            workspace_id=workspace_id,
+            tier=tier or f"custom_{mins}m",
+            amount_usd=usd,
+            minutes_added=mins
+        )
+    except Exception as tx_e:
+        logger.warning(f"[TELEGRAM_PAYMENT] add_transaction notice: {tx_e}")
+
+    try:
+        wayl = WaylClient()
+        checkout_url = await wayl.create_payment_link(
+            reference_id=reference_id,
+            amount_iqd=iqd,
+            redirection_url=redirection_url,
+            expires_in="30m"
+        )
+        if checkout_url:
+            return {
+                "checkout_url": checkout_url,
+                "reference_id": reference_id,
+                "minutes": mins,
+                "amount_usd": usd,
+                "amount_iqd": iqd
+            }
+    except Exception as e:
+        logger.error(f"[TELEGRAM_PAYMENT] Failed to create Wayl payment link: {e}")
+        
     return None
 
 async def query_telegram_balance(chat_id: int) -> Dict[str, Any]:
@@ -659,6 +676,25 @@ async def handle_text_questions(message: Message, state: FSMContext):
             ])
             await message.answer(text, reply_markup=pay_kb, parse_mode="Markdown")
             return
+        else:
+            await message.answer("⚠️ Could not generate custom payment link. Please check that Wayl API is connected.")
+            return
+
+    # 2. Generic Link / Purchase Request (e.g. "make a link", "send link", "لینک")
+    clean_msg = normalize_numerals(user_text.lower())
+    generic_link_phrases = ["make a link", "make link", "create link", "send link", "payment link", "pay link", "get link", "لینک", "رابط", "رابط الدفع", "سوي رابط"]
+    if any(p in clean_msg for p in generic_link_phrases):
+        text = (
+            "💳 **Select a package below to generate your instant Wayl payment link:**\n\n"
+            "• ⚡ **Starter:** 5 min ($10 / 15,000 IQD)\n"
+            "• 🚀 **Pro:** 15 min ($20 / 30,000 IQD)\n"
+            "• 👑 **Creator:** 120 min ($99 / 148,500 IQD)\n"
+            "• 🧪 **Test:** 1 min (1,000 IQD)\n\n"
+            "💡 *Or specify custom minutes and price, for example:*\n"
+            "`make a payment link for 10$ and 10 min` *(or `/deal 10 10`)*"
+        )
+        await message.answer(text, reply_markup=get_plans_keyboard(), parse_mode="Markdown")
+        return
 
     bot = message.bot
     if bot:

@@ -907,7 +907,7 @@ async def handle_text_questions(message: Message, state: FSMContext):
     # 1. Natural Language Custom Deal / Payment Link Generator
     deal_mins, deal_usd = parse_deal_request(user_text)
     if deal_mins and deal_usd:
-        link_data = await create_telegram_payment_link(message.chat.id, minutes=deal_mins, amount_usd=deal_usd)
+        link_data = await request_telegram_payment_link(message.chat.id, minutes=deal_mins, amount_usd=deal_usd)
         if link_data and "checkout_url" in link_data:
             checkout_url = link_data["checkout_url"]
             iqd = link_data.get("amount_iqd", int(deal_usd * 1500))
@@ -925,6 +925,25 @@ async def handle_text_questions(message: Message, state: FSMContext):
             ])
             await message.answer(text, reply_markup=pay_kb, parse_mode="Markdown")
             return
+        else:
+            await message.answer("⚠️ Could not generate custom payment link. Please check that Wayl API is connected.")
+            return
+
+    # 2. Generic Link / Purchase Request (e.g. "make a link", "send link", "لینک")
+    clean_msg = normalize_numerals(user_text.lower())
+    generic_link_phrases = ["make a link", "make link", "create link", "send link", "payment link", "pay link", "get link", "لینک", "رابط", "رابط الدفع", "سوي رابط"]
+    if any(p in clean_msg for p in generic_link_phrases):
+        text = (
+            "💳 **Select a package below to generate your instant Wayl payment link:**\n\n"
+            "• ⚡ **Starter:** 5 min ($10 / 15,000 IQD)\n"
+            "• 🚀 **Pro:** 15 min ($20 / 30,000 IQD)\n"
+            "• 👑 **Creator:** 120 min ($99 / 148,500 IQD)\n"
+            "• 🧪 **Test:** 1 min (1,000 IQD)\n\n"
+            "💡 *Or specify custom minutes and price, for example:*\n"
+            "`make a payment link for 10$ and 10 min` *(or `/deal 10 10`)*"
+        )
+        await message.answer(text, reply_markup=get_plans_keyboard(), parse_mode="Markdown")
+        return
             
     if bot_instance:
         try:
