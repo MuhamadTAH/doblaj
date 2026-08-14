@@ -134,18 +134,52 @@ async def query_telegram_balance(chat_id: int) -> Dict[str, Any]:
         logger.error(f"[TELEGRAM_BALANCE] Error querying balance: {e}")
         return {"is_linked": False, "remaining_minutes": 0}
 
-AI_PAYMENT_SYSTEM_PROMPT = """You are the official Doblaj Payment & Pricing AI Assistant.
-Your role is EXCLUSIVELY to assist users with:
-1. Explaining Doblaj minutes packages:
-   - Test Package: 1 minute for 1,000 IQD (~$0.67)
-   - Starter Package: 5 minutes for $10 (15,000 IQD)
-   - Pro Package: 15 minutes for $20 (30,000 IQD)
-   - Creator Package: 120 minutes for $99 (148,500 IQD)
-2. Explaining payment methods: Wayl Payment Gateway (supports local Iraqi bank cards, FIB, Qi Card, Visa, Mastercard).
-3. Explaining how minutes work: 1 minute of balance = 1 minute of video dubbing with AI voice cloning (preserving original voice & tone) from Kurdish Sorani to Iraqi Arabic.
-4. Explaining link expiration: All payment links are securely generated and expire in 30 minutes. Once paid, the user is redirected to doblaj.com/dubbing and their account is credited immediately.
+import re
 
-CRITICAL GUARDRAIL RULES:
+def clean_ai_output(text: str) -> str:
+    if not text:
+        return ""
+    # 1. Remove explicit <think> tags from reasoning models
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    
+    # 2. If the model outputted a raw thinking list ("Here's a thinking process:..."), clean it
+    if "thinking process" in text.lower():
+        # Split by paragraphs and filter out analysis points
+        lines = text.split("\n")
+        cleaned_lines = []
+        is_in_thought_block = False
+        for line in lines:
+            if "thinking process" in line.lower() or "analyze user input" in line.lower():
+                is_in_thought_block = True
+                continue
+            if is_in_thought_block and (line.strip().startswith(("*", "-", "1.", "2.", "3.", "4.", "5.")) or not line.strip()):
+                continue
+            else:
+                is_in_thought_block = False
+                cleaned_lines.append(line)
+        cleaned_text = "\n".join(cleaned_lines).strip()
+        if cleaned_text:
+            text = cleaned_text
+
+    return text.strip()
+
+AI_PAYMENT_SYSTEM_PROMPT = """You are the official Doblaj Payment & Pricing AI Assistant.
+Your role is EXCLUSIVELY to assist users with Doblaj video dubbing pricing, packages, minutes, and payments.
+
+Doblaj packages:
+- Test Package: 1 minute for 1,000 IQD (~$0.67)
+- Starter Package: 5 minutes for $10 (15,000 IQD)
+- Pro Package: 15 minutes for $20 (30,000 IQD)
+- Creator Package: 120 minutes for $99 (148,500 IQD)
+Payment methods: Wayl Payment Gateway (supports local Iraqi bank cards, FIB, Qi Card, Visa, Mastercard).
+How minutes work: 1 minute of balance = 1 minute of video dubbing with AI voice cloning (preserving original voice & tone) from Kurdish Sorani to Iraqi Arabic.
+Links expire in 30 minutes.
+
+GREETINGS:
+- If the user says "hello", "hi", "slaw", "marhaba", "salam", or greets you, warmly greet them back in the same language and ask how you can assist them with Doblaj packages or minutes!
+
+CRITICAL INSTRUCTIONS:
+- Output ONLY your direct, final response to the user. NEVER output thinking process, internal notes, step-by-step analysis, or "Here's a thinking process".
 - You must ONLY discuss Doblaj pricing, plans, minutes, and payments.
 - If a user asks about anything unrelated (such as writing code, recipes, weather, general world news, competitors, or other topics), politely decline and state:
   "I am the Doblaj Payment Assistant. I can only assist you with our pricing packages, dubbing minutes, and payment methods."
@@ -153,7 +187,7 @@ CRITICAL GUARDRAIL RULES:
   - If Kurdish Sorani -> Respond warmly and naturally in Kurdish Sorani.
   - If Iraqi Arabic -> Respond naturally in Iraqi Arabic (العامية العراقية).
   - If English -> Respond in professional English.
-- Keep answers concise, clear, and focused on helping the user choose the best package.
+- Keep answers concise, clear, and helpful.
 """
 
 async def call_payment_ai(user_message: str) -> str:
@@ -181,7 +215,7 @@ async def call_payment_ai(user_message: str) -> str:
                     {"role": "user", "content": user_message}
                 ],
                 "temperature": 0.3,
-                "max_tokens": 400
+                "max_tokens": 600
             }
             async with httpx.AsyncClient(timeout=25.0) as client:
                 resp = await client.post(url, json=payload, headers=headers)
@@ -189,10 +223,10 @@ async def call_payment_ai(user_message: str) -> str:
                     merged_payload = {
                         "model": clean_model,
                         "messages": [
-                            {"role": "user", "content": f"{AI_PAYMENT_SYSTEM_PROMPT}\n\nUser Question: {user_message}"}
+                            {"role": "user", "content": f"{AI_PAYMENT_SYSTEM_PROMPT}\n\nUser Message: {user_message}\n\nDirect Response (do NOT show thinking process):"}
                         ],
                         "temperature": 0.3,
-                        "max_tokens": 400
+                        "max_tokens": 600
                     }
                     resp = await client.post(url, json=merged_payload, headers=headers)
 
@@ -200,9 +234,12 @@ async def call_payment_ai(user_message: str) -> str:
                     data = resp.json()
                     choices = data.get("choices", [])
                     if choices:
-                        content = choices[0].get("message", {}).get("content", "")
-                        if content and content.strip():
-                            return content.strip()
+                        raw_content = choices[0].get("message", {}).get("content", "")
+                        cleaned = clean_ai_output(raw_content)
+                        if cleaned:
+                            return cleaned
+                        elif raw_content:
+                            return raw_content.strip()
                 else:
                     logger.error(f"[AI_OPENROUTER] Error {resp.status_code}: {resp.text}")
         except Exception as e:
