@@ -139,55 +139,47 @@ import re
 def clean_ai_output(text: str) -> str:
     if not text:
         return ""
-    # 1. Remove explicit <think> tags from reasoning models
+    # 1. Remove explicit <think> tags
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
     
     # 2. If the model outputted a raw thinking list ("Here's a thinking process:..."), clean it
-    if "thinking process" in text.lower():
-        # Split by paragraphs and filter out analysis points
-        lines = text.split("\n")
-        cleaned_lines = []
-        is_in_thought_block = False
-        for line in lines:
-            if "thinking process" in line.lower() or "analyze user input" in line.lower():
-                is_in_thought_block = True
-                continue
-            if is_in_thought_block and (line.strip().startswith(("*", "-", "1.", "2.", "3.", "4.", "5.")) or not line.strip()):
-                continue
-            else:
-                is_in_thought_block = False
-                cleaned_lines.append(line)
-        cleaned_text = "\n".join(cleaned_lines).strip()
-        if cleaned_text:
-            text = cleaned_text
+    if "thinking process" in text.lower() or "analyze user input" in text.lower():
+        parts = re.split(r"(?:response:|final response:|direct answer:)", text, flags=re.IGNORECASE)
+        if len(parts) > 1 and parts[-1].strip():
+            return parts[-1].strip()
+        
+        # Filter out numbered analysis points
+        lines = [
+            l for l in text.split("\n") 
+            if not re.search(r"^(?:\d+\.|\*|-|Here's a thinking process|Analyze User Input|Check Constraints|Determine Response|Evaluate if)", l.strip(), re.IGNORECASE)
+        ]
+        cleaned = "\n".join(lines).strip()
+        if cleaned:
+            return cleaned
+        return ""
 
     return text.strip()
 
-AI_PAYMENT_SYSTEM_PROMPT = """You are the official Doblaj Payment & Pricing AI Assistant.
-Your role is EXCLUSIVELY to assist users with Doblaj video dubbing pricing, packages, minutes, and payments.
+AI_EXECUTIVE_SYSTEM_PROMPT = """You are the personal Executive AI Assistant for the Founder & Owner of Doblaj Studio (AI Video Dubbing Platform).
 
-Doblaj packages:
-- Test Package: 1 minute for 1,000 IQD (~$0.67)
-- Starter Package: 5 minutes for $10 (15,000 IQD)
-- Pro Package: 15 minutes for $20 (30,000 IQD)
-- Creator Package: 120 minutes for $99 (148,500 IQD)
-Payment methods: Wayl Payment Gateway (supports local Iraqi bank cards, FIB, Qi Card, Visa, Mastercard).
-How minutes work: 1 minute of balance = 1 minute of video dubbing with AI voice cloning (preserving original voice & tone) from Kurdish Sorani to Iraqi Arabic.
-Links expire in 30 minutes.
-
-GREETINGS:
-- If the user says "hello", "hi", "slaw", "marhaba", "salam", or greets you, warmly greet them back in the same language and ask how you can assist them with Doblaj packages or minutes!
+You have full authority to assist the Founder with:
+1. Live Business Intelligence & Orders: Answering questions about total sales volume, orders created this week, refunds, revenue, and customer activity using the LIVE STORE SALES & ORDERS CONTEXT provided below.
+2. Pricing Packages:
+   - Test Package: 1 minute for 1,000 IQD (~$0.67)
+   - Starter Package: 5 minutes for $10 (15,000 IQD)
+   - Pro Package: 15 minutes for $20 (30,000 IQD)
+   - Creator Package: 120 minutes for $99 (148,500 IQD)
+3. Payment Gateway: Wayl (supports FIB, Qi Card, Visa, Mastercard, and local bank cards).
+4. Custom Client Deals: Helping structure and quote custom deals via /deal <minutes> <amount_usd>.
 
 CRITICAL INSTRUCTIONS:
-- Output ONLY your direct, final response to the user. NEVER output thinking process, internal notes, step-by-step analysis, or "Here's a thinking process".
-- You must ONLY discuss Doblaj pricing, plans, minutes, and payments.
-- If a user asks about anything unrelated (such as writing code, recipes, weather, general world news, competitors, or other topics), politely decline and state:
-  "I am the Doblaj Payment Assistant. I can only assist you with our pricing packages, dubbing minutes, and payment methods."
-- Always respond in the EXACT language and dialect the user writes in:
+- You are speaking directly to the FOUNDER. Answer all questions directly, accurately, and without hesitation.
+- NEVER output reasoning notes, thinking processes, chain-of-thought, or "Here's a thinking process".
+- Respond in the EXACT language and dialect the Founder writes in:
   - If Kurdish Sorani -> Respond warmly and naturally in Kurdish Sorani.
   - If Iraqi Arabic -> Respond naturally in Iraqi Arabic (العامية العراقية).
   - If English -> Respond in professional English.
-- Keep answers concise, clear, and helpful.
+- Be concise, direct, and structured.
 """
 
 async def get_live_store_context() -> str:
@@ -209,9 +201,9 @@ async def get_live_store_context() -> str:
         
         return (
             f"\nLIVE STORE SALES & ORDERS CONTEXT:\n"
-            f"- Total Orders/Links Created: {len(links)}\n"
-            f"- Completed/Paid Orders: {len(paid)} (Total: {paid_iqd:,} IQD)\n"
-            f"- Refunded Orders: {len(refunded)} (Total: {refunded_iqd:,} IQD)\n"
+            f"- Total Orders/Links Created (Last 7 Days): {len(links)}\n"
+            f"- Completed/Paid Orders: {len(paid)} (Total Gross Revenue: {paid_iqd:,} IQD)\n"
+            f"- Refunded Orders: {len(refunded)} (Total Refunded: {refunded_iqd:,} IQD)\n"
             f"- Pending Sessions: {len(pending)}\n"
             f"- Recent Orders List:\n{orders_snippet}\n"
         )
@@ -228,7 +220,7 @@ async def call_payment_ai(user_message: str) -> str:
     clean_model = openrouter_model.strip().strip('"').strip("'") if openrouter_model else "nvidia/nemotron-3.5-lightning:free"
     
     store_context = await get_live_store_context()
-    dynamic_prompt = f"{AI_PAYMENT_SYSTEM_PROMPT}\n{store_context}"
+    dynamic_prompt = f"{AI_EXECUTIVE_SYSTEM_PROMPT}\n{store_context}"
     
     if clean_key:
         try:
@@ -246,7 +238,7 @@ async def call_payment_ai(user_message: str) -> str:
                     {"role": "user", "content": user_message}
                 ],
                 "temperature": 0.3,
-                "max_tokens": 600
+                "max_tokens": 800
             }
             async with httpx.AsyncClient(timeout=25.0) as client:
                 resp = await client.post(url, json=payload, headers=headers)
@@ -254,10 +246,10 @@ async def call_payment_ai(user_message: str) -> str:
                     merged_payload = {
                         "model": clean_model,
                         "messages": [
-                            {"role": "user", "content": f"{dynamic_prompt}\n\nUser Message: {user_message}\n\nDirect Response (do NOT show thinking process):"}
+                            {"role": "user", "content": f"{dynamic_prompt}\n\nUser Question: {user_message}\n\nDirect Answer (no thinking notes):"}
                         ],
                         "temperature": 0.3,
-                        "max_tokens": 600
+                        "max_tokens": 800
                     }
                     resp = await client.post(url, json=merged_payload, headers=headers)
 
@@ -269,8 +261,6 @@ async def call_payment_ai(user_message: str) -> str:
                         cleaned = clean_ai_output(raw_content)
                         if cleaned:
                             return cleaned
-                        elif raw_content:
-                            return raw_content.strip()
                 else:
                     logger.error(f"[AI_OPENROUTER] Error {resp.status_code}: {resp.text}")
         except Exception as e:
@@ -282,7 +272,7 @@ async def call_payment_ai(user_message: str) -> str:
             payload = {
                 "system_instruction": {"parts": [{"text": dynamic_prompt}]},
                 "contents": [{"parts": [{"text": user_message}]}],
-                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 400}
+                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 600}
             }
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.post(url, json=payload)
@@ -296,14 +286,8 @@ async def call_payment_ai(user_message: str) -> str:
         except Exception as e:
             logger.warning(f"[AI_GEMINI] Error: {e}")
 
-    return (
-        "💡 **Doblaj Packages / پاکێجەکانی دۆبلاژ:**\n\n"
-        "• ⚡ **Starter:** 5 min for $10 (15,000 IQD)\n"
-        "• 🚀 **Pro:** 15 min for $20 (30,000 IQD)\n"
-        "• 👑 **Creator:** 120 min for $99 (148,500 IQD)\n"
-        "• 🧪 **Test:** 1 min for 1,000 IQD\n\n"
-        "Click /plans to choose your package and pay securely via Wayl!"
-    )
+    # Fallback to direct computed context if model returned only thinking notes
+    return f"📊 **Doblaj Live Orders & Revenue:**\n{store_context.strip()}"
 
 # =====================================================================
 # 4. ROUTER & HANDLERS (STRICT ADMIN ACCESS ONLY)
