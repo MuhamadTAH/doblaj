@@ -137,6 +137,54 @@ export const processPaymentSuccessInternal = mutation({
   },
 });
 
+export const processRefundInternal = mutation({
+  args: {
+    transactionId: v.string(),
+    workspaceId: v.string(),
+    amountUsd: v.number(),
+    minutesDeducted: v.number(),
+    reason: v.optional(v.string()),
+    __internalApiKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireInternalApiKey(args.__internalApiKey);
+    const workspaceId = await resolveWorkspaceId(ctx, args.workspaceId);
+    
+    // Deduplication check for refund record
+    const refundTxId = args.transactionId.startsWith("REFUND-") ? args.transactionId : `REFUND-${args.transactionId}`;
+    const existing = await ctx.db
+      .query("transactions")
+      .withIndex("by_legacy_id", (q) => q.eq("legacyId", refundTxId))
+      .first();
+      
+    if (existing) {
+      return { status: "already_processed", transactionId: existing._id };
+    }
+    
+    const txId = await ctx.db.insert("transactions", {
+      legacyId: refundTxId,
+      subyTransactionId: refundTxId,
+      workspaceId,
+      tier: "refund",
+      amountUsd: -Math.abs(args.amountUsd),
+      minutesAdded: -Math.abs(args.minutesDeducted),
+      status: "refunded",
+      data: { reason: args.reason },
+      createdAt: new Date().toISOString(),
+    });
+    
+    const ws = await ctx.db.get(workspaceId);
+    if (!ws) throw new ConvexError("WORKSPACE_NOT_FOUND");
+    const nextMinutes = Math.max(0, (ws.dubbingMinutes ?? 0) - Math.abs(args.minutesDeducted));
+    await ctx.db.patch(workspaceId, {
+      dubbingMinutes: nextMinutes,
+      updatedAt: new Date().toISOString(),
+    });
+    
+    return { status: "success", transactionId: txId, newBalance: nextMinutes };
+  },
+});
+
 export const listInternal = query({
   args: { 
     workspaceId: v.string(),

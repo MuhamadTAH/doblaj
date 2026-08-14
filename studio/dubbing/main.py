@@ -574,9 +574,25 @@ async def auth_me(request: Request):
         import datetime
         user_client = database.get_user_client(user.access_token)
 
+        # Process refund sync if returning with refund=true or refund_ref parameter
+        refund_ref = request.query_params.get("refund_ref") or (request.query_params.get("ref") if request.query_params.get("refund") in ("true", "success") or request.query_params.get("status") == "refunded" else None)
+        if refund_ref:
+            clean_refund = refund_ref.split("/")[0].split("?")[0]
+            try:
+                service_client = database._get_service_role_client()
+                await database.process_refund_atomic(
+                    service_client,
+                    transaction_id=clean_refund,
+                    workspace_id=user.workspace_id,
+                    amount_usd=0.67,
+                    minutes_deducted=1,
+                    reason="Customer refund"
+                )
+            except Exception as ref_err:
+                logger.warning(f"[AUTH_ME] Refund sync warning for ref {clean_refund}: {ref_err}")
         # Process payment sync if returning with payment=success or ref parameter
-        ref_id = request.query_params.get("ref") or request.query_params.get("referenceId")
-        if ref_id:
+        elif request.query_params.get("ref") or request.query_params.get("referenceId"):
+            ref_id = request.query_params.get("ref") or request.query_params.get("referenceId")
             clean_ref = ref_id.split("/")[0].split("?")[0]
             try:
                 service_client = database._get_service_role_client()

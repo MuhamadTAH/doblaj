@@ -54,6 +54,26 @@ def _internal_args(extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     return base
 
 
+def assert_service_role_workspace_match(doc: Optional[Dict[str, Any]], expected_workspace_id: str) -> Optional[Dict[str, Any]]:
+    """Part 08 / Video 46: Service Role Key RLS Bypass Guard.
+    
+    Service-role keys bypass database RLS policies. When backend service calls
+    query data on behalf of a tenant, this function verifies the document workspace
+    matches expected_workspace_id, preventing service-role cross-tenant data leaks.
+    """
+    if not doc or not expected_workspace_id:
+        return doc
+    doc_ws = doc.get("workspaceId") or doc.get("workspace_id") or doc.get("ownerUserId") or doc.get("owner_user_id") or ""
+    if doc_ws and str(doc_ws) != str(expected_workspace_id):
+        logger.error(
+            f"[SERVICE-ROLE-RLS-GUARD] Cross-tenant access blocked! "
+            f"Doc workspace '{doc_ws}' != Expected workspace '{expected_workspace_id}'"
+        )
+        raise PermissionError(f"Service role cross-tenant access blocked for workspace '{expected_workspace_id}'")
+    return doc
+
+
+
 def _get_client() -> ConvexClient:
     global _client
     if _client is None:
@@ -310,11 +330,14 @@ async def update_job_status(client: Any = None, *, workspace_id: str = "", job_i
 
     try:
         c = client or _get_client()
-        # Pird PIRD-017: workspaceId omitted; derived server-side from the job doc.
+        # PIRD-017: forward `expectedWorkspaceId` so the server-side guard
+        # on `updateStatusInternal` can refuse cross-tenant writes.
         args: Dict[str, Any] = {
             "jobId": job_id,
             "status": status,
         }
+        if workspace_id:
+            args["expectedWorkspaceId"] = workspace_id
         if progress >= 0:
             args["progress"] = progress
         if output_path:
@@ -334,12 +357,15 @@ async def update_job_status(client: Any = None, *, workspace_id: str = "", job_i
 async def update_job_cost(client: Any = None, *, workspace_id: str = "", job_id: str = "", total_latency_ms: float = 0.0, total_cost_usd: float = 0.0):
     try:
         c = client or _get_client()
-        # Pird PIRD-017: workspaceId omitted; derived server-side from the job doc.
+        # PIRD-017: forward `expectedWorkspaceId` so the server-side guard
+        # on `updateCostInternal` can refuse cross-tenant writes.
         args: Dict[str, Any] = {
             "jobId": job_id,
             "totalProcessingLatencyMs": total_latency_ms,
             "totalCostUsd": total_cost_usd
         }
+        if workspace_id:
+            args["expectedWorkspaceId"] = workspace_id
         def _do():
             return c.mutation("dubbingJobs:updateCostInternal", _internal_args(args))
         return await asyncio.to_thread(_do)
@@ -412,12 +438,14 @@ async def update_chunk(client: Any = None, *, workspace_id: str = "", job_id: st
     try:
         for _reserved in ("id", "jobId", "workspaceId", "createdAt"):
             updates.pop(_reserved, None)
-        args: Dict[str, Any] = {"chunkId": chunk_id}
-        for k, v in updates.items():
-            args[k] = v
+        args: Dict[str, Any] = {"chunkId": chunk_id, "patch": updates}
+        # PIRD-017: forward `expectedWorkspaceId` so the server-side guard
+        # on `dubbingChunks:updateInternal` can refuse cross-tenant writes.
+        if workspace_id:
+            args["expectedWorkspaceId"] = workspace_id
         c = client or _get_client()
         def _do():
-            return c.mutation("dubbingChunks:updateInternal", _internal_args({"chunkId": chunk_id, "patch": updates}))
+            return c.mutation("dubbingChunks:updateInternal", _internal_args(args))
         return await asyncio.to_thread(_do)
     except Exception:
         return True
@@ -544,6 +572,21 @@ async def process_payment_success_atomic(client: Any = None, *, transaction_id: 
     }
     def _do():
         return c.mutation("transactions:processPaymentSuccessInternal", _internal_args(payload))
+    return await asyncio.to_thread(_do)
+
+
+async def process_refund_atomic(client: Any = None, *, transaction_id: str = "", workspace_id: str = "", amount_usd: float = 0.0, minutes_deducted: int = 0, reason: str = "") -> Dict[str, Any]:
+    """Execute atomic refund transaction record + minute deduction in a single Convex transaction."""
+    c = client or _get_client()
+    payload = {
+        "transactionId": transaction_id,
+        "workspaceId": workspace_id,
+        "amountUsd": float(amount_usd),
+        "minutesDeducted": int(minutes_deducted),
+        "reason": reason,
+    }
+    def _do():
+        return c.mutation("transactions:processRefundInternal", _internal_args(payload))
     return await asyncio.to_thread(_do)
 
 

@@ -33,3 +33,4 @@ create_step_telemetry = backend.create_step_telemetry
 update_job_cost = backend.update_job_cost
 _internal_args = backend._internal_args
 process_payment_success_atomic = backend.process_payment_success_atomic
+process_refund_atomic = backend.process_refund_atomic

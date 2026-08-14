@@ -191,6 +191,26 @@ async def wayl_webhook(request: Request):
             logger.info(f"[WAYL_WEBHOOK] Successfully processed payment for referenceId={reference_id}")
         return {"status": "ok", "message": "Payment processed successfully"}
     
+    if event_status in ("Refunded", "Returned"):
+        tier_id = payload.get("tier_id") or "test_1000iqd"
+        workspace_id = payload.get("workspace_id")
+        tier_info = TIERS.get(tier_id, TIERS.get("test_1000iqd", {"minutes": 1, "price_usd": 0.67}))
+        minutes_to_deduct = tier_info.get("minutes", 1)
+        amount_usd = tier_info.get("price_usd", 0.67)
+        
+        if workspace_id:
+            res = await database.process_refund_atomic(
+                client,
+                transaction_id=reference_id,
+                workspace_id=workspace_id,
+                amount_usd=amount_usd,
+                minutes_deducted=minutes_to_deduct,
+                reason="Refund processed by payment gateway"
+            )
+            logger.info(f"[WAYL_WEBHOOK] Refund processed for referenceId={reference_id}, deducted {minutes_to_deduct} min from workspace {safe_ws(workspace_id)}")
+            return {"status": "ok", "result": res}
+        return {"status": "ok", "message": "Refund webhook received"}
+    
     logger.info(f"[WAYL_WEBHOOK] Ignored status={event_status} for referenceId={reference_id}")
     return {"status": "ok", "message": f"Status {event_status} ignored"}
 
@@ -200,7 +220,7 @@ async def process_refund(
     req: RefundRequest,
     user: AuthenticatedUser = Depends(require_user)
 ):
-    """Process a payment refund via Wayl API POST /api/v1/refunds."""
+    """Process a payment refund via Wayl API POST /api/v1/refunds and deduct minutes atomically in Convex."""
     wayl = WaylClient()
     try:
         res = await wayl.create_refund(
@@ -208,6 +228,21 @@ async def process_refund(
             amount_iqd=req.amount_iqd,
             reason=req.reason
         )
+        
+        # Atomically record refund transaction in Convex and deduct workspace minutes
+        client = _get_service_role_client()
+        amount_usd = round(req.amount_iqd / 1500.0, 2)
+        minutes_to_deduct = 1 if req.amount_iqd <= 2000 else (5 if req.amount_iqd <= 15000 else (15 if req.amount_iqd <= 30000 else 120))
+        
+        await database.process_refund_atomic(
+            client,
+            transaction_id=req.reference_id,
+            workspace_id=user.workspace_id,
+            amount_usd=amount_usd,
+            minutes_deducted=minutes_to_deduct,
+            reason=req.reason
+        )
+        
         return {"status": "success", "data": res}
     except Exception as e:
         logger.error(f"[REFUND_ERROR] Refund failed: {e}")

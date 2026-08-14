@@ -62,30 +62,50 @@ export default function BillingPage() {
     starter: { packageName: "Starter Package", amountDisplay: "15,000 IQD ($10)", minutes: "+5 min" },
     pro: { packageName: "Pro Package", amountDisplay: "30,000 IQD ($20)", minutes: "+15 min" },
     creator: { packageName: "Creator Package", amountDisplay: "150,000 IQD ($99)", minutes: "+120 min" },
+    refund: { packageName: "Refund", amountDisplay: "-1,000 IQD", minutes: "-1 min" },
   };
 
   // Real billing history
   const billingHistory = userData?.transactions?.map((tx: any) => {
     let rawId = (tx.transactionId || tx.legacyId || tx._id || "INV-001").toString().split("/")[0].split("?")[0];
-    let cleanId = rawId.replace(/^ref_/, "INV-").toUpperCase();
-    if (cleanId.length > 12) {
-      cleanId = cleanId.substring(0, 12);
+    const isRefund = rawId.startsWith("REFUND-") || 
+      (tx.status && tx.status.toLowerCase() === "refunded") || 
+      (tx.tier && tx.tier.toLowerCase() === "refund") ||
+      (tx.minutesAdded !== undefined && tx.minutesAdded < 0) ||
+      (tx.amountUsd !== undefined && tx.amountUsd < 0);
+
+    let cleanId = rawId.replace(/^REFUND-/, "REF-").replace(/^ref_/, "INV-").toUpperCase();
+    if (cleanId.length > 14) {
+      cleanId = cleanId.substring(0, 14);
     }
 
-    const tierKey = (tx.tier || "test_1000iqd").toLowerCase();
+    const tierKey = (tx.tier || (isRefund ? "refund" : "test_1000iqd")).toLowerCase();
     const tierInfo = TIER_DETAILS[tierKey] || {
-      packageName: tx.tier ? `${tx.tier.charAt(0).toUpperCase() + tx.tier.slice(1)} Package` : "Doblaj Package",
-      amountDisplay: tx.amountUsd ? `$${Number(tx.amountUsd).toFixed(2)}` : (tx.fixed_iqd ? `${tx.fixed_iqd} IQD` : "1,000 IQD"),
-      minutes: tx.minutesAdded ? `+${tx.minutesAdded} min` : "+1 min",
+      packageName: isRefund ? "Refund" : (tx.tier ? `${tx.tier.charAt(0).toUpperCase() + tx.tier.slice(1)} Package` : "Doblaj Package"),
+      amountDisplay: tx.amountUsd !== undefined ? `${tx.amountUsd < 0 ? "-" : ""}$${Math.abs(Number(tx.amountUsd)).toFixed(2)}` : (tx.fixed_iqd ? `${tx.fixed_iqd} IQD` : "1,000 IQD"),
+      minutes: tx.minutesAdded !== undefined ? `${tx.minutesAdded > 0 ? "+" : ""}${tx.minutesAdded} min` : (isRefund ? "-1 min" : "+1 min"),
     };
+
+    let amountText = tierInfo.amountDisplay;
+    if (isRefund && !amountText.startsWith("-")) {
+      amountText = `-${amountText}`;
+    }
+
+    let minutesText = tierInfo.minutes;
+    if (isRefund && !minutesText.startsWith("-")) {
+      minutesText = `-${minutesText.replace(/^\+/, "")}`;
+    }
+
+    let statusText = isRefund ? "Refunded" : (tx.status ? (tx.status.charAt(0).toUpperCase() + tx.status.slice(1)) : "Paid");
 
     return {
       id: cleanId,
       packageName: tierInfo.packageName,
       date: tx.createdAt ? new Date(typeof tx.createdAt === 'number' ? tx.createdAt : tx.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
-      amount: tierInfo.amountDisplay,
-      minutes: tierInfo.minutes,
-      status: tx.status ? (tx.status.charAt(0).toUpperCase() + tx.status.slice(1)) : "Paid",
+      amount: amountText,
+      minutes: minutesText,
+      status: statusText,
+      isRefund: isRefund,
     };
   }) || [];
 
@@ -206,13 +226,17 @@ export default function BillingPage() {
                     <tbody>
                       {billingHistory.map((invoice, idx) => (
                         <tr key={idx} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                          <td className="px-6 py-4 font-mono text-xs font-semibold text-brand-400">{invoice.id}</td>
+                          <td className={`px-6 py-4 font-mono text-xs font-semibold ${invoice.isRefund ? 'text-rose-400' : 'text-brand-400'}`}>{invoice.id}</td>
                           <td className="px-6 py-4 font-medium text-white">{invoice.packageName}</td>
                           <td className="px-6 py-4">{invoice.date}</td>
-                          <td className="px-6 py-4 font-semibold text-amber-400">{invoice.amount}</td>
-                          <td className="px-6 py-4 font-medium text-emerald-400">{invoice.minutes}</td>
+                          <td className={`px-6 py-4 font-semibold ${invoice.isRefund ? 'text-rose-400' : 'text-amber-400'}`}>{invoice.amount}</td>
+                          <td className={`px-6 py-4 font-medium ${invoice.isRefund ? 'text-rose-400' : 'text-emerald-400'}`}>{invoice.minutes}</td>
                           <td className="px-6 py-4 text-right">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              invoice.isRefund 
+                                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' 
+                                : 'bg-green-500/10 text-green-400 border border-green-500/20'
+                            }`}>
                               {invoice.status}
                             </span>
                           </td>
