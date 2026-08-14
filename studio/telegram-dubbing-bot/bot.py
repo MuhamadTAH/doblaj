@@ -338,9 +338,45 @@ CRITICAL GUARDRAIL RULES:
 """
 
 async def call_payment_ai(user_message: str) -> str:
+    openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+    openrouter_model = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat")
     gemini_api_key = os.getenv("GEMINI_API_KEY")
     anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
     
+    # 1. OpenRouter (DeepSeek V3 / R1 / Flash)
+    if openrouter_api_key:
+        try:
+            url = "https://openrouter.ai/api/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {openrouter_api_key.strip()}",
+                "HTTP-Referer": "https://doblaj.com",
+                "X-Title": "Doblaj Telegram Bot",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": openrouter_model,
+                "messages": [
+                    {"role": "system", "content": AI_PAYMENT_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_message}
+                ],
+                "temperature": 0.3,
+                "max_tokens": 400
+            }
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    choices = data.get("choices", [])
+                    if choices:
+                        content = choices[0].get("message", {}).get("content", "")
+                        if content:
+                            return content
+                else:
+                    logger.warning({"service": "ai", "message": f"OpenRouter status {resp.status_code}: {resp.text}"})
+        except Exception as e:
+            logger.warning({"service": "ai", "message": f"OpenRouter call notice: {e}"})
+
+    # 2. Gemini fallback
     if gemini_api_key:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
@@ -361,6 +397,7 @@ async def call_payment_ai(user_message: str) -> str:
         except Exception as e:
             logger.warning({"service": "ai", "message": f"Gemini call notice: {e}"})
 
+    # 3. Anthropic fallback
     if anthropic_api_key:
         try:
             url = "https://api.anthropic.com/v1/messages"
