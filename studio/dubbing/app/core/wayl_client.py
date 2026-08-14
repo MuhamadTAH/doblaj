@@ -9,21 +9,20 @@ logger = logging.getLogger(__name__)
 
 class WaylClient:
     def __init__(self):
-        self.api_token = os.getenv("WAYL_API_TOKEN", "")
-        self.webhook_secret = os.getenv("WAYL_WEBHOOK_SECRET", "")
+        self.api_token = (os.getenv("WAYL_API_TOKEN", "") or "").strip().strip('"').strip("'")
+        self.webhook_secret = (os.getenv("WAYL_WEBHOOK_SECRET", "") or "").strip().strip('"').strip("'")
 
     def _get_env(self) -> str:
-        wayl_env_override = os.getenv("WAYL_ENV", "").lower()
-        pird_env = os.getenv("PIRD_ENV", "dev").lower()
+        wayl_env_override = (os.getenv("WAYL_ENV", "") or "").strip().lower()
+        pird_env = (os.getenv("PIRD_ENV", "dev") or "").strip().lower()
         if wayl_env_override in ("live", "test"):
             return wayl_env_override
         return "live" if pird_env in ("prod", "production") else "test"
 
     def _get_base_url(self) -> str:
-        # According to Wayl OpenAPI Spec:
-        # Production Server (live) -> https://api.thewayl.com
-        # Testing Server (test)    -> https://api.thewayl-staging.com
-        return "https://api.thewayl.com" if self._get_env() == "live" else "https://api.thewayl-staging.com"
+        # Default to production server (https://api.thewayl.com) where registered merchant API keys exist.
+        # It handles both "env": "live" and "env": "test" payloads seamlessly.
+        return (os.getenv("WAYL_BASE_URL", "https://api.thewayl.com") or "https://api.thewayl.com").strip().rstrip("/")
 
     async def verify_auth_key(self) -> Dict[str, Any]:
         """Execute a test call to GET /api/v1/verify-auth-key using WAYL_API_TOKEN."""
