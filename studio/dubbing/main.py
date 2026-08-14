@@ -533,10 +533,19 @@ async def on_startup():
     else:
         logger.info("[STARTUP] Azure CPU polling worker DISABLED (DISABLE_CPU_WORKER=1)")
 
+    # Spawn Telegram Bot Polling Worker if TELEGRAM_BOT_TOKEN is present
+    if os.getenv("TELEGRAM_BOT_TOKEN"):
+        try:
+            from app.services.telegram_runner import start_telegram_bot_task
+            app.state.telegram_bot_task = asyncio.create_task(start_telegram_bot_task())
+            logger.info("[STARTUP] Telegram Bot Polling Worker spawned successfully")
+        except Exception as e:
+            logger.exception("[STARTUP] Failed to spawn Telegram Bot worker: %s", e)
+
 
 @app.on_event("shutdown")
 async def on_shutdown():
-    """Cancel the CPU polling worker gracefully."""
+    """Cancel workers gracefully."""
     task = getattr(app.state, "cpu_worker_task", None)
     if task and not task.done():
         task.cancel()
@@ -545,6 +554,15 @@ async def on_shutdown():
         except (asyncio.CancelledError, Exception):
             pass
         logger.info("[SHUTDOWN] Azure CPU polling worker cancelled")
+
+    tg_task = getattr(app.state, "telegram_bot_task", None)
+    if tg_task and not tg_task.done():
+        tg_task.cancel()
+        try:
+            await tg_task
+        except (asyncio.CancelledError, Exception):
+            pass
+        logger.info("[SHUTDOWN] Telegram Bot worker cancelled")
 
 
 @app.get("/soraniq", response_class=HTMLResponse, include_in_schema=False)
