@@ -217,7 +217,8 @@ async def create_checkout_session(
         checkout_url = await wayl.create_payment_link(
             reference_id=reference_id,
             amount_iqd=total_iqd,
-            redirection_url=redirection_url
+            redirection_url=redirection_url,
+            item_label=f"Doblaj ({minutes} min) - ${usd_amount:.2f} USD ({total_iqd:,} IQD)"
         )
 
         return {"checkoutUrl": checkout_url}
@@ -298,7 +299,8 @@ async def create_telegram_payment_link(req: TelegramLinkRequest, request: Reques
             reference_id=reference_id,
             amount_iqd=total_iqd,
             redirection_url=redirection_url,
-            expires_in=req.expires_in or "30m"
+            expires_in=req.expires_in or "30m",
+            item_label=f"Doblaj ({minutes} min) - ${usd_amount:.2f} USD ({total_iqd:,} IQD)"
         )
     except Exception as e:
         logger.exception("[PAYMENTS_TG] Failed to create Wayl payment link: %s", e)

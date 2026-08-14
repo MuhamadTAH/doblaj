@@ -67,7 +67,8 @@ class WaylClient:
         amount_iqd: int,
         redirection_url: str,
         webhook_url: Optional[str] = None,
-        expires_in: Optional[str] = "30m"
+        expires_in: Optional[str] = "30m",
+        item_label: Optional[str] = None
     ) -> str:
         """Make a POST request to /api/v1/links to create a payment link.
         
@@ -88,15 +89,16 @@ class WaylClient:
 
         # Wayl requires minimum 1000 IQD
         final_amount = max(1000, int(amount_iqd))
+        label = item_label or f"Doblaj Credits Package ({final_amount:,} IQD)"
 
         payload = {
             "env": wayl_env,
             "referenceId": reference_id,
             "total": final_amount,
-            "currency": "IQD",  # Strictly hardcoded as IQD
+            "currency": "IQD",  # Strictly hardcoded as IQD for CBI compliance
             "lineItem": [
                 {
-                    "label": f"Doblaj Credits Package ({final_amount} IQD)",
+                    "label": label,
                     "amount": final_amount,
                     "type": "increase"
                 }

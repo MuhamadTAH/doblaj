@@ -125,7 +125,8 @@ async def create_telegram_payment_link(chat_id: int, tier: Optional[str] = None,
             reference_id=reference_id,
             amount_iqd=iqd,
             redirection_url=redirection_url,
-            expires_in="30m"
+            expires_in="30m",
+            item_label=f"Doblaj ({mins} min) - ${usd:.2f} USD ({iqd:,} IQD)"
         )
         if checkout_url:
             return {
