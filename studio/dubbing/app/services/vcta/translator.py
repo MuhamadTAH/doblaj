@@ -178,29 +178,19 @@ async def translate_single_chunk_structured(
             }
     
     source_word_count = len(text.split())
-    target_words = 0
-
+    effective_duration = max(0.5, speech_duration + (padding_debt_ms / 1000.0))
     
     if source_word_count <= 2:
         is_micro = True
         min_words = 1
-        max_words = source_word_count
+        max_words = max(2, source_word_count)
         f_pacing = 1.0
     else:
-        effective_duration = speech_duration + (padding_debt_ms / 1000.0)
-        # V4.2 Perfected Continuous Linear Equation
-        k_wps = source_word_count / max(0.1, effective_duration)
-        speed_mult = k_wps / 1.90
-        
-        ratio = max(0.4, 1.71 - (0.71 * speed_mult))
-        target_words = source_word_count * ratio
-        
-        # Strict user-defined asymmetric boundary constraint: Target as MIN, Target+2 as MAX
-        min_words = max(1, math.floor(target_words))
-        max_words = min_words + 2
-        
-        # Fish Audio pacing (optional downstream speed tweak)
-        f_pacing = max(0.7, min(1.4, speed_mult))
+        # Standard natural Spoken Iraqi Arabic delivery rate: ~2.35 words/second
+        target_words = max(2, round(effective_duration * 2.35))
+        min_words = max(1, round(effective_duration * 2.20))
+        max_words = max(min_words + 1, round(effective_duration * 2.50))
+        f_pacing = 1.0
     
     history = history or []
     

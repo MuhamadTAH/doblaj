@@ -204,6 +204,31 @@ class DubbingPipelineEngine:
             w_count = len(arabic_text.split())
             est_speed = round(w_count / max(0.5, active_dur * 2.3), 2)
             
+            # Real Speed Boundary Circuit Breaker & Calibration Loop [0.95x, 1.15x]
+            if (est_speed < 0.95 or est_speed > 1.15) and active_dur >= 1.0:
+                desired_words = max(2, round(active_dur * 2.35))
+                action = "expand and add natural phrasing in" if est_speed < 0.95 else "tighten and shorten to punchy"
+                corr_prompt = f"CRITICAL SPEED CALIBRATION: Your previous translation had only {w_count} words ({est_speed}x speed). You MUST {action} authentic Spoken Iraqi Arabic with EXACTLY {desired_words} words to achieve natural 1.02x speed for {active_dur:.2f}s."
+                logger.info(f"  ⚡ [Chunk {idx+1}] Speed violation ({est_speed}x) -> Calibrating to exact target ({desired_words} words)...")
+                try:
+                    retry_res = await translate_single_chunk_structured(
+                        text=kurd_text,
+                        speech_duration=active_dur,
+                        history=translation_history,
+                        current_arabic_text=arabic_text,
+                        retry_prompt=corr_prompt
+                    )
+                    retry_arabic = retry_res.get("arabic_text", "").strip('"`\' \n')
+                    if retry_arabic:
+                        retry_w = len(retry_arabic.split())
+                        retry_speed = round(retry_w / max(0.5, active_dur * 2.3), 2)
+                        logger.info(f"  ✅ [Chunk {idx+1} Recalibrated] Iraqi: {retry_arabic} (Words: {retry_w}, Speed: {retry_speed}x)")
+                        arabic_text = retry_arabic
+                        w_count = retry_w
+                        est_speed = retry_speed
+                except Exception as corr_e:
+                    logger.warning(f"  [Chunk {idx+1} Correction Error] {corr_e}")
+
             logger.info(f"  [Chunk {idx+1}/{len(chunks)}] Iraqi: {arabic_text} (Words: {w_count}, Speed: {est_speed}x)")
             translation_history.append({"kurdish_raw": kurd_text, "arabic_text": arabic_text})
             
