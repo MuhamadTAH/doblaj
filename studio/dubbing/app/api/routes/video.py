@@ -360,7 +360,7 @@ async def create_job(
                     "job_id": job_id,
                     "workspace_id": user.workspace_id,
                 }
-                async with httpx.AsyncClient(timeout=15.0) as client:
+                async with httpx.AsyncClient(timeout=30.0) as client:
                     resp = await client.post(mcp_webhook_url, json=payload)
                     resp.raise_for_status()
                     logger.info(f"MCP Webhook Push triggered successfully: {resp.json()}")
@@ -382,7 +382,7 @@ async def create_job(
                 except Exception as db_err:
                     logger.error(f"Failed to write failure to database: {db_err}")
 
-        background_tasks.add_task(trigger_webhook)
+        asyncio.create_task(trigger_webhook())
     elif runpod_endpoint and runpod_api_key:
         logger.info(f"Triggering RunPod Serverless endpoint {runpod_endpoint} for job {job_id}")
         async def trigger_runpod():
