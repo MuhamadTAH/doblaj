@@ -374,6 +374,9 @@ class DubbingPipelineEngine:
         ]
         subprocess.run(cmd_remux, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
         
+        # Automatically export chunks, audio, transcripts & translations to localhost:8080 Bilingual Audio Inspector
+        DubbingPipelineEngine._export_to_audio_inspector(job_id, scratch_dir)
+
         await ConvexBroadcaster.update_stage(job_id, "completed", force=True)
         
         return {
@@ -382,3 +385,93 @@ class DubbingPipelineEngine:
             "total_duration_sec": total_video_dur,
             "final_video_path": final_video_path
         }
+
+    @staticmethod
+    def _export_to_audio_inspector(job_id: str, scratch_dir: Path):
+        """Exports the job's bilingual chunks, audio clips, and timings to the localhost:8080 inspector."""
+        try:
+            inspector_dir = Path("D:/local_test_results/tiktok_7661355917228789013/audio_inspector_app")
+            if not inspector_dir.exists():
+                inspector_dir.mkdir(parents=True, exist_ok=True)
+                
+            audio_target_dir = inspector_dir / "audio"
+            audio_target_dir.mkdir(parents=True, exist_ok=True)
+            
+            manifest_path = scratch_dir / "mp4_chunks_manifest.json"
+            trans_path = scratch_dir / "verified_gemini_3_1_pro_transcription.json"
+            arabic_path = scratch_dir / "iraqi_translations_24_chunks.json"
+            
+            if not (manifest_path.exists() and trans_path.exists() and arabic_path.exists()):
+                return
+                
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                manifest_chunks = json.load(f)
+            with open(trans_path, "r", encoding="utf-8") as f:
+                kurdish_data = json.load(f).get("transcriptions", [])
+            with open(arabic_path, "r", encoding="utf-8") as f:
+                arabic_translations = json.load(f)
+                
+            kurd_map = {t["chunk_index"]: t["kurdish_sorani"] for t in kurdish_data}
+            arab_map = {t["chunk_index"]: t for t in arabic_translations}
+            
+            chunks_data_list = []
+            import shutil
+            
+            for c in manifest_chunks:
+                idx = c["chunk_index"]
+                k_text = kurd_map.get(idx, "")
+                a_info = arab_map.get(idx, {})
+                a_text = a_info.get("arabic_text", "")
+                spd = a_info.get("speed_scale", 1.0)
+                
+                # Copy Kurdish chunk audio if exists
+                k_src = scratch_dir / "chunks" / f"chunk_{idx:02d}.wav"
+                k_dst_name = f"kurdish_chunk_{idx:02d}.wav"
+                if k_src.exists():
+                    shutil.copy(str(k_src), str(audio_target_dir / k_dst_name))
+                    
+                # Copy Arabic chunk audio if exists
+                a_src = scratch_dir / "tts_chunks" / f"tts_{idx:02d}.wav"
+                a_dst_name = f"arabic_chunk_{idx:02d}.wav"
+                if a_src.exists():
+                    shutil.copy(str(a_src), str(audio_target_dir / a_dst_name))
+                    
+                status_str = "PASS (0.95x - 1.15x)" if 0.95 <= spd <= 1.15 else f"WARN ({spd}x)"
+                
+                s_dur = float(c.get("duration_sec", 0.0))
+                act_dur = float(c.get("active_speech_duration_sec", s_dur))
+                lead_ms = int(c.get("speech_onset_sec", 0.0) * 1000)
+                tail_ms = int(max(0.0, s_dur - c.get("speech_offset_sec", s_dur)) * 1000)
+                
+                chunks_data_list.append({
+                    "chunk_index": idx,
+                    "chunk_number": idx + 1,
+                    "timing": {
+                        "total_duration_sec": round(s_dur, 2),
+                        "speech_onset_sec": round(float(c.get("speech_onset_sec", 0.0)), 2),
+                        "speech_offset_sec": round(float(c.get("speech_offset_sec", s_dur)), 2),
+                        "active_duration_sec": round(act_dur, 2),
+                        "lead_silence_ms": lead_ms,
+                        "tail_silence_ms": tail_ms
+                    },
+                    "kurdish_sorani": {
+                        "transcription": k_text,
+                        "word_count": len(k_text.split()),
+                        "audio_url": f"audio/{k_dst_name}"
+                    },
+                    "spoken_iraqi_arabic": {
+                        "translation": a_text,
+                        "word_count": len(a_text.split()),
+                        "speed_scale": spd,
+                        "status": status_str,
+                        "audio_url": f"audio/{a_dst_name}"
+                    }
+                })
+                
+            js_content = "const CHUNKS_DATA = " + json.dumps(chunks_data_list, ensure_ascii=False, indent=2) + ";\n"
+            with open(inspector_dir / "chunks_data.js", "w", encoding="utf-8") as f:
+                f.write(js_content)
+                
+            logger.info(f"✨ Exported {len(chunks_data_list)} chunks to Bilingual Audio Inspector at {inspector_dir}")
+        except Exception as insp_err:
+            logger.warning(f"Notice exporting to Audio Inspector: {insp_err}")
