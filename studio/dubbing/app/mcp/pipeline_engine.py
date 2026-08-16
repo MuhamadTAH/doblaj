@@ -301,24 +301,29 @@ class DubbingPipelineEngine:
         if len(orig_audio) > total_samples: orig_audio = orig_audio[:total_samples]
         elif len(orig_audio) < total_samples: orig_audio = np.pad(orig_audio, (0, total_samples - len(orig_audio)))
         
-        # Smart Outro Transition: Speech section (0 to T-16s) bg=0.25, Outro section crossfades to 100% original audio
-        quran_start_sec = max(0.0, total_video_dur - 16.0)
-        quran_start_sample = int(quran_start_sec * sr)
-        fade_len = int(0.6 * sr)
+        # Identify the end of dialogue to preserve pristine outro (Quran/music) without Kurdish vocal bleed
+        last_speech_sec = max([c["end_sec"] for c in chunks]) if chunks else total_video_dur
+        has_outro = (total_video_dur - last_speech_sec) >= 2.0
         
         bg_mix_track = np.zeros(total_samples, dtype=np.float32)
-        bg_mix_track[:quran_start_sample] = orig_audio[:quran_start_sample] * 0.25
-        for idx_pos in range(fade_len):
-            pos = quran_start_sample + idx_pos
-            if pos < total_samples:
-                alpha = idx_pos / fade_len
-                bg_mix_track[pos] = (1.0 - alpha) * (orig_audio[pos] * 0.25) + alpha * (orig_audio[pos] * 1.0)
-        post_fade = quran_start_sample + fade_len
-        if post_fade < total_samples:
-            bg_mix_track[post_fade:] = orig_audio[post_fade:] * 1.0
+        
+        if has_outro:
+            outro_start_sample = int(last_speech_sec * sr)
+            fade_len = min(int(0.8 * sr), total_samples - outro_start_sample)
             
-        # Mix Arabic speech with background track
-        final_master_audio = (full_arabic_speech * 1.25) + bg_mix_track
+            # During speech: zero original vocal bleed (use quiet ambient noise if available, else zero)
+            # Crossfade into full original outro after dialogue finishes
+            for idx_pos in range(fade_len):
+                pos = outro_start_sample + idx_pos
+                if pos < total_samples:
+                    alpha = idx_pos / max(1, fade_len)
+                    bg_mix_track[pos] = alpha * orig_audio[pos]
+            post_fade = outro_start_sample + fade_len
+            if post_fade < total_samples:
+                bg_mix_track[post_fade:] = orig_audio[post_fade:] * 1.0
+        
+        # Mix Arabic speech with background track (zero Kurdish bleed during dialogue)
+        final_master_audio = full_arabic_speech + bg_mix_track
         peak = np.max(np.abs(final_master_audio)) if len(final_master_audio) > 0 else 1.0
         if peak > 0.96:
             final_master_audio = final_master_audio * (0.96 / peak)
