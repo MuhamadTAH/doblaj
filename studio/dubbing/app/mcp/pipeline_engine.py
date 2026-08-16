@@ -62,82 +62,80 @@ class DubbingPipelineEngine:
         anchor_len = min(len(data), int(4.0 * sr))
         sf.write(anchor_path, data[:anchor_len], sr)
         
-        # 5. Natural Pause VAD Detection & Physical Chunk Slicing
+        # 5. Natural Acoustic Pause & Energy-Valley Physical Chunk Slicing
         chunks_dir = scratch_dir / "chunks"
         chunks_dir.mkdir(parents=True, exist_ok=True)
         
-        # Detect true speech intervals using energy VAD (splitting only on natural breathing pauses)
-        intervals = librosa.effects.split(data, top_db=28, frame_length=2048, hop_length=512)
+        # Compute RMS energy profile (10ms hop, 30ms window) for natural pause/valley detection
+        hop_length = int(0.01 * sr)
+        frame_length = int(0.03 * sr)
+        rms = librosa.feature.rms(y=data, frame_length=frame_length, hop_length=hop_length)[0]
+        times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=hop_length)
+        
+        min_chunk_dur = 4.0
+        max_chunk_dur = 6.2
         
         chunks = []
-        if len(intervals) == 0:
-            # Fallback for continuous / low-contrast audio
-            chunk_wav_path = str(chunks_dir / "chunk_00.wav")
-            sf.write(chunk_wav_path, data, sr)
+        current_start = 0.0
+        
+        while current_start < total_video_dur:
+            remaining = total_video_dur - current_start
+            if remaining <= max_chunk_dur:
+                # Final segment fits within max chunk duration
+                end_time = total_video_dur
+                dur = round(end_time - current_start, 3)
+                c_idx = len(chunks)
+                s_samp = int(current_start * sr)
+                e_samp = min(len(data), int(end_time * sr))
+                chunk_wav_path = str(chunks_dir / f"chunk_{c_idx:02d}.wav")
+                sf.write(chunk_wav_path, data[s_samp:e_samp], sr)
+                
+                chunks.append({
+                    "chunk_index": c_idx,
+                    "chunk_number": c_idx + 1,
+                    "start_sec": round(current_start, 3),
+                    "end_sec": round(end_time, 3),
+                    "duration_sec": dur,
+                    "true_onset_sec": 0.05,
+                    "true_offset_sec": round(dur - 0.05, 3),
+                    "active_speech_duration_sec": round(max(0.5, dur - 0.10), 3),
+                    "wav_path": chunk_wav_path
+                })
+                break
+                
+            # Search for the natural acoustic pause / energy valley in the window [start + 4.0s, start + 6.2s]
+            win_start = current_start + min_chunk_dur
+            win_end = min(total_video_dur, current_start + max_chunk_dur)
+            mask = (times >= win_start) & (times <= win_end)
+            
+            if np.any(mask):
+                win_rms = rms[mask]
+                win_times = times[mask]
+                # Split at the quietest moment (breathing pause / word boundary)
+                min_idx = np.argmin(win_rms)
+                split_time = round(float(win_times[min_idx]), 3)
+            else:
+                split_time = round(current_start + (min_chunk_dur + max_chunk_dur) / 2.0, 3)
+                
+            dur = round(split_time - current_start, 3)
+            c_idx = len(chunks)
+            s_samp = int(current_start * sr)
+            e_samp = min(len(data), int(split_time * sr))
+            chunk_wav_path = str(chunks_dir / f"chunk_{c_idx:02d}.wav")
+            sf.write(chunk_wav_path, data[s_samp:e_samp], sr)
+            
             chunks.append({
-                "chunk_index": 0,
-                "chunk_number": 1,
-                "start_sec": 0.0,
-                "end_sec": round(total_video_dur, 3),
-                "duration_sec": round(total_video_dur, 3),
-                "true_onset_sec": 0.0,
-                "true_offset_sec": round(total_video_dur, 3),
-                "active_speech_duration_sec": round(total_video_dur, 3),
+                "chunk_index": c_idx,
+                "chunk_number": c_idx + 1,
+                "start_sec": round(current_start, 3),
+                "end_sec": round(split_time, 3),
+                "duration_sec": dur,
+                "true_onset_sec": 0.05,
+                "true_offset_sec": round(dur - 0.05, 3),
+                "active_speech_duration_sec": round(max(0.5, dur - 0.10), 3),
                 "wav_path": chunk_wav_path
             })
-        else:
-            # Merge intervals that are very close together (< 0.40s gap)
-            merged = []
-            min_gap_samples = int(0.40 * sr)
-            cur_s, cur_e = intervals[0]
-            for s, e in intervals[1:]:
-                if (s - cur_e) < min_gap_samples:
-                    cur_e = e
-                else:
-                    merged.append((cur_s, cur_e))
-                    cur_s, cur_e = s, e
-            merged.append((cur_s, cur_e))
-            
-            # Pack speech into natural chunks (target 3.5s to 7.0s)
-            chunk_start_sec = 0.0
-            for i, (s, e) in enumerate(merged):
-                s_sec = s / sr
-                e_sec = e / sr
-                cur_dur = e_sec - chunk_start_sec
-                is_last = (i == len(merged) - 1)
-                next_e_sec = (merged[i+1][1] / sr) if not is_last else total_video_dur
-                
-                # Split when current chunk duration is >= 3.5s and adding next would exceed 7.5s, or at final segment
-                if is_last or (cur_dur >= 3.5 and (next_e_sec - chunk_start_sec) > 7.5):
-                    if is_last:
-                        chunk_end_sec = total_video_dur
-                    else:
-                        next_s_sec = merged[i+1][0] / sr
-                        chunk_end_sec = round((e_sec + next_s_sec) / 2.0, 3)
-                    
-                    c_dur = round(chunk_end_sec - chunk_start_sec, 3)
-                    c_idx = len(chunks)
-                    
-                    # Slice actual chunk WAV for STT
-                    s_samp = int(chunk_start_sec * sr)
-                    e_samp = min(len(data), int(chunk_end_sec * sr))
-                    chunk_wav_path = str(chunks_dir / f"chunk_{c_idx:02d}.wav")
-                    sf.write(chunk_wav_path, data[s_samp:e_samp], sr)
-                    
-                    act_dur = round(max(0.5, e_sec - max(chunk_start_sec, s_sec)), 3)
-                    
-                    chunks.append({
-                        "chunk_index": c_idx,
-                        "chunk_number": c_idx + 1,
-                        "start_sec": round(chunk_start_sec, 3),
-                        "end_sec": round(chunk_end_sec, 3),
-                        "duration_sec": c_dur,
-                        "true_onset_sec": 0.05,
-                        "true_offset_sec": round(c_dur - 0.05, 3),
-                        "active_speech_duration_sec": act_dur,
-                        "wav_path": chunk_wav_path
-                    })
-                    chunk_start_sec = chunk_end_sec
+            current_start = split_time
             
         manifest_path = str(scratch_dir / "mp4_chunks_manifest.json")
         with open(manifest_path, "w", encoding="utf-8") as f:
