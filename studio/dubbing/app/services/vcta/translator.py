@@ -239,6 +239,7 @@ async def translate_single_chunk_structured(
     for model_name in MODEL_FALLBACK_CHAIN:
         payload = {
             "model": model_name,
+            "max_tokens": 1000,
             "messages": messages,
             "temperature": 0.4
         }

@@ -52,10 +52,11 @@ async def transcribe_gemini_flash(audio_path: str, history: list = None) -> str:
 
     payload = {
         "model": OPENROUTER_MODEL,
+        "max_tokens": 1000,
         "messages": [
             {
                 "role": "system",
-                "content": "You are an expert Kurdish Sorani phonetic transcriber and audio linguist. Your job is to transcribe the audio strictly into Kurdish Sorani text using the official Central Kurdish (Sorani) alphabet. You must exclusively use native Kurdish characters (including ۆ, ێ, چ, پ, ژ, گ, ڕ, ڵ). Transcribe exactly what is spoken with absolute phonetic and grammatical fidelity, maintaining flawless sentence flow from previous speech. Format the transcription phrase by phrase, separating them with commas (،) or full stops (.) at natural pauses or grammatical boundaries to guide text-to-speech pacing."
+                "content": "You are an expert Kurdish Sorani phonetic transcriber and audio linguist. Your job is to transcribe the audio strictly into Kurdish Sorani text using the official Central Kurdish (Sorani) alphabet. You must exclusively use native Kurdish characters (including ۆ, ێ, چ, پ, ژ, گ, ڕ, ڵ). Transcribe exactly what is spoken with absolute phonetic and grammatical fidelity, maintaining flawless sentence flow from previous speech. Format the transcription phrase by phrase, separating them with commas (،) or full stops (.) at natural pauses or grammatical boundaries to guide text-to-speech pacing. Return ONLY the Kurdish Sorani transcription without any explanations, English words, or preambles."
             },
             {
                 "role": "user",
@@ -83,7 +84,12 @@ async def transcribe_gemini_flash(audio_path: str, history: list = None) -> str:
                 async with session.post(url, headers=headers, json=payload, timeout=180) as resp:
                     if resp.status == 200:
                         data = await resp.json()
-                        return data["choices"][0]["message"]["content"].strip()
+                        raw_content = data["choices"][0]["message"]["content"].strip()
+                        # Clean any surrounding markdown fences or intro text
+                        if raw_content.startswith("```"):
+                            lines = raw_content.splitlines()
+                            raw_content = "\n".join([l for l in lines if not l.startswith("```")]).strip()
+                        return raw_content
                     elif resp.status == 429:
                         err_text = await resp.text()
                         logger.warning(f"[GEMINI FLASH] Rate Limit Hit (429) on attempt {attempt+1}. Error: {err_text}. Sleeping 15s...")

@@ -217,7 +217,7 @@ class DubbingPipelineEngine:
                     kurdish_text = kurdish_text.strip('"`\' \n')
                 except Exception as e:
                     logger.error(f"[STT] Error transcribing chunk #{idx}: {e}")
-                    kurdish_text = "ڕەسمی حادیسە ناهێنێ، ئەبێ بە پارە بیهێنی."
+                    raise RuntimeError(f"STT failed for chunk #{idx}: {e}")
                     
                 logger.info(f"  [Chunk {idx+1}/{len(chunks)}] Kurdish: {kurdish_text}")
                 return {
