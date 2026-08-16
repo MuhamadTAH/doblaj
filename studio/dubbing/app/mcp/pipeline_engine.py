@@ -62,80 +62,92 @@ class DubbingPipelineEngine:
         anchor_len = min(len(data), int(4.0 * sr))
         sf.write(anchor_path, data[:anchor_len], sr)
         
-        # 5. Natural Acoustic Pause & Energy-Valley Physical Chunk Slicing
+        # 5. Sentence-Aware VAD Pause Detection & Speech Onset/Offset Measurement
         chunks_dir = scratch_dir / "chunks"
         chunks_dir.mkdir(parents=True, exist_ok=True)
         
-        # Compute RMS energy profile (10ms hop, 30ms window) for natural pause/valley detection
-        hop_length = int(0.01 * sr)
-        frame_length = int(0.03 * sr)
-        rms = librosa.feature.rms(y=data, frame_length=frame_length, hop_length=hop_length)[0]
-        times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=hop_length)
-        
-        min_chunk_dur = 4.0
-        max_chunk_dur = 6.2
+        # Detect true speech bursts using 25dB energy threshold
+        intervals = librosa.effects.split(data, top_db=25, frame_length=2048, hop_length=512)
         
         chunks = []
-        current_start = 0.0
-        
-        while current_start < total_video_dur:
-            remaining = total_video_dur - current_start
-            if remaining <= max_chunk_dur:
-                # Final segment fits within max chunk duration
-                end_time = total_video_dur
-                dur = round(end_time - current_start, 3)
-                c_idx = len(chunks)
-                s_samp = int(current_start * sr)
-                e_samp = min(len(data), int(end_time * sr))
-                chunk_wav_path = str(chunks_dir / f"chunk_{c_idx:02d}.wav")
-                sf.write(chunk_wav_path, data[s_samp:e_samp], sr)
-                
-                chunks.append({
-                    "chunk_index": c_idx,
-                    "chunk_number": c_idx + 1,
-                    "start_sec": round(current_start, 3),
-                    "end_sec": round(end_time, 3),
-                    "duration_sec": dur,
-                    "true_onset_sec": 0.05,
-                    "true_offset_sec": round(dur - 0.05, 3),
-                    "active_speech_duration_sec": round(max(0.5, dur - 0.10), 3),
-                    "wav_path": chunk_wav_path
-                })
-                break
-                
-            # Search for the natural acoustic pause / energy valley in the window [start + 4.0s, start + 6.2s]
-            win_start = current_start + min_chunk_dur
-            win_end = min(total_video_dur, current_start + max_chunk_dur)
-            mask = (times >= win_start) & (times <= win_end)
-            
-            if np.any(mask):
-                win_rms = rms[mask]
-                win_times = times[mask]
-                # Split at the quietest moment (breathing pause / word boundary)
-                min_idx = np.argmin(win_rms)
-                split_time = round(float(win_times[min_idx]), 3)
-            else:
-                split_time = round(current_start + (min_chunk_dur + max_chunk_dur) / 2.0, 3)
-                
-            dur = round(split_time - current_start, 3)
-            c_idx = len(chunks)
-            s_samp = int(current_start * sr)
-            e_samp = min(len(data), int(split_time * sr))
-            chunk_wav_path = str(chunks_dir / f"chunk_{c_idx:02d}.wav")
-            sf.write(chunk_wav_path, data[s_samp:e_samp], sr)
-            
+        if len(intervals) == 0:
+            chunk_wav_path = str(chunks_dir / "chunk_00.wav")
+            sf.write(chunk_wav_path, data, sr)
             chunks.append({
-                "chunk_index": c_idx,
-                "chunk_number": c_idx + 1,
-                "start_sec": round(current_start, 3),
-                "end_sec": round(split_time, 3),
-                "duration_sec": dur,
-                "true_onset_sec": 0.05,
-                "true_offset_sec": round(dur - 0.05, 3),
-                "active_speech_duration_sec": round(max(0.5, dur - 0.10), 3),
+                "chunk_index": 0,
+                "chunk_number": 1,
+                "start_sec": 0.0,
+                "end_sec": round(total_video_dur, 3),
+                "duration_sec": round(total_video_dur, 3),
+                "lead_silence_sec": 0.0,
+                "tail_silence_sec": 0.0,
+                "active_speech_duration_sec": round(total_video_dur, 3),
                 "wav_path": chunk_wav_path
             })
-            current_start = split_time
+        else:
+            # Merge intra-sentence word pauses (< 0.35s) into full spoken sentences
+            min_gap_samples = int(0.35 * sr)
+            sentences = []
+            cur_s, cur_e = intervals[0]
+            for s, e in intervals[1:]:
+                if (s - cur_e) < min_gap_samples:
+                    cur_e = e
+                else:
+                    sentences.append((cur_s, cur_e))
+                    cur_s, cur_e = s, e
+            sentences.append((cur_s, cur_e))
+            
+            # Group sentences into natural conversational chunks (targeting 3.5s to 7.5s)
+            chunk_start_sec = 0.0
+            accum_sentences = []
+            
+            for i, (s, e) in enumerate(sentences):
+                accum_sentences.append((s, e))
+                s_sec = accum_sentences[0][0] / sr
+                e_sec = accum_sentences[-1][1] / sr
+                cur_speech_span = e_sec - s_sec
+                is_last = (i == len(sentences) - 1)
+                
+                if is_last:
+                    chunk_end_sec = total_video_dur
+                    should_close = True
+                else:
+                    next_s_sec = sentences[i+1][0] / sr
+                    next_e_sec = sentences[i+1][1] / sr
+                    next_span = next_e_sec - s_sec
+                    
+                    # Split exclusively at the natural silence between sentences
+                    if cur_speech_span >= 3.5 and next_span > 7.5:
+                        chunk_end_sec = round((e_sec + next_s_sec) / 2.0, 3)
+                        should_close = True
+                    else:
+                        should_close = False
+                        
+                if should_close:
+                    c_dur = round(chunk_end_sec - chunk_start_sec, 3)
+                    lead_sil = round(max(0.0, s_sec - chunk_start_sec), 3)
+                    tail_sil = round(max(0.0, chunk_end_sec - e_sec), 3)
+                    act_dur = round(max(0.4, e_sec - s_sec), 3)
+                    
+                    c_idx = len(chunks)
+                    s_samp = int(chunk_start_sec * sr)
+                    e_samp = min(len(data), int(chunk_end_sec * sr))
+                    chunk_wav_path = str(chunks_dir / f"chunk_{c_idx:02d}.wav")
+                    sf.write(chunk_wav_path, data[s_samp:e_samp], sr)
+                    
+                    chunks.append({
+                        "chunk_index": c_idx,
+                        "chunk_number": c_idx + 1,
+                        "start_sec": round(chunk_start_sec, 3),
+                        "end_sec": round(chunk_end_sec, 3),
+                        "duration_sec": c_dur,
+                        "lead_silence_sec": lead_sil,
+                        "tail_silence_sec": tail_sil,
+                        "active_speech_duration_sec": act_dur,
+                        "wav_path": chunk_wav_path
+                    })
+                    chunk_start_sec = chunk_end_sec
+                    accum_sentences = []
             
         manifest_path = str(scratch_dir / "mp4_chunks_manifest.json")
         with open(manifest_path, "w", encoding="utf-8") as f:
@@ -384,7 +396,7 @@ class DubbingPipelineEngine:
         tts_tasks = [_synthesize_single(i, c) for i, c in enumerate(chunks)]
         tts_results = await asyncio.gather(*tts_tasks)
         
-        # Place synthesized chunks onto the master timeline in exact sequence with slot protection
+        # Place synthesized chunks onto the master timeline in exact sequence with slot protection & silence alignment
         for i, idx, success, chunk_tts_path in tts_results:
             c = chunks[i]
             if success and os.path.exists(chunk_tts_path):
@@ -394,20 +406,27 @@ class DubbingPipelineEngine:
                 if tts_sr != sr:
                     tts_audio = librosa.resample(tts_audio, orig_sr=tts_sr, target_sr=sr)
                 
-                # Determine maximum allowed slot duration before next chunk starts
+                lead_sil = c.get("lead_silence_sec", 0.0)
+                active_dur = c.get("active_speech_duration_sec", c["duration_sec"])
+                
+                # Determine maximum allowed slot duration before next chunk's speech starts
                 if i < len(chunks) - 1:
-                    max_slot_dur = chunks[i+1]["start_sec"] - c["start_sec"]
+                    next_c = chunks[i+1]
+                    max_slot_dur = (next_c["start_sec"] + next_c.get("lead_silence_sec", 0.0)) - (c["start_sec"] + lead_sil)
                 else:
-                    max_slot_dur = total_video_dur - c["start_sec"]
+                    max_slot_dur = (total_video_dur - c.get("tail_silence_sec", 0.0)) - (c["start_sec"] + lead_sil)
+                
+                max_slot_dur = max(0.5, max_slot_dur)
                 
                 # Prevent audio cutoff: Time-stretch TTS if it exceeds the slot so all words finish completely
                 tts_dur = len(tts_audio) / sr
-                if tts_dur > max_slot_dur and max_slot_dur > 0.5:
+                if tts_dur > max_slot_dur:
                     stretch_rate = min(1.35, tts_dur / max(0.4, max_slot_dur - 0.05))
                     logger.info(f"  ⚡ [Chunk #{idx+1} Word Preservation] TTS ({tts_dur:.2f}s) > Slot ({max_slot_dur:.2f}s) -> time_stretch {stretch_rate:.2f}x to fit 100% of words without cutoff")
                     tts_audio = librosa.effects.time_stretch(tts_audio, rate=stretch_rate)
                 
-                start_s = int(c["start_sec"] * sr)
+                # Align speech start at the EXACT frame the speaker begins talking (after lead silence)
+                start_s = int((c["start_sec"] + lead_sil) * sr)
                 end_s = min(total_samples, start_s + len(tts_audio))
                 insert_len = end_s - start_s
                 if insert_len > 0:
@@ -533,16 +552,18 @@ class DubbingPipelineEngine:
                 
                 s_dur = float(c.get("duration_sec", 0.0))
                 act_dur = float(c.get("active_speech_duration_sec", s_dur))
-                lead_ms = int(c.get("speech_onset_sec", 0.0) * 1000)
-                tail_ms = int(max(0.0, s_dur - c.get("speech_offset_sec", s_dur)) * 1000)
+                lead_ms = int(c.get("lead_silence_sec", 0.0) * 1000)
+                tail_ms = int(c.get("tail_silence_sec", 0.0) * 1000)
+                onset_s = round(float(c.get("lead_silence_sec", 0.0)), 2)
+                offset_s = round(float(s_dur - c.get("tail_silence_sec", 0.0)), 2)
                 
                 chunks_data_list.append({
                     "chunk_index": idx,
                     "chunk_number": idx + 1,
                     "timing": {
                         "total_duration_sec": round(s_dur, 2),
-                        "speech_onset_sec": round(float(c.get("speech_onset_sec", 0.0)), 2),
-                        "speech_offset_sec": round(float(c.get("speech_offset_sec", s_dur)), 2),
+                        "speech_onset_sec": onset_s,
+                        "speech_offset_sec": offset_s,
                         "active_duration_sec": round(act_dur, 2),
                         "lead_silence_ms": lead_ms,
                         "tail_silence_ms": tail_ms
