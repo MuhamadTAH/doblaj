@@ -15,10 +15,10 @@ except ImportError:
     def trace_step(*a, **kw): pass
     def trace_http_request_count(*a, **kw): pass
 
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-3-flash-preview")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-pro")
 MODEL_FALLBACK_CHAIN = [
     OPENROUTER_MODEL,
-    "meta-llama/llama-3.3-70b-instruct",
+    "google/gemini-3-flash-preview",
     "anthropic/claude-3.5-haiku",
 ]
 

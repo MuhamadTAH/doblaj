@@ -16,7 +16,7 @@ except ImportError:
 
 
 
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-3-flash-preview")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-pro")
 
 async def transcribe_gemini_flash(audio_path: str, history: list = None) -> str:
     """Fallback using OpenRouter STT model"""
