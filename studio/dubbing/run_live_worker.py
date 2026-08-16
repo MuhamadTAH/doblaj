@@ -84,13 +84,15 @@ async def process_single_job(job: dict) -> None:
         await asyncio.to_thread(r2.upload_file, output_r2_key, final_mp4_path)
         
         # 4. Update Convex DB Status to COMPLETED
+        total_chunks_done = calib_res.get("chunks_count", 0)
         await database_convex.update_job_status(
             job_id=job_id,
             status="completed",
             progress=100,
-            output_path=output_r2_key
+            output_path=output_r2_key,
+            chunks_count=total_chunks_done
         )
-        logger.info(f"🎉 Convex updated to COMPLETED! User on doblaj.com can now watch the video.")
+        logger.info(f"🎉 Convex updated to COMPLETED with {total_chunks_done} chunks saved! User on doblaj.com can now watch the video.")
                 
         # 5. Clean up local scratch disk
         ScratchManager.cleanup_job(job_id)

@@ -257,19 +257,30 @@ export const updateStatusInternal = mutation({
     jobId: v.string(),
     status: v.string(),
     progress: v.optional(v.number()),
+    chunksCount: v.optional(v.number()),
     resultVideoR2Key: v.optional(v.string()),
     error: v.optional(v.string()),
+    expectedWorkspaceId: v.optional(v.string()),
     __internalApiKey: v.string(),},
   handler: async (ctx, args) => {
     requireInternalApiKey(args.__internalApiKey);
     const jobId = await resolveJobId(ctx, args.jobId);
     const doc = await ctx.db.get(jobId);
     if (!doc) throw new ConvexError("NOT_FOUND");
+    // PIRD-017 follow-up, Part03: refuse the write when the caller
+    // declared a workspace that does not own the doc.
+    if (args.expectedWorkspaceId) {
+      const expectedId = await resolveWorkspaceId(ctx, args.expectedWorkspaceId);
+      if (doc.workspaceId !== expectedId) {
+        throw new ConvexError("WORKSPACE_MISMATCH");
+      }
+    }
     const patch: Record<string, unknown> = {
       status: args.status,
       updatedAt: new Date().toISOString(),
     };
     if (args.progress !== undefined) patch.progress = args.progress;
+    if (args.chunksCount !== undefined) patch.chunksCount = args.chunksCount;
     if (args.resultVideoR2Key !== undefined)
       patch.resultVideoR2Key = args.resultVideoR2Key;
     if (args.error !== undefined) patch.error = args.error;
@@ -283,12 +294,20 @@ export const updateCostInternal = mutation({
     jobId: v.string(),
     totalProcessingLatencyMs: v.number(),
     totalCostUsd: v.number(),
+    expectedWorkspaceId: v.optional(v.string()),
     __internalApiKey: v.string(),},
   handler: async (ctx, args) => {
     requireInternalApiKey(args.__internalApiKey);
     const jobId = await resolveJobId(ctx, args.jobId);
     const doc = await ctx.db.get(jobId);
     if (!doc) throw new ConvexError("NOT_FOUND");
+    // PIRD-017 follow-up, Part03: see updateStatusInternal.
+    if (args.expectedWorkspaceId) {
+      const expectedId = await resolveWorkspaceId(ctx, args.expectedWorkspaceId);
+      if (doc.workspaceId !== expectedId) {
+        throw new ConvexError("WORKSPACE_MISMATCH");
+      }
+    }
     await ctx.db.patch(jobId, {
       total_processing_latency_ms: args.totalProcessingLatencyMs,
       total_cost_usd: args.totalCostUsd,
@@ -302,6 +321,7 @@ export const setProgressInternal = mutation({
   args: {
     jobId: v.string(),
     progress: v.number(),
+    expectedWorkspaceId: v.optional(v.string()),
     __internalApiKey: v.string(),},
   handler: async (ctx, args) => {
     if (args.progress < 0 || args.progress > 100) {
@@ -311,6 +331,13 @@ export const setProgressInternal = mutation({
     const jobId = await resolveJobId(ctx, args.jobId);
     const doc = await ctx.db.get(jobId);
     if (!doc) throw new ConvexError("NOT_FOUND");
+    // PIRD-017 follow-up, Part03: see updateStatusInternal.
+    if (args.expectedWorkspaceId) {
+      const expectedId = await resolveWorkspaceId(ctx, args.expectedWorkspaceId);
+      if (doc.workspaceId !== expectedId) {
+        throw new ConvexError("WORKSPACE_MISMATCH");
+      }
+    }
     await ctx.db.patch(jobId, {
       progress: args.progress,
       updatedAt: new Date().toISOString(),

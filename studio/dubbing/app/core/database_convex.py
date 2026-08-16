@@ -317,7 +317,7 @@ async def list_jobs_by_status(client: Any = None, *, status: str = "", limit: in
         return []
 
 
-async def update_job_status(client: Any = None, *, workspace_id: str = "", job_id: str = "", status: str = "", progress: int = -1, output_path: str = "", error: str = ""):
+async def update_job_status(client: Any = None, *, workspace_id: str = "", job_id: str = "", status: str = "", progress: int = -1, output_path: str = "", error: str = "", chunks_count: int = -1):
     if job_id in _in_memory_jobs:
         _in_memory_jobs[job_id]["status"] = status
         if progress >= 0:
@@ -327,6 +327,8 @@ async def update_job_status(client: Any = None, *, workspace_id: str = "", job_i
             _in_memory_jobs[job_id]["output_path"] = output_path
         if error:
             _in_memory_jobs[job_id]["error"] = error
+        if chunks_count >= 0:
+            _in_memory_jobs[job_id]["chunksCount"] = chunks_count
 
     try:
         c = client or _get_client()
@@ -340,6 +342,8 @@ async def update_job_status(client: Any = None, *, workspace_id: str = "", job_i
             args["expectedWorkspaceId"] = workspace_id
         if progress >= 0:
             args["progress"] = progress
+        if chunks_count >= 0:
+            args["chunksCount"] = chunks_count
         if output_path:
             args["resultVideoR2Key"] = output_path
         if error:

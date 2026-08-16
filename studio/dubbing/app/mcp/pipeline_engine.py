@@ -219,6 +219,36 @@ class DubbingPipelineEngine:
         with open(trans_out, "w", encoding="utf-8") as f:
             json.dump(translations, f, ensure_ascii=False, indent=2)
             
+        # Populate Convex DB dubbingChunks table so dashboard displays chunks, transcripts, and translations
+        from app.core import database_convex
+        for t in translations:
+            idx = t["chunk_index"]
+            c_meta = chunks[idx] if idx < len(chunks) else {}
+            k_text = kurdish_by_idx.get(idx, "")
+            a_text = t.get("arabic_text", "")
+            s_time = float(c_meta.get("start_sec", 0.0))
+            e_time = float(c_meta.get("end_sec", s_time + c_meta.get("duration_sec", 0.0)))
+            act_dur = float(c_meta.get("active_speech_duration_sec", e_time - s_time))
+            
+            try:
+                await database_convex.create_chunk(
+                    job_id=job_id,
+                    chunk_index=idx + 1,
+                    start_time=s_time,
+                    end_time=e_time,
+                    status="approved",
+                    patch={
+                        "kurdishRaw": k_text,
+                        "arabicText": a_text,
+                        "speechDuration": act_dur,
+                        "kurdish_word_count": len(k_text.split()),
+                        "final_arabic_word_count": len(a_text.split()),
+                        "speed_multiplier": t.get("speed_scale", 1.0),
+                    }
+                )
+            except Exception as chunk_db_err:
+                logger.warning(f"[CONVEX] Notice saving chunk #{idx+1} to DB: {chunk_db_err}")
+
         return {
             "job_id": job_id,
             "status": "TRANSLATIONS_CALIBRATED",
