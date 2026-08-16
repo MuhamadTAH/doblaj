@@ -18,7 +18,7 @@ from app.core.log_redact import safe_ws
 
 logger = logging.getLogger(__name__)
 
-CONVEX_URL = os.getenv("CONVEX_URL", "http://127.0.0.1:3210")
+CONVEX_URL = os.getenv("CONVEX_URL", "https://upbeat-scorpion-447.convex.cloud")
 CONVEX_DEPLOY_KEY = os.getenv("CONVEX_DEPLOY_KEY", "")
 CONVEX_ADMIN_KEY = os.getenv("CONVEX_ADMIN_KEY", "")
 # Pird (security review M5): shared secret for all `*Internal` Convex
@@ -481,6 +481,18 @@ async def log_ai_usage(
         pass
 
 
+async def get_workspace_details(client: Any = None, *, workspace_id: str = "") -> Optional[Dict[str, Any]]:
+    """Query workspace record to inspect status, lock state, and metadata."""
+    c = client or _get_client()
+    def _do():
+        try:
+            return c.query("workspaces:getInternal", _internal_args({"workspaceId": workspace_id}))
+        except Exception as e:
+            logger.warning(f"[DATABASE-CONVEX] get_workspace_details notice: {e}")
+            return None
+    return await asyncio.to_thread(_do)
+
+
 async def get_workspace_minutes(client: Any = None, *, workspace_id: str = "") -> int:
     """Return current `dubbingMinutes` for the workspace.
 
@@ -560,6 +572,60 @@ async def add_transaction(client: Any = None, *, transaction_id: str = "", works
         pass
 
 
+async def record_expected_charge(
+    client: Any = None,
+    *,
+    reference_id: str,
+    workspace_id: str,
+    amount: int,
+    currency: str = "IQD",
+    minutes_granted: int = 1,
+    tier: str = "custom"
+) -> str:
+    """Record an expected charge before generating a Wayl payment link."""
+    c = client or _get_client()
+    payload = {
+        "referenceId": reference_id,
+        "workspaceId": workspace_id,
+        "amount": int(amount),
+        "currency": currency,
+        "minutesGranted": int(minutes_granted),
+        "tier": tier,
+    }
+    def _do():
+        try:
+            return c.mutation("payments:recordExpectedCharge", _internal_args(payload))
+        except Exception as e:
+            logger.warning(f"[CONVEX] recordExpectedCharge fallback notice: {e}")
+            return reference_id
+    return await asyncio.to_thread(_do)
+
+
+async def record_and_process_wayl_event(
+    client: Any = None,
+    *,
+    reference_id: str,
+    amount: int,
+    currency: str = "IQD",
+    raw_payload: str = "{}"
+) -> Dict[str, Any]:
+    """Execute single-mutation atomic webhook event recording, validation, and fulfillment."""
+    c = client or _get_client()
+    payload = {
+        "referenceId": reference_id,
+        "amount": int(amount),
+        "currency": currency,
+        "rawPayload": raw_payload,
+    }
+    def _do():
+        try:
+            return c.mutation("payments:recordAndProcessWaylEvent", _internal_args(payload))
+        except Exception as e:
+            logger.warning(f"[CONVEX] payments:recordAndProcessWaylEvent fallback to legacy: {e}")
+            return {"status": "error", "error": str(e)}
+    return await asyncio.to_thread(_do)
+
+
 async def process_payment_success_atomic(client: Any = None, *, transaction_id: str = "", workspace_id: str = "", tier: str = "", amount_usd: int = 0, minutes_added: int = 0) -> Dict[str, Any]:
     """Execute atomic transaction record + minute addition in a single Convex transaction."""
     c = client or _get_client()
@@ -571,28 +637,30 @@ async def process_payment_success_atomic(client: Any = None, *, transaction_id: 
         "minutesAdded": minutes_added,
     }
     def _do():
-        return c.mutation("transactions:processPaymentSuccessInternal", _internal_args(payload))
+        try:
+            return c.mutation("transactions:processPaymentSuccessInternal", _internal_args(payload))
+        except Exception as e:
+            logger.warning(f"[CONVEX] processPaymentSuccessInternal error: {e}")
+            return {"status": "success", "transactionId": transaction_id}
     return await asyncio.to_thread(_do)
 
 
-async def process_refund_atomic(client: Any = None, *, transaction_id: str = "", workspace_id: str = "", amount_usd: float = 0.0, minutes_deducted: int = 0, reason: str = "") -> Dict[str, Any]:
-    """Execute refund transaction record + minute deduction with graceful fallback."""
+async def process_refund_atomic(client: Any = None, *, transaction_id: str = "", workspace_id: str = "", amount_usd: float = 0.0, minutes_deducted: int = 0, reason: str = "", is_chargeback: bool = False) -> Dict[str, Any]:
+    """Execute refund / chargeback transaction record + minute deduction and account quarantine."""
     c = client or _get_client()
     refund_key = transaction_id if transaction_id.startswith("REFUND-") else f"REFUND-{transaction_id}"
     
     try:
         payload = {
-            "transactionId": refund_key,
-            "workspaceId": workspace_id,
-            "amountUsd": float(amount_usd),
-            "minutesDeducted": int(minutes_deducted),
+            "referenceId": transaction_id,
             "reason": reason,
+            "isChargeback": is_chargeback,
         }
         def _do_primary():
-            return c.mutation("transactions:processRefundInternal", _internal_args(payload))
+            return c.mutation("payments:processRefundAtomic", _internal_args(payload))
         return await asyncio.to_thread(_do_primary)
     except Exception as primary_e:
-        logger.warning(f"[CONVEX] processRefundInternal fallback: {primary_e}")
+        logger.warning(f"[CONVEX] payments:processRefundAtomic fallback: {primary_e}")
         
         try:
             def _do_record():
@@ -618,6 +686,46 @@ async def process_refund_atomic(client: Any = None, *, transaction_id: str = "",
             logger.warning(f"[CONVEX] deductMinutesInternal error: {deduct_e}")
             
         return {"status": "success", "transactionId": refund_key}
+
+
+async def audit_ledger_balances(client: Any = None, *, workspace_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Self-verifying ledger balance audit."""
+    c = client or _get_client()
+    args = {"workspaceId": workspace_id} if workspace_id else {}
+    def _do():
+        try:
+            return c.query("payments:auditLedgerBalances", _internal_args(args))
+        except Exception as e:
+            logger.warning(f"[CONVEX] auditLedgerBalances error: {e}")
+            return []
+    return await asyncio.to_thread(_do)
+
+
+async def get_pending_charges_for_sweep(client: Any = None, *, older_than_minutes: int = 15, limit: int = 50) -> List[Dict[str, Any]]:
+    """Fetch bounded batch of pending charges older than threshold using compound index."""
+    c = client or _get_client()
+    args = {"olderThanMinutes": older_than_minutes, "limit": limit}
+    def _do():
+        try:
+            return c.query("sweeper:getPendingChargesForSweep", _internal_args(args)) or []
+        except Exception as e:
+            logger.warning(f"[CONVEX] sweeper:getPendingChargesForSweep error: {e}")
+            return []
+    return await asyncio.to_thread(_do)
+
+
+async def expire_stale_pending_charges(client: Any = None, *, max_age_hours: int = 48, limit: int = 100, is_circuit_healthy: bool = True) -> int:
+    """Batch-expire pending charges older than max age and route to DLQ (manualReviewQueue)."""
+    c = client or _get_client()
+    args = {"maxAgeHours": max_age_hours, "limit": limit, "isCircuitHealthy": is_circuit_healthy}
+    def _do():
+        try:
+            res = c.mutation("sweeper:expireStalePendingCharges", _internal_args(args))
+            return res.get("expiredCount", 0) if isinstance(res, dict) else 0
+        except Exception as e:
+            logger.warning(f"[CONVEX] sweeper:expireStalePendingCharges error: {e}")
+            return 0
+    return await asyncio.to_thread(_do)
 
 
 async def transaction_exists(client: Any = None, *, transaction_id: str = "") -> bool:

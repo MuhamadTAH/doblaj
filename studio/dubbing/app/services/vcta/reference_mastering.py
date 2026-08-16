@@ -288,32 +288,39 @@ def compile_with_reference_mastering(
     sc_makeup_linear = 10 ** (sc_makeup_db / 20.0) if sc_makeup_db != 0 else 1.0
 
     filter_complex = (
-        f"[0:a]volume={background_base_volume:.6f}[bg_baseline];"
+        # 1. BACKGROUND MULTI-BAND SPLIT
+        # Split background into: Low (<300Hz), Mid (300Hz-3.5kHz), High (>3.5kHz)
+        f"[0:a]volume={background_base_volume:.6f},asplit=3[bg_low][bg_mid][bg_high];"
+        f"[bg_low]lowpass=f=300[bg_low_band];"
+        f"[bg_mid]bandpass=f=1900:width_type=h:w=3200[bg_mid_band];"
+        f"[bg_high]highpass=f=3500[bg_high_band];"
         
-        f"[1:a]"
-        f"aformat=sample_fmts=fltp,"
+        # 2. VOCAL FATTENING + DE-ESSER CHAIN
+        # Compress -> Highpass 80Hz -> Treble Boost 3kHz -> De-Esser -> Split
+        f"[1:a]aformat=sample_fmts=fltp,"
         f"acompressor=threshold=-18dB:ratio=4:attack=5:release=50:makeup=2,"
         f"highpass=f=80,"
         f"treble=g=3.5:f=3000,"
+        f"deesser=i=0.4:m=0.5:f=0.5:s=e,"  # De-esser tames harsh 'S' consonants
         f"asplit=2[sc_trigger][vox_mix];"
         
-        f"[bg_baseline][sc_trigger]"
-        f"sidechaincompress="
-        f"threshold={sc_threshold:.4f}:"
-        f"ratio={sc_ratio:.1f}:"
-        f"attack={sc_attack_ms:.1f}:"
-        f"release={sc_release_ms:.1f}:"
-        f"makeup={sc_makeup_linear:.4f}"
-        f"[bg_ducked];"
+        # 3. SPECTRAL SIDECHAIN DUCKING
+        # Duck ONLY the mid-range background band (300Hz-3.5kHz)
+        f"[bg_mid_band][sc_trigger]sidechaincompress="
+        f"threshold={sc_threshold:.4f}:ratio={sc_ratio:.1f}:"
+        f"attack={sc_attack_ms:.1f}:release={sc_release_ms:.1f}:"
+        f"makeup={sc_makeup_linear:.4f}[bg_mid_ducked];"
         
-        f"[bg_ducked][vox_mix]"
-        f"amix=inputs=2:duration=longest:dropout_transition=0:normalize=0"
-        f"[raw_mix];"
+        # 4. RECOMBINE BACKGROUND BANDS
+        # Re-merge Low + Ducked Mid + High bands
+        f"[bg_low_band][bg_mid_ducked][bg_high_band]amix=inputs=3:normalize=0[bg_full_ducked];"
         
-        f"[raw_mix]"
-        f"loudnorm=I={target_lufs:.1f}:TP={true_peak_ceiling_dbtp:.1f}:LRA={target_lra:.1f},"
-        f"alimiter=limit={10 ** (true_peak_ceiling_dbtp / 20):.6f}:level=0"
-        f"[final_mix]"
+        # 5. FINAL VOCAL + BACKGROUND MIX
+        f"[bg_full_ducked][vox_mix]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[raw_mix];"
+        
+        # 6. GLOBAL REFERENCE LUFS MASTERING
+        f"[raw_mix]loudnorm=I={target_lufs:.1f}:TP={true_peak_ceiling_dbtp:.1f}:LRA={target_lra:.1f},"
+        f"alimiter=limit={10 ** (true_peak_ceiling_dbtp / 20):.6f}:level=0[final_mix]"
     )
 
     cmd = [
@@ -325,8 +332,7 @@ def compile_with_reference_mastering(
         "-filter_complex", filter_complex,
         "-map", "2:v:0",
         "-map", "[final_mix]",
-        "-c:v", "libx264",
-        "-pix_fmt", "yuv420p",
+        "-c:v", "copy",
         "-c:a", "aac",
         "-b:a", audio_bitrate,
         "-ar", str(sample_rate),
@@ -346,3 +352,52 @@ def compile_with_reference_mastering(
         )
 
     logger.info("[COMPILE COMPLETE] → %s", output_path)
+
+
+def mix_and_master_final_audio(arabic_vocal_path: str, restored_bg_path: str, final_output_path: str):
+    """
+    Combines the translated AI dub with the restored background track using
+    mid-band sidechain compression and EBU R128 broadcast loudness mastering.
+    """
+    logger.info("[MASTERING] Fusing Arabic Dub with Restored Background...")
+
+    # The FFmpeg Filtergraph
+    # 1. Splits background into Low, Mid, High
+    # 2. Sidechain compresses ONLY the Mid band when the Arabic vocal plays
+    # 3. Mixes them together
+    # 4. Applies Loudness Normalization (-14 LUFS, -1.0 True Peak)
+    
+    filter_complex = (
+        "[1:a]asplit=3[bg_low][bg_mid][bg_high]; "
+        "[bg_low]lowpass=f=300[bg_low_band]; "
+        "[bg_mid]bandpass=f=1900:width_type=h:w=3200[bg_mid_band]; "
+        "[bg_high]highpass=f=3500[bg_high_band]; "
+        
+        # Trigger sidechain ducking on the mid-band using the Arabic vocal [0:a]
+        "[bg_mid_band][0:a]sidechaincompress=threshold=-15dB:ratio=3:attack=10:release=200[bg_mid_ducked]; "
+        
+        # Recombine the background
+        "[bg_low_band][bg_mid_ducked][bg_high_band]amix=inputs=3:normalize=0[bg_full]; "
+        
+        # Mix the Arabic vocal with the dynamically ducked background
+        "[bg_full][0:a]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[raw_mix]; "
+        
+        # Master the final track to YouTube/Netflix loudness standards
+        "[raw_mix]loudnorm=I=-14:TP=-1.0:LRA=11[mastered]"
+    )
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", arabic_vocal_path,   # [0:a]
+        "-i", restored_bg_path,    # [1:a]
+        "-filter_complex", filter_complex,
+        "-map", "[mastered]",
+        "-c:a", "aac", "-b:a", "256k",
+        final_output_path
+    ]
+
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    logger.info(f"[MASTERING COMPLETE] Final audio saved to: {final_output_path}")
+    
+    return final_output_path
+

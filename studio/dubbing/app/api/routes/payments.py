@@ -40,6 +40,47 @@ class RefundRequest(BaseModel):
     reference_id: str
     amount_iqd: int = 1000
     reason: str
+    is_chargeback: Optional[bool] = False
+
+
+from pydantic import BaseModel, field_validator
+
+
+class WaylWebhookPayload(BaseModel):
+    referenceId: Optional[str] = None
+    reference_id: Optional[str] = None
+    status: Optional[str] = None
+    amount: Optional[int] = None
+    total: Optional[int] = None
+    currency: Optional[str] = "IQD"
+    env: Optional[str] = None
+    tier_id: Optional[str] = None
+    workspace_id: Optional[str] = None
+
+    @field_validator("amount", "total", mode="before")
+    @classmethod
+    def validate_integer_only(cls, v):
+        if v is not None:
+            if isinstance(v, float):
+                raise ValueError("Floating-point amounts strictly rejected; integer minor units required.")
+            if isinstance(v, str):
+                try:
+                    int_val = int(v)
+                    return int_val
+                except ValueError:
+                    raise ValueError(f"Invalid integer amount string: {v}")
+        return v
+
+
+MAX_BODY_BYTES = 64 * 1024  # 64 KB cap for Wayl webhooks
+
+
+def log_security_event(event_type: str, **kwargs):
+    logger.warning(json.dumps({
+        "security_event": event_type,
+        "service": "payments",
+        **kwargs
+    }))
 
 
 @router.get("/verify-auth-key")
@@ -58,22 +99,18 @@ async def verify_auth_key():
 async def payment_status_summary():
     """Diagnostic tool: Fetch all live Wayl links & refunds directly from Wayl API."""
     wayl = WaylClient()
-    links = await wayl.list_links(take=50)
+    links = await wayl.list_links()
     refunds = await wayl.list_refunds()
     
     return {
-        "status": "ok",
-        "server_env": wayl._get_env(),
-        "base_url": wayl._get_base_url(),
-        "total_links": len(links),
-        "total_refunds": len(refunds),
         "links": [
             {
+                "id": l.get("id"),
                 "referenceId": l.get("referenceId"),
                 "status": l.get("status"),
-                "total": l.get("total"),
-                "createdAt": l.get("createdAt"),
-                "paymentMethod": l.get("paymentMethod")
+                "amount": l.get("amount"),
+                "currency": l.get("currency"),
+                "createdAt": l.get("createdAt")
             }
             for l in links
         ],
@@ -109,13 +146,14 @@ async def sync_all_transactions(user: AuthenticatedUser = Depends(require_user))
         if ref_id and status == "Complete":
             exists = await database.transaction_exists(client, transaction_id=ref_id)
             if not exists:
-                await database.process_payment_success_atomic(
+                amount_val = int(float(l.get("amount", 1000) or 1000))
+                currency_val = str(l.get("currency", "IQD"))
+                await database.record_and_process_wayl_event(
                     client,
-                    transaction_id=ref_id,
-                    workspace_id=user.workspace_id,
-                    tier="test_1000iqd",
-                    amount_usd=0.67,
-                    minutes_added=1
+                    reference_id=ref_id,
+                    amount=amount_val,
+                    currency=currency_val,
+                    raw_payload=json.dumps(l)
                 )
                 synced_paid += 1
                 
@@ -138,81 +176,63 @@ async def sync_all_transactions(user: AuthenticatedUser = Depends(require_user))
                 )
                 synced_refunds += 1
                 
-    for l in links:
-        ref_id = (l.get("referenceId") or "").split("/")[0].split("?")[0]
-        status = l.get("status")
-        if ref_id and status in ("Refunded", "Returned"):
-            refund_key = f"REFUND-{ref_id}"
-            exists = await database.transaction_exists(client, transaction_id=refund_key)
-            if not exists:
-                await database.process_refund_atomic(
-                    client,
-                    transaction_id=ref_id,
-                    workspace_id=user.workspace_id,
-                    amount_usd=0.67,
-                    minutes_deducted=1,
-                    reason="Wayl Link Refunded"
-                )
-                synced_refunds += 1
-                
     return {
-        "status": "success",
-        "synced_paid": synced_paid,
-        "synced_refunds": synced_refunds,
-        "total_links_checked": len(links),
-        "total_refunds_checked": len(refunds)
+        "status": "synchronized",
+        "synced_paid_count": synced_paid,
+        "synced_refund_count": synced_refunds
     }
 
 
 @router.post("/checkout")
-@router.post("/checkout/")
-async def create_checkout_session(
+async def create_checkout(
     req: CheckoutRequest,
     user: AuthenticatedUser = Depends(require_user)
 ):
-    """Generate a Wayl payment link for the requested tier."""
+    """Generate a secure Wayl hosted checkout link for a workspace."""
     if req.tier not in TIERS:
-        raise HTTPException(status_code=400, detail="Invalid tier")
-        
-    tier_info = TIERS[req.tier]
-    usd_amount = tier_info["price_usd"]
-    minutes = tier_info["minutes"]
+        raise HTTPException(status_code=400, detail=f"Invalid tier: {req.tier}. Allowed: {list(TIERS.keys())}")
 
-    # Read exchange rate from environment (default: 1500)
+    tier_info = TIERS[req.tier]
+    usd_amount = float(tier_info["price_usd"])
+    minutes = int(tier_info["minutes"])
+
     try:
         usd_to_iqd_rate = float(os.getenv("USD_TO_IQD_RATE", "1500"))
     except ValueError:
         usd_to_iqd_rate = 1500.0
 
-    # Constraint: Explicitly cast total to integer (support fixed IQD for test packages)
     if "fixed_iqd" in tier_info:
         total_iqd = int(tier_info["fixed_iqd"])
     else:
         total_iqd = int(round(usd_amount * usd_to_iqd_rate))
 
-
-    # Unique reference ID for Wayl
     reference_id = f"ref_{uuid.uuid4().hex}"
 
-    # Redirection URL
     base_redirect = os.getenv("WAYL_REDIRECT_BASE_URL", "").strip()
     if not base_redirect or "localhost" in base_redirect:
         base_redirect = "https://doblaj.com/billing"
     redirection_url = f"{base_redirect}?payment=success&ref={reference_id}"
 
     try:
-        # Record pending transaction in database
         client = _get_service_role_client()
-        await database.add_transaction(
+
+        # Layer 10: Quarantine / Chargeback Lockdown Check
+        ws = await database.get_workspace_details(client, workspace_id=user.workspace_id)
+        if ws and (ws.get("status") in ("under_review", "LOCKED_REFUND", "RESTRICTED_VELOCITY") or ws.get("isLocked") is True):
+            log_security_event("quarantined_workspace_checkout_rejected", workspace_id=user.workspace_id)
+            raise HTTPException(status_code=403, detail="Workspace is under review due to risk/chargeback. Checkout creation disabled.")
+
+        # Layer 3 & 4: Record expected charge before link issuance
+        await database.record_expected_charge(
             client,
-            transaction_id=reference_id,
+            reference_id=reference_id,
             workspace_id=user.workspace_id,
-            tier=req.tier,
-            amount_usd=usd_amount,
-            minutes_added=minutes
+            amount=total_iqd,
+            currency="IQD",
+            minutes_granted=minutes,
+            tier=req.tier
         )
 
-        # Call Wayl API to generate checkout link
         wayl = WaylClient()
         checkout_url = await wayl.create_payment_link(
             reference_id=reference_id,
@@ -236,7 +256,6 @@ async def create_checkout_session(
 @router.post("/create-telegram-link/")
 async def create_telegram_payment_link(req: TelegramLinkRequest, request: Request):
     """Generate an expiring Wayl payment link (default: 30m) directly from Telegram."""
-    # 1. Resolve tier or custom parameters
     if req.tier and req.tier in TIERS:
         tier_info = TIERS[req.tier]
         usd_amount = float(tier_info["price_usd"])
@@ -261,7 +280,6 @@ async def create_telegram_payment_link(req: TelegramLinkRequest, request: Reques
     else:
         total_iqd = int(round(usd_amount * usd_to_iqd_rate))
 
-    # 2. Resolve linked workspace for this Telegram chat ID
     workspace_id = None
     try:
         workspace_id = await database.get_workspace_by_telegram_id(req.telegram_chat_id)
@@ -271,28 +289,26 @@ async def create_telegram_payment_link(req: TelegramLinkRequest, request: Reques
     if not workspace_id:
         workspace_id = f"tg_{req.telegram_chat_id}"
 
-    # 3. Create Unique Reference ID
     reference_id = f"ref_tg_{req.telegram_chat_id}_{uuid.uuid4().hex[:8]}"
 
-    # 4. Redirection URL (Lands on /dubbing with payment success params)
     base_redirect = os.getenv("DUBBING_FRONTEND_URL", "https://doblaj.com").strip()
     redirection_url = f"{base_redirect.rstrip('/')}/dubbing?payment=success&ref={reference_id}"
 
-    # 5. Record pending transaction in Convex
     client = _get_service_role_client()
     try:
-        await database.add_transaction(
+        # Layer 3 & 4: Persist expected charge
+        await database.record_expected_charge(
             client,
-            transaction_id=reference_id,
+            reference_id=reference_id,
             workspace_id=workspace_id,
-            tier=tier_name,
-            amount_usd=usd_amount,
-            minutes_added=minutes
+            amount=total_iqd,
+            currency="IQD",
+            minutes_granted=minutes,
+            tier=tier_name
         )
     except Exception as tx_e:
-        logger.warning(f"[PAYMENTS_TG] add_transaction notice: {tx_e}")
+        logger.warning(f"[PAYMENTS_TG] record_expected_charge notice: {tx_e}")
 
-    # 6. Generate Wayl link with 30m expiration
     wayl = WaylClient()
     try:
         checkout_url = await wayl.create_payment_link(
@@ -318,106 +334,94 @@ async def create_telegram_payment_link(req: TelegramLinkRequest, request: Reques
     }
 
 
-
 @router.post("/webhook")
 async def wayl_webhook(request: Request):
-    """Receive payment webhook from Wayl.
+    """Receive payment webhook from Wayl with strict 12-layer security enforcement.
     
-    CRITICAL CONSTRAINTS:
-    1. Read raw body (await request.body()) BEFORE any JSON parsing.
-    2. Signature header: x-wayl-signature-256. Verify using WAYL_WEBHOOK_SECRET.
-    3. Status check: strictly "Complete" (Capital C).
-    4. Idempotency: return 200 OK immediately if already processed/paid.
+    1. Cap raw body size at 64KB (Layer 3: 413 on payload too large).
+    2. HMAC-SHA256 constant-time verification over raw bytes (Layer 3: 401 on bad signature).
+    3. Pydantic schema validation post-signature (Layer 3: 400 on malformed structure).
+    4. Atomic single Convex mutation with Read-First Zero-Cost Idempotency (Layer 4).
     """
-    # 1. Read raw body before JSON parsing
+    # 1. Cap raw body size
     raw_body = await request.body()
-    
-    # 2. Extract signature header
+    if len(raw_body) > MAX_BODY_BYTES:
+        log_security_event("webhook_payload_too_large", raw_len=len(raw_body))
+        raise HTTPException(status_code=413, detail="Payload Too Large")
+
+    # 2. Extract signature header & verify
     signature = (
         request.headers.get("x-wayl-signature-256") or 
         request.headers.get("X-Wayl-Signature-256")
     )
     
-    # Verify HMAC-SHA256 signature
+    if not signature:
+        log_security_event("webhook_missing_signature", ip=request.client.host if request.client else "unknown")
+        raise HTTPException(status_code=401, detail="Missing signature header")
+
     wayl = WaylClient()
     if not wayl.verify_webhook_signature(raw_body, signature):
-        logger.warning("[WAYL_WEBHOOK] Invalid signature")
+        log_security_event("webhook_bad_signature", ip=request.client.host if request.client else "unknown")
         raise HTTPException(status_code=401, detail="Invalid signature")
 
-    # 3. Parse JSON after signature verification
+    # 3. Post-signature schema validation
     try:
-        payload = json.loads(raw_body.decode('utf-8'))
+        payload_dict = json.loads(raw_body.decode('utf-8'))
+        event = WaylWebhookPayload.model_validate(payload_dict)
     except Exception as parse_e:
-        logger.error(f"[WAYL_WEBHOOK] JSON parse error: {parse_e}")
-        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+        log_security_event("webhook_bad_schema", error=str(parse_e), raw_len=len(raw_body))
+        raise HTTPException(status_code=400, detail="Invalid JSON schema")
 
-    logger.info(f"[WAYL_WEBHOOK] Received payload: {payload}")
-
-    # Extract referenceId and status
-    reference_id = payload.get("referenceId") or payload.get("reference_id")
-    event_status = payload.get("status")
-
+    reference_id = event.referenceId or event.reference_id
     if not reference_id:
         raise HTTPException(status_code=400, detail="Missing referenceId in payload")
 
+    # Layer 1.2: Environment Confusion Defense
+    server_env = os.getenv("WAYL_SERVER_ENV", os.getenv("PIRD_ENV", "dev")).lower()
+    if server_env in ("live", "production", "prod") and event.env in ("test", "sandbox"):
+        log_security_event("environment_confusion_rejected", server_env=server_env, event_env=event.env)
+        raise HTTPException(status_code=401, detail="Environment mismatch: test payment rejected on production")
+
+    event_status = event.status or ""
+    amount = event.amount or event.total or 1000
+    currency = event.currency or "IQD"
+
     client = _get_service_role_client()
 
-    # 4. Idempotency check: if transaction is already processed/paid, return 200 OK immediately
-    already_paid = await database.transaction_exists(client, transaction_id=reference_id)
-    if already_paid:
-        logger.info(f"[WAYL_WEBHOOK] Idempotency check: referenceId={reference_id} already processed. Returning 200 OK.")
-        return {"status": "ok", "message": "Transaction already processed"}
-
-    # 5. CRITICAL STATUS CHECK: Strictly "Complete" (Capital C)
+    # 4. Handle Complete Status via Single Convex Mutation
     if event_status == "Complete":
-        # Extract workspace_id and tier details from transaction or metadata
-        # Process payment success atomically (inserts record + credits minutes)
-        # Note: We infer workspace_id & tier from client metadata or initial transaction record
-        tier_id = payload.get("tier_id") or "pro"
-        workspace_id = payload.get("workspace_id")
+        raw_text = raw_body.decode('utf-8', errors='ignore')
+        res = await database.record_and_process_wayl_event(
+            client,
+            reference_id=reference_id,
+            amount=int(amount),
+            currency=currency,
+            raw_payload=raw_text
+        )
         
-        tier_info = TIERS.get(tier_id, TIERS["pro"])
-        minutes_added = tier_info["minutes"]
-        amount_usd = tier_info["price_usd"]
-
-        if workspace_id:
-            res = await database.process_payment_success_atomic(
-                client,
-                transaction_id=reference_id,
-                workspace_id=workspace_id,
-                tier=tier_id,
-                amount_usd=amount_usd,
-                minutes_added=minutes_added
-            )
-            logger.info(f"[WAYL_WEBHOOK] Payment Complete for referenceId={reference_id}, credited {minutes_added} min to workspace {safe_ws(workspace_id)}")
-            return {"status": "ok", "result": res}
+        status_val = res.get("status") if isinstance(res, dict) else ""
+        if status_val == "already_processed":
+            logger.warning(f"[WAYL_WEBHOOK] Replay / duplicate event for referenceId={reference_id}. Returning 200 OK without re-crediting.")
+            return {"status": "ok", "message": "Transaction already processed"}
+        elif status_val == "flagged":
+            log_security_event("payment_flagged_for_review", reference_id=reference_id, reason=res.get("reason"))
+            return {"status": "ok", "message": "Payment flagged for review"}
         else:
-            # Fallback atomic record when workspace_id is stored in initial transaction
-            logger.info(f"[WAYL_WEBHOOK] Successfully processed payment for referenceId={reference_id}")
-        return {"status": "ok", "message": "Payment processed successfully"}
-    
-    if event_status in ("Refunded", "Returned"):
-        tier_id = payload.get("tier_id") or "test_1000iqd"
-        workspace_id = payload.get("workspace_id")
-        tier_info = TIERS.get(tier_id, TIERS.get("test_1000iqd", {"minutes": 1, "price_usd": 0.67}))
-        minutes_to_deduct = tier_info.get("minutes", 1)
-        amount_usd = tier_info.get("price_usd", 0.67)
-        
-        if workspace_id:
-            res = await database.process_refund_atomic(
-                client,
-                transaction_id=reference_id,
-                workspace_id=workspace_id,
-                amount_usd=amount_usd,
-                minutes_deducted=minutes_to_deduct,
-                reason="Refund processed by payment gateway"
-            )
-            logger.info(f"[WAYL_WEBHOOK] Refund processed for referenceId={reference_id}, deducted {minutes_to_deduct} min from workspace {safe_ws(workspace_id)}")
+            logger.info(f"[WAYL_WEBHOOK] Payment Complete processed atomically for referenceId={reference_id}")
             return {"status": "ok", "result": res}
-        return {"status": "ok", "message": "Refund webhook received"}
-    
-    logger.info(f"[WAYL_WEBHOOK] Ignored status={event_status} for referenceId={reference_id}")
-    return {"status": "ok", "message": f"Status {event_status} ignored"}
+
+    # 5. Handle Refund / Return
+    if event_status in ("Refunded", "Returned"):
+        res = await database.process_refund_atomic(
+            client,
+            transaction_id=reference_id,
+            workspace_id="",
+            reason="Gateway Refund Notification",
+            is_chargeback=False
+        )
+        return {"status": "ok", "result": res}
+
+    return {"status": "ok", "message": f"Status {event_status} acknowledged"}
 
 
 @router.post("/refund")
@@ -434,7 +438,6 @@ async def process_refund(
             reason=req.reason
         )
         
-        # Atomically record refund transaction in Convex and deduct workspace minutes
         client = _get_service_role_client()
         amount_usd = round(req.amount_iqd / 1500.0, 2)
         minutes_to_deduct = 1 if req.amount_iqd <= 2000 else (5 if req.amount_iqd <= 15000 else (15 if req.amount_iqd <= 30000 else 120))
@@ -445,10 +448,15 @@ async def process_refund(
             workspace_id=user.workspace_id,
             amount_usd=amount_usd,
             minutes_deducted=minutes_to_deduct,
-            reason=req.reason
+            reason=req.reason,
+            is_chargeback=req.is_chargeback or False
         )
         
-        return {"status": "success", "data": res}
+        return {
+            "status": "refunded",
+            "reference_id": req.reference_id,
+            "wayl_response": res
+        }
     except Exception as e:
-        logger.error(f"[REFUND_ERROR] Refund failed: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.exception("[WAYL_REFUND] Refund failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Refund failed: {str(e)}")

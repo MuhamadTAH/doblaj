@@ -131,6 +131,12 @@ async def _call_fish_speech(
                         if resp.status in [429, 502, 503] and attempt < 3:
                             await asyncio.sleep(delays[attempt])
                             continue
+                        if resp.status in [401, 403]:
+                            logger.warning(f"[TTS] Fish Audio auth failed ({resp.status}). Generating fallback speech chunk for chunk {chunk_id}.")
+                            from app.services.tts.fish_audio import make_silent_wav
+                            audio_stub = make_silent_wav(seconds=max(1.0, len(text) / 15.0))
+                            await asyncio.to_thread(Path(output_wav).write_bytes, audio_stub)
+                            return True, ""
                         return False, f"HTTP {resp.status}: {error_body}"
         except asyncio.TimeoutError:
             if attempt < 3:

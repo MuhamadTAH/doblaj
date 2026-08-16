@@ -46,7 +46,7 @@ async def transcribe_gemini_flash(audio_path: str, history: list = None) -> str:
         for i, hist in enumerate(history):
             hist_name = f"Chunk N-{len(history)-i}"
             timeline_text += f"{hist_name}: {hist.get('kurdish_raw', '')}\n"
-        timeline_text += "\n--- CURRENT TARGET ---\nTask: Transcribe the attached audio chunk. It immediately follows the timeline above. Ensure grammatical and contextual continuity with the previous chunks. Return ONLY the Kurdish Sorani text. No preambles, no explanations."
+        timeline_text += "\n--- CURRENT TARGET ---\nTask: Transcribe the attached audio chunk. It is the direct continuation of the timeline above. If the speaker was mid-sentence at the end of the previous chunk, continue the sentence seamlessly without hallucinating missing words or altering grammar. Return ONLY the Kurdish Sorani text for this chunk. No preambles, no explanations."
     else:
         timeline_text = "--- CURRENT TARGET ---\nTask: Transcribe the attached audio chunk. Return ONLY the Kurdish Sorani text. No preambles, no explanations."
 
@@ -55,7 +55,7 @@ async def transcribe_gemini_flash(audio_path: str, history: list = None) -> str:
         "messages": [
             {
                 "role": "system",
-                "content": "You are an expert Kurdish Sorani phonetic transcriber. Your job is to transcribe the audio strictly into Kurdish Sorani text using the official Central Kurdish (Sorani) alphabet. You must exclusively use native Kurdish characters (including Û†, ÛŽ, Ú†, Ù¾, Ú˜, Ú¯, Ú•, Úµ). Transcribe exactly what is spoken with absolute phonetic and grammatical fidelity. Format the transcription phrase by phrase, separating them with commas (ØŒ) or full stops (.) at natural pauses or grammatical boundaries to guide text-to-speech pacing."
+                "content": "You are an expert Kurdish Sorani phonetic transcriber and audio linguist. Your job is to transcribe the audio strictly into Kurdish Sorani text using the official Central Kurdish (Sorani) alphabet. You must exclusively use native Kurdish characters (including ۆ, ێ, چ, پ, ژ, گ, ڕ, ڵ). Transcribe exactly what is spoken with absolute phonetic and grammatical fidelity, maintaining flawless sentence flow from previous speech. Format the transcription phrase by phrase, separating them with commas (،) or full stops (.) at natural pauses or grammatical boundaries to guide text-to-speech pacing."
             },
             {
                 "role": "user",
@@ -182,7 +182,10 @@ async def transcribe_gemini_flash_batch(chunks: list[dict], history: list = None
         timeline_text += "\n--- END OF UNTRUSTED DATA â€” TRANSCRIBE THE AUDIO BELOW ---\n"
         content_array.append({"type": "text", "text": timeline_text})
         
-    content_array.append({"type": "text", "text": f"Task: Transcribe each of the following ordered audio chunks independently. You MUST return a strict JSON object containing a 'transcriptions' array. The array must contain exactly {len(chunks)} elements, matching the input audio chunks in the exact same sequence."})
+    content_array.append({
+        "type": "text", 
+        "text": f"Task: Transcribe the following {len(chunks)} consecutive audio chunks. Return a strict JSON object containing a 'transcriptions' array with exactly {len(chunks)} elements matching the input chunks in sequence."
+    })
     
     # 2. Append Audio Data using OpenRouter image_url data URI syntax
     for i, chunk in enumerate(chunks):
@@ -207,14 +210,16 @@ async def transcribe_gemini_flash_batch(chunks: list[dict], history: list = None
     from app.services.video.dictionary_cache import build_dictionary_prompt
     dict_prompt = build_dictionary_prompt(category_id, entity)
     system_prompt = (
-        "You are an advanced, low-latency audio transcription system. Transcribe each audio chunk independently. "
-        "You are an expert Kurdish Sorani phonetic transcriber. You must exclusively use native Kurdish characters (including Û†, ÛŽ, Ú†, Ù¾, Ú˜, Ú¯, Ú•, Úµ). "
-        "Transcribe exactly what is spoken with absolute phonetic and grammatical fidelity. "
-        "Format the transcription phrase by phrase, separating them with commas (ØŒ) or full stops (.) at natural pauses or grammatical boundaries to guide text-to-speech pacing.\n\n"
+        "You are an expert Kurdish Sorani phonetic transcriber and audio linguist. "
+        "You receive sequential audio chunks from a single continuous recording. "
+        "You must listen to the entire audio sequence as a unified narrative, cross-referencing adjacent chunks to accurately comprehend incomplete sentences, colloquial expressions, and words bridging chunk boundaries. "
+        "You must exclusively use native Kurdish characters (including ۆ, ێ, چ, پ, ژ, گ, ڕ, ڵ). "
+        "Transcribe exactly what is spoken in each chunk with absolute phonetic and grammatical fidelity. "
+        "Format the transcription phrase by phrase, separating them with commas (،) or full stops (.) at natural pauses or grammatical boundaries to guide text-to-speech pacing.\n\n"
         "OUTPUT FORMAT:\n"
         "You MUST return a strict JSON object containing a 'transcriptions' array. Each item in the array must strictly contain:\n"
         "- 'chunk_index': The integer index of the chunk.\n"
-        "- 'text': The full transcribed sentence.\n\n"
+        "- 'text': The exact transcribed text for that specific chunk slice.\n\n"
         "ANTI-PRIMING WARNING: The provided dictionary terms are a disambiguation aid ONLY. Do not force ordinary conversational Kurdish into technical terminology based on weak phonetic similarities."
     )
     if dict_prompt:

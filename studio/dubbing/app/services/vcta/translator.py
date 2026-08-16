@@ -16,9 +16,61 @@ except ImportError:
     def trace_http_request_count(*a, **kw): pass
 
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-3-flash-preview")
+MODEL_FALLBACK_CHAIN = [
+    OPENROUTER_MODEL,
+    "meta-llama/llama-3.3-70b-instruct",
+    "anthropic/claude-3.5-haiku",
+]
+
+
+def _validate_and_sanitize_translation_output(text: str) -> str:
+    """Validate and sanitize model translation response (Video 34: Output Validation Layer)."""
+    if not text:
+        return ""
+    # Strip null bytes and control characters except whitespace
+    text = "".join(c for c in text if ord(c) >= 32 or c in "\n\r\t")
+    return text.strip()
+
+
+def _strip_indirect_context_injections(text: str) -> str:
+    """Part 09 / Video 49: Neutralize indirect prompt injection patterns in user context."""
+    if not text:
+        return ""
+    dangerous_phrases = [
+        r"ignore\s+previous\s+instructions",
+        r"system\s+override",
+        r"print\s+env",
+        r"exfiltrate",
+        r"dump\s+secrets",
+    ]
+    cleaned = text
+    for pattern in dangerous_phrases:
+        cleaned = re.sub(pattern, "[BLOCKED_INJECTION]", cleaned, flags=re.IGNORECASE)
+    return cleaned
+
+
+
 
 # Shared connection pool to avoid connection setup overhead on every request
 _http_client: Optional[httpx.AsyncClient] = None
+
+# Part 05 / Video 30: LLM Cost & Reliability - Text Hashing Cache
+import hashlib
+_TRANSLATION_CACHE: dict = {}
+_MAX_CACHE_SIZE = 1000
+
+def _get_translation_cache_key(text: str, speech_duration: float, entity: str = None) -> str:
+    raw = f"{text.strip().lower()}:{speech_duration:.2f}:{entity or ''}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+def _get_cached_translation(key: str) -> Optional[dict]:
+    return _TRANSLATION_CACHE.get(key)
+
+def _set_cached_translation(key: str, val: dict) -> None:
+    if len(_TRANSLATION_CACHE) >= _MAX_CACHE_SIZE:
+        first_key = next(iter(_TRANSLATION_CACHE))
+        _TRANSLATION_CACHE.pop(first_key, None)
+    _TRANSLATION_CACHE[key] = val
 
 def _get_http_client() -> httpx.AsyncClient:
     global _http_client
@@ -43,7 +95,15 @@ def _sanitize_entity(entity):
     return _ENTITY_RE.sub("", entity)[:64]
 
 
-_TRANSLATION_SYSTEM_PROMPT_TEMPLATE = """You are an expert Iraqi dialect translator. Translate the provided text chunks into natural, spoken Iraqi Arabic.
+
+_TRANSLATION_SYSTEM_PROMPT_TEMPLATE = """You are an expert Iraqi dialect translator and audiovisual localization specialist. Translate the provided text chunks into authentic, natural, spoken Iraqi Arabic (العامية العراقية).
+
+🌐 UNIFIED NARRATIVE & CROSS-CHUNK CONTEXT ENGINE:
+The provided text chunks are consecutive, contiguous parts of ONE single continuous speech narrative. 
+You MUST analyze all chunks as a unified whole. Cross-reference the preceding chunk (N-1) and succeeding chunk (N+1) to:
+1. Understand the full context, pronouns, slang, and subject references across chunk boundaries.
+2. Ensure sentence flow, grammatical agreement, and conversational tone connect seamlessly between Chunk N-1, Chunk N, and Chunk N+1.
+3. If a sentence began in the previous chunk and finishes in the current chunk, continue the Iraqi Arabic sentence naturally without restarting the sentence or dropping context.
 
 V4.1 DUAL-CHANNEL RELATIVE PACING ENGINE:
 The [min_words, max_words] limits you receive are calculated based on the original speaker's physical Character Per Second (CPS) speed. You MUST adapt the translation length to match these boundaries to ensure perfect lip-sync.
@@ -88,11 +148,9 @@ async def translate_single_chunk_structured(
     category_id: str = None,
     session_id: str = "unknown"
 ) -> dict:
-    """
-    Stage 2: The Transcreation Engine (Single-Chunk Fallback)
-    Translates Kurdish Sorani to Iraqi Arabic using OpenRouter.
-    """
+    text = _strip_indirect_context_injections(text or "")
     api_key = os.getenv("OPEN_ROUTER_API_KEY")
+
     if not api_key:
         # Pird: fail closed in prod so a missing key doesn't silently emit
         # mock Arabic to users. See handoffs/dubbing-security-pass2-fixes.md Fix 11.
@@ -107,8 +165,21 @@ async def translate_single_chunk_structured(
 
     trace = []
     
+    # Part 05 / Video 30: Text Hash Cache Lookup
+    cache_key = _get_translation_cache_key(text, speech_duration, entity)
+    if not retry_prompt:
+        cached = _get_cached_translation(cache_key)
+        if cached:
+            logger.info(f"[TRANSLATOR] Cache hit for text (hash={cache_key[:8]})")
+            return {
+                "arabic_text": cached["arabic_text"],
+                "status": "success",
+                "trace": ["Cache hit — OpenRouter API call bypassed"],
+            }
+    
     source_word_count = len(text.split())
     target_words = 0
+
     
     if source_word_count <= 2:
         is_micro = True
@@ -124,9 +195,9 @@ async def translate_single_chunk_structured(
         ratio = max(0.4, 1.71 - (0.71 * speed_mult))
         target_words = source_word_count * ratio
         
-        # Strict user-defined boundary constraint (Target and Target+1)
+        # Strict user-defined asymmetric boundary constraint: Target as MIN, Target+2 as MAX
         min_words = max(1, math.floor(target_words))
-        max_words = min_words + 1
+        max_words = min_words + 2
         
         # Fish Audio pacing (optional downstream speed tweak)
         f_pacing = max(0.7, min(1.4, speed_mult))
@@ -173,58 +244,59 @@ async def translate_single_chunk_structured(
         "X-Title": "Dubbing Engine"
     }
 
-    payload = {
-        "model": OPENROUTER_MODEL,
-        "messages": messages,
-        "temperature": 0.4
-    }
-
     client = _get_http_client()
-    for attempt in range(3):
-        try:
-            trace_http_request_count(session_id, f"translate_single_chunk_structured:attempt={attempt}")
-            resp = await client.post(url, headers=headers, json=payload, timeout=60.0)
-            if resp.status_code != 200:
-                logger.error(f"[TRANSLATOR] OpenRouter API Error {resp.status_code}: {resp.text}")
-                if attempt < 2:
-                    await asyncio.sleep(2 ** attempt)
-                    continue
-                return {"arabic_text": "", "status": "failed", "trace": trace + [f"API Error {resp.status_code}"]}
-            
-            data = resp.json()
-            content = data["choices"][0]["message"]["content"].strip()
-            
-            # Parse the JSON response
+    for model_name in MODEL_FALLBACK_CHAIN:
+        payload = {
+            "model": model_name,
+            "messages": messages,
+            "temperature": 0.4
+        }
+        for attempt in range(2):
             try:
-                # Strip markdown block quotes if present
-                if content.startswith("```json"):
-                    content = content[7:-3]
-                elif content.startswith("```"):
-                    content = content[3:-3]
-                    
-                parsed = json.loads(content)
-                arabic_text = parsed.get("arabic_text", "")
-            except Exception:
-                # Fallback if it didn't output JSON
-                arabic_text = content
+                trace_http_request_count(session_id, f"translate_single_chunk:{model_name}:attempt={attempt}")
+                resp = await client.post(url, headers=headers, json=payload, timeout=60.0)
+                if resp.status_code != 200:
+                    logger.warning(f"[TRANSLATOR] OpenRouter model '{model_name}' returned status {resp.status_code}: {resp.text[:100]}")
+                    await asyncio.sleep(1)
+                    continue
                 
-            trace.append(f"Received translation. Length: {len(arabic_text)} chars.")
-            
-            from app.services.video.dictionary_cache import inject_lrm
-            # Phase 7: Root-Level LRM Injection
-            final_arabic_text = inject_lrm(arabic_text.strip(), category_id)
-            
-            return {
-                "arabic_text": final_arabic_text,
-                "status": "success",
-                "trace": trace
-            }
-        except Exception as e:
-            logger.error(f"[TRANSLATOR] Request failed on attempt {attempt+1}: {e}")
-            if attempt < 2:
-                await asyncio.sleep(2 ** attempt)
-                continue
-            return {"arabic_text": "", "status": "failed", "trace": trace + [f"Exception: {e}"]}
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"].strip()
+                
+                try:
+                    if content.startswith("```json"):
+                        content = content[7:-3]
+                    elif content.startswith("```"):
+                        content = content[3:-3]
+                    parsed = json.loads(content)
+                    arabic_text = parsed.get("arabic_text", "")
+                except Exception:
+                    arabic_text = content
+
+                arabic_text = _validate_and_sanitize_translation_output(arabic_text)
+                if not arabic_text:
+                    logger.warning(f"[TRANSLATOR] Model '{model_name}' produced empty output. Trying fallback...")
+                    continue
+
+                trace.append(f"Received translation from '{model_name}'. Length: {len(arabic_text)} chars.")
+                
+                from app.services.video.dictionary_cache import inject_lrm
+                final_arabic_text = inject_lrm(arabic_text.strip(), category_id)
+                
+                res = {
+                    "arabic_text": final_arabic_text,
+                    "status": "success",
+                    "trace": trace
+                }
+                if not retry_prompt:
+                    _set_cached_translation(cache_key, res)
+                return res
+            except Exception as e:
+                logger.error(f"[TRANSLATOR] Model '{model_name}' failed attempt {attempt+1}: {e}")
+                await asyncio.sleep(1)
+
+    return {"arabic_text": "", "status": "failed", "trace": trace + ["All fallback models failed"]}
+
 
 async def batch_translate_text(chunks: list, batch_size: int = 5, category_id: str = None, entity: str = None, session_id: str = "unknown") -> list:
     """
@@ -272,7 +344,7 @@ async def batch_translate_text(chunks: list, batch_size: int = 5, category_id: s
                 target_words = source_word_count * ratio
                 
                 min_words = max(1, math.floor(target_words))
-                max_words = min_words + 1
+                max_words = min_words + 2
                 chunk["f_pacing"] = 1.0
                 
             batch_input.append({

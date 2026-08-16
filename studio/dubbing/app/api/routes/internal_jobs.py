@@ -35,6 +35,44 @@ from app.core.ratelimit import rate_limited as _rate_limited
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+
+# Part04 / Layer 2: per-field validation for the multipart Form fields
+# on `create_internal_job`. Same reasoning as `video.py`:
+# `_validate_form_field` — payload-bloat, log-injection, abuse.
+_FIELD_CONSTRAINTS = {
+    "chat_id":     {"max_length": 128, "no_control_chars": True},
+    "source":      {"max_length": 32,  "no_control_chars": True},
+    "webhook_url": {"max_length": 2048, "no_control_chars": True},
+}
+
+
+def _validate_form_field(name: str, value: Optional[str]) -> None:
+    """Part04 / Layer 2: tighten free-form Form fields on the internal
+    job route. `webhook_url` is also SSRF-pinned by `_resolve_pinned_ip`;
+    the length cap is independent defense against oversized payloads."""
+    if value is None:
+        return
+    if not isinstance(value, str):
+        raise HTTPException(status_code=400, detail=f"{name}: must be a string")
+    spec = _FIELD_CONSTRAINTS.get(name)
+    if spec is None:
+        return
+    if len(value) > spec["max_length"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{name}: max length {spec['max_length']} characters",
+        )
+    if spec.get("no_control_chars") and any(ord(c) < 0x20 or ord(c) == 0x7f for c in value):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{name}: control characters are not allowed",
+        )
+    if "pattern" in spec and not re.fullmatch(spec["pattern"], value):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{name}: invalid format",
+        )
+
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
 
 # PIRD-004: explicit cloud-metadata and link-local blocklist. Even
@@ -137,6 +175,14 @@ async def create_internal_job(
     _check_internal_key(x_internal_key)
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
+
+    # Part04 / Layer 2: validate free-form Form fields before any
+    # downstream write or log line consumes them. `webhook_url` is also
+    # SSRF-pinned by `_resolve_pinned_ip` later — the length cap here
+    # is independent defense against oversized payloads.
+    _validate_form_field("chat_id", chat_id)
+    _validate_form_field("source", source)
+    _validate_form_field("webhook_url", webhook_url)
 
     job_id = uuid.uuid4().hex
 

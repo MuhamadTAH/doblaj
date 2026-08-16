@@ -192,18 +192,18 @@ def route_voice(chunk: dict, session_state: dict) -> tuple[str | None, str | Non
         logger.info("[VOICE-ROUTER] State A: Custom clone from global_voice_ref.wav")
         return None, global_voice_ref
     
-    # State C: Auto — route by speaker ID
+    # State C: Dynamic Per-Chunk Voice & Energy Reference
+    # Uses the chunk's own audio so the TTS model captures the exact pitch, volume, and emotional energy of that specific moment
+    chunk_audio = chunk.get("audio_file", "") or chunk.get("voice_reference", "")
+    if chunk_audio and os.path.exists(chunk_audio):
+        logger.info("[VOICE-ROUTER] State C: Using chunk's own audio for dynamic energy & voice cloning: %s", os.path.basename(chunk_audio))
+        return None, chunk_audio
+
     speaker_id = chunk.get("speaker", "A")
     speaker_ref = os.path.join(work_dir, f"speaker_ref_{speaker_id}.wav")
     if os.path.exists(speaker_ref):
-        logger.info("[VOICE-ROUTER] State C: Auto-routing Speaker %s", speaker_id)
+        logger.info("[VOICE-ROUTER] Fallback: Using global speaker_ref for Speaker %s", speaker_id)
         return None, speaker_ref
-    
-    # Ultimate fallback: use the chunk's own Kurdish audio as reference
-    chunk_audio = chunk.get("audio_file", "")
-    if chunk_audio and os.path.exists(chunk_audio):
-        logger.warning("[VOICE-ROUTER] Fallback: Using chunk's own Kurdish audio as reference")
-        return None, chunk_audio
     
     logger.error("[VOICE-ROUTER] No voice reference available for chunk %s", chunk.get("chunk_id"))
     return None, None

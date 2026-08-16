@@ -34,3 +34,11 @@ update_job_cost = backend.update_job_cost
 _internal_args = backend._internal_args
 process_payment_success_atomic = backend.process_payment_success_atomic
 process_refund_atomic = backend.process_refund_atomic
+record_expected_charge = backend.record_expected_charge
+record_and_process_wayl_event = backend.record_and_process_wayl_event
+audit_ledger_balances = backend.audit_ledger_balances
+get_workspace_details = backend.get_workspace_details
+get_pending_charges_for_sweep = backend.get_pending_charges_for_sweep
+expire_stale_pending_charges = backend.expire_stale_pending_charges
+from app.core import database as local_sqlite
+get_workspace_by_telegram_id = local_sqlite.get_workspace_by_telegram_id

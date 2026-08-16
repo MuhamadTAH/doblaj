@@ -54,14 +54,11 @@ def _parse_per_minute(value: Union[int, str]) -> int:
     return limit
 
 
-def rate_limited(per_minute: Union[int, str] = 5):
-    """Cap a route at `per_minute` requests per client IP per 60s.
+def rate_limited(per_minute: Union[int, str] = 5, key_func=None):
+    """Cap a route at `per_minute` requests per client IP / account per 60s.
 
-    The decorated route MUST declare a `request: Request` parameter. Without
-    it Starlette never hands us the request and the limit would silently
-    never apply — which is exactly how the original PIRD-010 limiter was
-    dead code on `/jobs` and `/ingest`. We check the signature at decoration
-    time so a mistake is an app-boot crash, not a silent hole in production.
+    Extracts real visitor IP via Cloudflare's `CF-Connecting-IP` header.
+    The decorated route MUST declare a `request: Request` parameter.
     """
     limit = _parse_per_minute(per_minute)
 
@@ -79,13 +76,25 @@ def rate_limited(per_minute: Union[int, str] = 5):
             if request is None:
                 request = next((a for a in args if isinstance(a, Request)), None)
             if request is None:
-                # Signature said `request` exists, so this is unreachable via
-                # FastAPI. Fail closed rather than skipping the limit.
                 raise HTTPException(
                     status_code=429, detail="Rate limit could not be evaluated"
                 )
 
-            key = f"{fn.__qualname__}:{request.client.host if request.client else 'unknown'}"
+            # Layer 2: Extract real IP from Cloudflare CF-Connecting-IP header first
+            client_ip = (
+                request.headers.get("CF-Connecting-IP") or 
+                request.headers.get("cf-connecting-ip") or 
+                (request.client.host if request.client else "unknown")
+            ).strip()
+
+            extra_key = ""
+            if key_func:
+                try:
+                    extra_key = f":{key_func(request, *args, **kwargs)}"
+                except Exception:
+                    pass
+
+            key = f"{fn.__qualname__}:{client_ip}{extra_key}"
             now = time.monotonic()
             bucket = _rate_buckets.setdefault(key, [])
             bucket[:] = [t for t in bucket if now - t < _WINDOW_SEC]

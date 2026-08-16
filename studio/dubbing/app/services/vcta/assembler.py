@@ -34,13 +34,32 @@ async def assemble_final_video(
     video_path: str,
     work_dir: str,
     reference_profile: dict = None,
+    purged_secondary_turns: list = None,
+    isolated_vocal_wav: str = None,
 ) -> str:
     """
     Stage 5: The FFmpeg Timeline Assembly (The Pause Math)
     Creates a master silent track, maps all clips using adelay, and merges.
+    Integrates Numpy Secondary Speaker Restoration prior to reference mastering.
     """
     work = Path(work_dir)
     tts_entries = []
+
+    # If purged secondary turns exist, run Secondary Speaker Restoration on background stem first
+    if purged_secondary_turns and isolated_vocal_wav and os.path.exists(isolated_vocal_wav):
+        from app.services.vcta.restoration import restore_secondary_vocals
+        restored_bg_path = str(work / "Audio_3_Noise_Restored.wav")
+        logger.info(f"[ASSEMBLER] Restoring {len(purged_secondary_turns)} purged secondary turns back to background stem...")
+        try:
+            background_wav = restore_secondary_vocals(
+                instrumental_path=background_wav,
+                vocals_path=isolated_vocal_wav,
+                purged_turns=purged_secondary_turns,
+                output_path=restored_bg_path,
+                fade_ms=50
+            )
+        except Exception as e:
+            logger.error(f"[ASSEMBLER] Secondary vocal restoration failed: {e}. Falling back to raw background stem.")
     
     if not chunks:
         raise RuntimeError("No chunks were provided to the assembler. Upstream processing likely failed on all chunks.")

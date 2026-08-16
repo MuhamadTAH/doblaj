@@ -64,6 +64,16 @@ def get_plans_keyboard() -> InlineKeyboardMarkup:
 # =====================================================================
 import uuid
 
+TIER_PRICING = {
+    "starter": {"minutes": 5, "amount_usd": 10.0, "amount_iqd": 15000, "name": "Starter Package"},
+    "pro": {"minutes": 15, "amount_usd": 20.0, "amount_iqd": 30000, "name": "Pro Package"},
+    "creator": {"minutes": 120, "amount_usd": 99.0, "amount_iqd": 148500, "name": "Creator Package"},
+    "test_1000iqd": {"minutes": 1, "amount_usd": 0.67, "amount_iqd": 1000, "name": "Test Package (1,000 IQD)"}
+}
+
+# In-memory debounce cache: {f"{chat_id}:{mins}:{iqd}": (timestamp, result_dict)}
+_TG_LINK_DEBOUNCE_CACHE: Dict[str, tuple] = {}
+
 async def create_telegram_payment_link(chat_id: int, tier: Optional[str] = None, minutes: Optional[int] = None, amount_usd: Optional[float] = None) -> Optional[Dict[str, Any]]:
     from app.core.wayl_client import WaylClient
     from app.core import database as db
@@ -77,14 +87,7 @@ async def create_telegram_payment_link(chat_id: int, tier: Optional[str] = None,
         
     if not workspace_id:
         workspace_id = f"tg_{chat_id}"
-        
-    TIER_PRICING = {
-        "starter": {"minutes": 5, "amount_usd": 10.0, "amount_iqd": 15000, "name": "Starter Package"},
-        "pro": {"minutes": 15, "amount_usd": 20.0, "amount_iqd": 30000, "name": "Pro Package"},
-        "creator": {"minutes": 120, "amount_usd": 99.0, "amount_iqd": 148500, "name": "Creator Package"},
-        "test_1000iqd": {"minutes": 1, "amount_usd": 0.67, "amount_iqd": 1000, "name": "Test Package (1,000 IQD)"}
-    }
-    
+
     if tier and tier in TIER_PRICING:
         t_info = TIER_PRICING[tier]
         pkg_name = t_info["name"]
@@ -103,21 +106,31 @@ async def create_telegram_payment_link(chat_id: int, tier: Optional[str] = None,
         usd = t_info["amount_usd"]
         iqd = t_info["amount_iqd"]
 
+    # Layer 4 Debouncing: If duplicate request sent within 60s, return existing pending link
+    now = time.monotonic()
+    debounce_key = f"{chat_id}:{mins}:{iqd}"
+    if debounce_key in _TG_LINK_DEBOUNCE_CACHE:
+        cached_time, cached_res = _TG_LINK_DEBOUNCE_CACHE[debounce_key]
+        if now - cached_time < 60.0:
+            logger.info(f"[TELEGRAM_PAYMENT] Returning debounced active link for chat_id={chat_id}")
+            return cached_res
+
     reference_id = f"ref_tg_{chat_id}_{uuid.uuid4().hex[:8]}"
     base_redirect = os.getenv("DUBBING_FRONTEND_URL", "https://doblaj.com").strip()
     redirection_url = f"{base_redirect.rstrip('/')}/dubbing?payment=success&ref={reference_id}"
 
-    # Record in database
+    # Layer 3 & 4: Persist expected charge in Convex
     try:
-        await convex_db.add_transaction(
-            transaction_id=reference_id,
+        await convex_db.record_expected_charge(
+            reference_id=reference_id,
             workspace_id=workspace_id,
-            tier=tier or f"custom_{mins}m",
-            amount_usd=usd,
-            minutes_added=mins
+            amount=iqd,
+            currency="IQD",
+            minutes_granted=mins,
+            tier=tier or f"custom_{mins}m"
         )
     except Exception as tx_e:
-        logger.warning(f"[TELEGRAM_PAYMENT] add_transaction notice: {tx_e}")
+        logger.warning(f"[TELEGRAM_PAYMENT] record_expected_charge notice: {tx_e}")
 
     try:
         wayl = WaylClient()
@@ -129,13 +142,15 @@ async def create_telegram_payment_link(chat_id: int, tier: Optional[str] = None,
             item_label=f"Doblaj ({mins} min) - ${usd:.2f} USD ({iqd:,} IQD)"
         )
         if checkout_url:
-            return {
+            res_dict = {
                 "checkout_url": checkout_url,
                 "reference_id": reference_id,
                 "minutes": mins,
                 "amount_usd": usd,
                 "amount_iqd": iqd
             }
+            _TG_LINK_DEBOUNCE_CACHE[debounce_key] = (now, res_dict)
+            return res_dict
     except Exception as e:
         logger.error(f"[TELEGRAM_PAYMENT] Failed to create Wayl payment link: {e}")
         

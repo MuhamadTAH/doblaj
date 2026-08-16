@@ -141,22 +141,43 @@ class WaylClient:
 
     def verify_webhook_signature(self, raw_body_bytes: bytes, signature_header: Optional[str]) -> bool:
         """Computes HMAC-SHA256 signature using WAYL_WEBHOOK_SECRET over raw request bytes.
-        Compares hash to x-wayl-signature-256 header.
+        Compares hash to x-wayl-signature-256 header using constant-time compare_digest.
+        Supports zero-downtime secret rotation via WAYL_WEBHOOK_SECRET_OLD fallback.
         """
         if not signature_header or not self.webhook_secret:
             logger.warning("[WAYL] Missing signature header or webhook secret")
             return False
 
+        clean_sig = signature_header.strip().lower()
+
+        # 1. Primary Secret Check
         try:
             expected_mac = hmac.new(
                 self.webhook_secret.encode('utf-8'),
                 raw_body_bytes,
                 hashlib.sha256
-            ).hexdigest()
-            return hmac.compare_digest(expected_mac.lower(), signature_header.strip().lower())
+            ).hexdigest().lower()
+            if hmac.compare_digest(expected_mac, clean_sig):
+                return True
         except Exception as e:
-            logger.error(f"[WAYL] Signature verification error: {e}")
-            return False
+            logger.error(f"[WAYL] Primary signature verification error: {e}")
+
+        # 2. Rotation Fallback Secret Check (WAYL_WEBHOOK_SECRET_OLD)
+        old_secret = os.getenv("WAYL_WEBHOOK_SECRET_OLD", "").strip()
+        if old_secret:
+            try:
+                old_mac = hmac.new(
+                    old_secret.encode('utf-8'),
+                    raw_body_bytes,
+                    hashlib.sha256
+                ).hexdigest().lower()
+                if hmac.compare_digest(old_mac, clean_sig):
+                    logger.warning("[WAYL] Verified webhook using fallback WAYL_WEBHOOK_SECRET_OLD during secret rotation")
+                    return True
+            except Exception as e:
+                logger.error(f"[WAYL] Old secret verification error: {e}")
+
+        return False
 
     async def create_refund(
         self,

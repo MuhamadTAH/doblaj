@@ -375,8 +375,9 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
                     logger.warning(f"[PHYSICS] Post-TTS validation failed! Scale {scale:.2f} is out of bounds [0.95, 1.20]. Bouncing back to Gemini.")
                     
                     if scale < 0.95:
-                        new_target = actual_word_count * (1.0 / scale)
-                        dynamic_min_words = max(1, math.floor(new_target))
+                        # Asymmetric 1.10x expansion multiplier to provide safe speedup headroom
+                        new_target = actual_word_count * (1.10 / scale)
+                        dynamic_min_words = max(1, math.ceil(new_target))
                         dynamic_max_words = dynamic_min_words + 1
                         
                         # Lock pacing to 1.0 so we solely rely on Gemini's word count

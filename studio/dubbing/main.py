@@ -184,27 +184,31 @@ if _raw_origins:
             cors_origins.append(cleaned)
 
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Part 05 / Video 25: Add security response headers to protect browser clients."""
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; "
-            "style-src 'self' 'unsafe-inline' https:; "
-            "img-src 'self' data: blob: https:; "
-            "media-src 'self' blob: https:; "
-            "connect-src 'self' https: wss:; "
-            "font-src 'self' data: https:; "
-            "object-src 'none'; "
-            "frame-ancestors 'none';"
-        )
-        return response
+class SecurityHeadersMiddleware:
+    """Pure ASGI security headers middleware with native SSE / streaming support."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope.get("path", "").startswith("/mcp"):
+            await self.app(scope, receive, send)
+            return
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                headers.extend([
+                    (b"x-content-type-options", b"nosniff"),
+                    (b"x-frame-options", b"DENY"),
+                    (b"x-xss-protection", b"1; mode=block"),
+                    (b"referrer-policy", b"strict-origin-when-cross-origin"),
+                    (b"strict-transport-security", b"max-age=31536000; includeSubDomains"),
+                    (b"content-security-policy", b"default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; font-src 'self' data: https:; object-src 'none'; frame-ancestors 'none';"),
+                ])
+                message["headers"] = headers
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
 
 
 app.add_middleware(SecurityHeadersMiddleware)
@@ -463,10 +467,16 @@ try:
     try:
         from app.api.routes import security_policy
         app.include_router(security_policy.router, prefix="/api", tags=["security"])
-        logger.info("[STARTUP] Security policy router loaded OK")
     except Exception as e:
         logger.exception("[STARTUP] Security policy router failed to load: %s", e)
-        
+
+    try:
+        from app.mcp.server import mcp as dubbing_mcp
+        app.mount("/mcp", dubbing_mcp.sse_app())
+        logger.info("[STARTUP] FastMCP SSE Server mounted at /mcp/sse and /mcp/messages OK")
+    except Exception as e:
+        logger.exception("[STARTUP] FastMCP SSE Server failed to mount: %s", e)
+
     logger.info("[STARTUP] Routers loaded OK")
 
 

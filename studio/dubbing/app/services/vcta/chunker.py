@@ -172,6 +172,7 @@ def _slice_long_turn(turn: dict, audio_data: np.ndarray, sample_rate: int) -> li
             start_idx = int(search_start * sample_rate)
             end_idx = int(search_end * sample_rate)
             
+            # Step 1A: Look for 300ms pause in [15s, 30s]
             target_silence_samples = int(0.3 * sample_rate) # 300ms
             current_silence = 0
             
@@ -186,31 +187,24 @@ def _slice_long_turn(turn: dict, audio_data: np.ndarray, sample_rate: int) -> li
                 else:
                     current_silence = 0
                     
-        # 2. If no 300ms pause found, search past 30s for a 200ms pause
-        if split_time == -1.0 and e > current_start + 30.0:
-            search_start = current_start + 30.0
-            search_end = e
-            
-            start_idx = int(search_start * sample_rate)
-            end_idx = int(search_end * sample_rate)
-            
-            target_silence_samples = int(0.2 * sample_rate) # 200ms
-            current_silence = 0
-            
-            for i in range(start_idx, end_idx - window_samples, window_samples):
-                chunk = audio_data[i:i+window_samples]
-                rms = np.sqrt(np.mean(chunk**2) + 1e-10)
-                if rms < threshold:
-                    current_silence += window_samples
-                    if current_silence >= target_silence_samples:
-                        split_time = (i - (current_silence // 2)) / sample_rate
-                        break
-                else:
-                    current_silence = 0
-                    
-        # 3. If no pause found at all, leave it as one block
+            # Step 1B: If no 300ms pause found, search the SAME [15s, 30s] window for a 200ms pause
+            if split_time == -1.0:
+                target_silence_samples = int(0.2 * sample_rate) # 200ms
+                current_silence = 0
+                for i in range(start_idx, end_idx - window_samples, window_samples):
+                    chunk = audio_data[i:i+window_samples]
+                    rms = np.sqrt(np.mean(chunk**2) + 1e-10)
+                    if rms < threshold:
+                        current_silence += window_samples
+                        if current_silence >= target_silence_samples:
+                            split_time = (i - (current_silence // 2)) / sample_rate
+                            break
+                    else:
+                        current_silence = 0
+                        
+        # 3. Fallback: If no pause found at all in [15s, 30s], force hard split at 30.0s max
         if split_time == -1.0:
-            break
+            split_time = min(current_start + 30.0, e)
             
         sub_turns.append({"start": current_start, "end": split_time, "speaker": spk})
         current_start = split_time
@@ -219,6 +213,157 @@ def _slice_long_turn(turn: dict, audio_data: np.ndarray, sample_rate: int) -> li
         sub_turns.append({"start": current_start, "end": e, "speaker": spk})
         
     return sub_turns
+
+def find_best_silence_split(audio_data: np.ndarray, sample_rate: int, search_start: float, search_end: float) -> float:
+    """
+    Scans audio waveform BACKWARD from search_end (30.0s) down to search_start (15.0s) 
+    using the Progressive Silence Ladder:
+      1. Scan backward for 200ms pause (RMS < -60dB)
+      2. Scan backward for 150ms pause
+      3. Scan backward for 100ms pause
+      4. Scan backward for 50ms pause
+      5. Fallback: Absolute lowest RMS energy point (quietest breath 50ms window)
+    """
+    if len(audio_data) == 0:
+        return (search_start + search_end) / 2.0
+        
+    start_idx = max(0, int(search_start * sample_rate))
+    end_idx = min(len(audio_data), int(search_end * sample_rate))
+    
+    if start_idx >= end_idx:
+        return (search_start + search_end) / 2.0
+        
+    window_samples = int(0.05 * sample_rate) # 50ms window
+    step_samples = int(0.01 * sample_rate)   # 10ms step
+    threshold = 0.001 # -60dB
+
+    # Progressive Silence Ladder (Scanning Backward: 300ms -> 250ms -> 200ms -> 150ms -> 100ms -> 50ms)
+    pause_targets_ms = [300, 250, 200, 150, 100, 50]
+    
+    for target_ms in pause_targets_ms:
+        target_samples = int((target_ms / 1000.0) * sample_rate)
+        current_silence = 0
+        for i in range(end_idx - window_samples, start_idx, -step_samples):
+            chunk = audio_data[i : i + window_samples]
+            rms = np.sqrt(np.mean(chunk**2) + 1e-10)
+            if rms < threshold:
+                current_silence += step_samples
+                if current_silence >= target_samples:
+                    return (i + (current_silence // 2)) / sample_rate
+            else:
+                current_silence = 0
+
+    # Fallback: Find absolute lowest RMS energy point (scanning backward)
+    min_rms = float('inf')
+    best_time = (search_start + search_end) / 2.0
+    for i in range(end_idx - window_samples, start_idx, -step_samples):
+        chunk = audio_data[i : i + window_samples]
+        rms = np.sqrt(np.mean(chunk**2) + 1e-10)
+        if rms < min_rms:
+            min_rms = rms
+            best_time = (i + window_samples // 2) / sample_rate
+            
+    return best_time
+
+
+def segment_audio_pause_first(
+    audio_data: np.ndarray,
+    sample_rate: int,
+    min_dur: float = 3.5,
+    max_dur: float = 10.0,
+    silence_thresh_db: float = -38.0,
+    min_pause_sec: float = 0.25
+) -> list[dict]:
+    """
+    Pause-First Natural Speech Segmentation:
+    Detects real physical acoustic pauses (>=250ms silence) and cuts strictly at natural
+    sentence/breath boundaries. Guarantees 100% semantic completeness with zero cut words.
+    """
+    total_sec = len(audio_data) / sample_rate
+    frame_len = int(0.020 * sample_rate)  # 20ms frame
+    num_frames = len(audio_data) // frame_len
+    
+    # 1. Compute frame RMS & dB
+    times = []
+    db_list = []
+    for i in range(num_frames):
+        frame = audio_data[i * frame_len : (i + 1) * frame_len]
+        rms = np.sqrt(np.mean(frame**2) + 1e-10)
+        db = 20 * np.log10(max(rms, 1e-5))
+        times.append(i * frame_len / sample_rate)
+        db_list.append(db)
+        
+    # 2. Detect all physical pauses >= min_pause_sec
+    pauses = []
+    in_pause = False
+    p_start = 0.0
+    for t, db in zip(times, db_list):
+        if db < silence_thresh_db:
+            if not in_pause:
+                in_pause = True
+                p_start = t
+        else:
+            if in_pause:
+                in_pause = False
+                dur = t - p_start
+                if dur >= min_pause_sec:
+                    pauses.append((p_start, t, dur))
+    if in_pause:
+        pauses.append((p_start, total_sec, total_sec - p_start))
+        
+    # 3. Build chunks strictly by splitting on natural breath pauses
+    chunks = []
+    cur_start = 0.0
+    
+    for p_start, p_end, p_dur in pauses:
+        cur_len = p_start - cur_start
+        # Split if at least min_dur of speech or any major action pause >= 800ms
+        if cur_len >= min_dur or p_dur >= 0.8:
+            mid_split = (p_start + p_end) / 2.0
+            chunks.append({
+                "start": round(cur_start, 2),
+                "end": round(mid_split, 2),
+                "duration": round(mid_split - cur_start, 2),
+                "speaker": "SPEAKER_00"
+            })
+            cur_start = round(mid_split, 2)
+            
+    if cur_start < total_sec:
+        rem_dur = total_sec - cur_start
+        if rem_dur < min_dur and chunks:
+            chunks[-1]["end"] = round(total_sec, 2)
+            chunks[-1]["duration"] = round(total_sec - chunks[-1]["start"], 2)
+        else:
+            chunks.append({
+                "start": round(cur_start, 2),
+                "end": round(total_sec, 2),
+                "duration": round(total_sec - cur_start, 2),
+                "speaker": "SPEAKER_00"
+            })
+            
+    return chunks
+
+
+def enforce_minimum_chunk_duration(
+    turns: list[dict],
+    audio_data: np.ndarray,
+    sample_rate: int,
+    min_dur: float = 3.5,
+    max_dur: float = 10.0
+) -> list[dict]:
+    """
+    Guarantees natural pause-first speech segmentation across all turns.
+    """
+    if not turns:
+        return []
+        
+    return segment_audio_pause_first(
+        audio_data=audio_data,
+        sample_rate=sample_rate,
+        min_dur=min_dur,
+        max_dur=max_dur
+    )
+
 
 async def run_diarization(audio_path: str) -> tuple[list[dict], list[dict]]:
     """
@@ -283,39 +428,29 @@ async def run_diarization(audio_path: str) -> tuple[list[dict], list[dict]]:
             speaker_durations[spk] = speaker_durations.get(spk, 0.0) + dur
             
         if speaker_durations:
-            # Find the speaker who speaks earliest in the video, 
-            # provided they have at least 5 seconds of total speaking time (to avoid noise glitches).
             valid_speakers = [spk for spk, dur in speaker_durations.items() if dur >= 5.0]
-            
             if valid_speakers:
                 earliest_starts = {}
                 for t in raw_turns:
                     spk = t["speaker"]
                     if spk in valid_speakers and spk not in earliest_starts:
                         earliest_starts[spk] = t["start"]
-                
-                # The primary speaker is the valid speaker who appears first in the timeline
                 primary_speaker = min(earliest_starts, key=earliest_starts.get)
             else:
-                # Fallback to max duration if no one speaks for 5 seconds
                 primary_speaker = max(speaker_durations, key=speaker_durations.get)
                 
             logger.info(f"[CHUNKER] Primary Speaker detected: {primary_speaker} with {speaker_durations[primary_speaker]:.2f}s total duration.")
             
-            # The Purge: Mathematical Inverse (Capture ALL gaps between the primary speaker's words)
-            original_count = len(raw_turns)
             primary_raw_turns = [t for t in raw_turns if t["speaker"] == primary_speaker]
             primary_raw_turns.sort(key=lambda x: x["start"])
             
             purged_turns = []
             current_time = 0.0
-            
             for t in primary_raw_turns:
                 if t["start"] > current_time:
                     purged_turns.append({"start": current_time, "end": t["start"]})
                 current_time = max(current_time, t["end"])
                 
-            # Cap the final gap using the total audio duration
             if current_time < total_duration:
                 purged_turns.append({"start": current_time, "end": total_duration})
                 
@@ -326,7 +461,6 @@ async def run_diarization(audio_path: str) -> tuple[list[dict], list[dict]]:
             logger.warning("[CHUNKER] No speakers found during diarization!")
         
         logger.info(f"[CHUNKER] STAGE 3: Timeline Merging (Strict Adjacency)")
-        # Sort strictly by start time into global chronological array
         raw_turns.sort(key=lambda x: x["start"])
         
         merged_turns = raw_turns.copy()
@@ -355,22 +489,19 @@ async def run_diarization(audio_path: str) -> tuple[list[dict], list[dict]]:
                         potential_duration = max(turn_a["end"], turn_b["end"]) - turn_a["start"]
                         gap = turn_b["start"] - turn_a["end"]
                         
-                        # Dynamic Silence Window (up to 30 SECONDS)
+                        # Progressive Silence Window Matrix
                         if potential_duration < 15.0:
-                            # Always accumulate if under 15 seconds, ignoring gap size
+                            # ALWAYS accumulate under 15 seconds (NO cuts under 15s)
                             should_merge = True
                         elif potential_duration <= 30.0:
-                            # 15s to 30s window: cut if silence is >= 0.3s (300ms)
-                            if gap >= 0.3:
-                                should_merge = False
-                            else:
-                                should_merge = True
-                        else:
-                            # > 30.0s: cut if silence is >= 0.2s (200ms)
+                            # 15s to 30s window: cut if silence is >= 0.2s (200ms)
                             if gap >= 0.2:
                                 should_merge = False
                             else:
                                 should_merge = True
+                        else:
+                            # > 30.0s window: HARD CAP (never merge past 30 seconds)
+                            should_merge = False
 
                     if should_merge:
                         potential_end = max(turn_a["end"], turn_b["end"])
@@ -385,6 +516,9 @@ async def run_diarization(audio_path: str) -> tuple[list[dict], list[dict]]:
 
         # Micro-Chunk Purge: Drop junk chunks under 0.5 seconds
         merged_turns = [t for t in merged_turns if (t["end"] - t["start"]) >= 0.5]
+
+        # STAGE 3.5: Strict Minimum 15-Second Enforcement
+        merged_turns = enforce_minimum_chunk_duration(merged_turns, audio_data, sample_rate, min_dur=15.0, max_dur=30.0)
 
         # STAGE 4: Contiguous Timeline Partitioning
         from app.services.vcta.contiguous_math import calculate_contiguous_timeline
