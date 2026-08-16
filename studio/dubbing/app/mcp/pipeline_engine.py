@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 import soundfile as sf
 import numpy as np
+import librosa
 
 from app.mcp.storage import ScratchManager
 from app.mcp.convex_broadcaster import ConvexBroadcaster
@@ -66,7 +67,6 @@ class DubbingPipelineEngine:
         chunks_dir.mkdir(parents=True, exist_ok=True)
         
         # Detect true speech intervals using energy VAD (splitting only on natural breathing pauses)
-        import librosa
         intervals = librosa.effects.split(data, top_db=28, frame_length=2048, hop_length=512)
         
         chunks = []
@@ -380,7 +380,6 @@ class DubbingPipelineEngine:
                     if len(tts_audio.shape) > 1:
                         tts_audio = tts_audio.mean(axis=1)
                     if tts_sr != sr:
-                        import librosa
                         tts_audio = librosa.resample(tts_audio, orig_sr=tts_sr, target_sr=sr)
                     
                     # Determine maximum allowed slot duration before next chunk starts
