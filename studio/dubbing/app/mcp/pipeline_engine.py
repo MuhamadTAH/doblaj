@@ -166,37 +166,40 @@ class DubbingPipelineEngine:
         with open(manifest_path, "r", encoding="utf-8") as f:
             chunks = json.load(f)
             
-        logger.info(f"[STAGE 2: TRANSCRIPTION] Transcribing {len(chunks)} chunks with Gemini Kurdish Sorani ASR")
+        logger.info(f"[STAGE 2: TRANSCRIPTION] Transcribing {len(chunks)} chunks concurrently with Gemini Kurdish Sorani ASR")
         
-        transcriptions = []
-        timeline_history = []
+        sem = asyncio.Semaphore(6)
         
-        for c in chunks:
-            wav_path = c.get("wav_path")
-            if not wav_path or not os.path.exists(wav_path):
-                vocal_stem = str(scratch_dir / "vocals_stem.wav")
-                data, sr = sf.read(vocal_stem)
-                s_samp = int(c["start_sec"] * sr)
-                e_samp = int(c["end_sec"] * sr)
-                wav_path = str(scratch_dir / f"temp_chunk_{c['chunk_index']:02d}.wav")
-                sf.write(wav_path, data[s_samp:e_samp], sr)
-                
-            try:
-                kurdish_text = await transcribe_gemini_flash(wav_path, history=timeline_history)
-                kurdish_text = kurdish_text.strip('"`\' \n')
-            except Exception as e:
-                logger.error(f"[STT] Error transcribing chunk #{c['chunk_index']}: {e}")
-                kurdish_text = "ڕەسمی حادیسە ناهێنێ، ئەبێ بە پارە بیهێنی."
-                
-            logger.info(f"  [Chunk {c['chunk_index']+1}/{len(chunks)}] Kurdish: {kurdish_text}")
-            timeline_history.append({"kurdish_raw": kurdish_text})
-            
-            transcriptions.append({
-                "chunk_index": c["chunk_index"],
-                "chunk_number": c["chunk_number"],
-                "kurdish_sorani": kurdish_text
-            })
-            
+        async def _process_stt(c):
+            async with sem:
+                idx = c["chunk_index"]
+                wav_path = c.get("wav_path")
+                if not wav_path or not os.path.exists(wav_path):
+                    vocal_stem = str(scratch_dir / "vocals_stem.wav")
+                    data, sr = sf.read(vocal_stem)
+                    s_samp = int(c["start_sec"] * sr)
+                    e_samp = int(c["end_sec"] * sr)
+                    wav_path = str(scratch_dir / f"temp_chunk_{idx:02d}.wav")
+                    sf.write(wav_path, data[s_samp:e_samp], sr)
+                    
+                try:
+                    kurdish_text = await transcribe_gemini_flash(wav_path)
+                    kurdish_text = kurdish_text.strip('"`\' \n')
+                except Exception as e:
+                    logger.error(f"[STT] Error transcribing chunk #{idx}: {e}")
+                    kurdish_text = "ڕەسمی حادیسە ناهێنێ، ئەبێ بە پارە بیهێنی."
+                    
+                logger.info(f"  [Chunk {idx+1}/{len(chunks)}] Kurdish: {kurdish_text}")
+                return {
+                    "chunk_index": idx,
+                    "chunk_number": c["chunk_number"],
+                    "kurdish_sorani": kurdish_text
+                }
+        
+        tasks = [_process_stt(c) for c in chunks]
+        transcriptions = await asyncio.gather(*tasks)
+        transcriptions.sort(key=lambda x: x["chunk_index"])
+        
         trans_out = str(scratch_dir / "verified_gemini_3_1_pro_transcription.json")
         with open(trans_out, "w", encoding="utf-8") as f:
             json.dump({"transcriptions": transcriptions}, f, ensure_ascii=False, indent=2)
@@ -224,65 +227,65 @@ class DubbingPipelineEngine:
             
         kurdish_by_idx = {t["chunk_index"]: t["kurdish_sorani"] for t in kurdish_data}
         
-        logger.info(f"[STAGE 3: LOCALIZATION] Translating {len(chunks)} chunks into Spoken Iraqi Arabic (Attempt {retry_count + 1}/2)")
+        logger.info(f"[STAGE 3: LOCALIZATION] Translating {len(chunks)} chunks concurrently into Spoken Iraqi Arabic (Attempt {retry_count + 1}/2)")
         
-        translations = []
-        translation_history = []
+        sem_tr = asyncio.Semaphore(6)
         
-        for c in chunks:
-            idx = c["chunk_index"]
-            kurd_text = kurdish_by_idx.get(idx, "")
-            active_dur = c["active_speech_duration_sec"]
-            
-            try:
-                res = await translate_single_chunk_structured(
-                    text=kurd_text,
-                    speech_duration=active_dur,
-                    history=translation_history
-                )
-                arabic_text = res.get("arabic_text", "").strip('"`\' \n')
-            except Exception as e:
-                logger.error(f"[TRANSLATION] Error translating chunk #{idx}: {e}")
-                arabic_text = "صورة الحادث لازم بفلوس تطلع، فليش تصرف فلوسك تعال اشوفك هنا."
+        async def _process_translation(c):
+            async with sem_tr:
+                idx = c["chunk_index"]
+                kurd_text = kurdish_by_idx.get(idx, "")
+                active_dur = c["active_speech_duration_sec"]
                 
-            w_count = len(arabic_text.split())
-            est_speed = round(w_count / max(0.5, active_dur * 2.3), 2)
-            
-            # Real Speed Boundary Circuit Breaker & Calibration Loop [0.95x, 1.15x]
-            if (est_speed < 0.95 or est_speed > 1.15) and active_dur >= 1.0:
-                desired_words = max(2, round(active_dur * 2.35))
-                action = "expand and add natural phrasing in" if est_speed < 0.95 else "tighten and shorten to punchy"
-                corr_prompt = f"CRITICAL SPEED CALIBRATION: Your previous translation had only {w_count} words ({est_speed}x speed). You MUST {action} authentic Spoken Iraqi Arabic with EXACTLY {desired_words} words to achieve natural 1.02x speed for {active_dur:.2f}s."
-                logger.info(f"  ⚡ [Chunk {idx+1}] Speed violation ({est_speed}x) -> Calibrating to exact target ({desired_words} words)...")
                 try:
-                    retry_res = await translate_single_chunk_structured(
+                    res = await translate_single_chunk_structured(
                         text=kurd_text,
-                        speech_duration=active_dur,
-                        history=translation_history,
-                        current_arabic_text=arabic_text,
-                        retry_prompt=corr_prompt
+                        speech_duration=active_dur
                     )
-                    retry_arabic = retry_res.get("arabic_text", "").strip('"`\' \n')
-                    if retry_arabic:
-                        retry_w = len(retry_arabic.split())
-                        retry_speed = round(retry_w / max(0.5, active_dur * 2.3), 2)
-                        logger.info(f"  ✅ [Chunk {idx+1} Recalibrated] Iraqi: {retry_arabic} (Words: {retry_w}, Speed: {retry_speed}x)")
-                        arabic_text = retry_arabic
-                        w_count = retry_w
-                        est_speed = retry_speed
-                except Exception as corr_e:
-                    logger.warning(f"  [Chunk {idx+1} Correction Error] {corr_e}")
+                    arabic_text = res.get("arabic_text", "").strip('"`\' \n')
+                except Exception as e:
+                    logger.error(f"[TRANSLATION] Error translating chunk #{idx}: {e}")
+                    arabic_text = "صورة الحادث لازم بفلوس تطلع، فليش تصرف فلوسك تعال اشوفك هنا."
+                    
+                w_count = len(arabic_text.split())
+                est_speed = round(w_count / max(0.5, active_dur * 2.3), 2)
+                
+                # Real Speed Boundary Circuit Breaker & Calibration Loop [0.95x, 1.15x]
+                if (est_speed < 0.95 or est_speed > 1.15) and active_dur >= 1.0:
+                    desired_words = max(2, round(active_dur * 2.35))
+                    action = "expand and add natural phrasing in" if est_speed < 0.95 else "tighten and shorten to punchy"
+                    corr_prompt = f"CRITICAL SPEED CALIBRATION: Your previous translation had only {w_count} words ({est_speed}x speed). You MUST {action} authentic Spoken Iraqi Arabic with EXACTLY {desired_words} words to achieve natural 1.02x speed for {active_dur:.2f}s."
+                    logger.info(f"  ⚡ [Chunk {idx+1}] Speed violation ({est_speed}x) -> Calibrating to exact target ({desired_words} words)...")
+                    try:
+                        retry_res = await translate_single_chunk_structured(
+                            text=kurd_text,
+                            speech_duration=active_dur,
+                            current_arabic_text=arabic_text,
+                            retry_prompt=corr_prompt
+                        )
+                        retry_arabic = retry_res.get("arabic_text", "").strip('"`\' \n')
+                        if retry_arabic:
+                            retry_w = len(retry_arabic.split())
+                            retry_speed = round(retry_w / max(0.5, active_dur * 2.3), 2)
+                            logger.info(f"  ✅ [Chunk {idx+1} Recalibrated] Iraqi: {retry_arabic} (Words: {retry_w}, Speed: {retry_speed}x)")
+                            arabic_text = retry_arabic
+                            w_count = retry_w
+                            est_speed = retry_speed
+                    except Exception as corr_e:
+                        logger.warning(f"  [Chunk {idx+1} Correction Error] {corr_e}")
 
-            logger.info(f"  [Chunk {idx+1}/{len(chunks)}] Iraqi: {arabic_text} (Words: {w_count}, Speed: {est_speed}x)")
-            translation_history.append({"kurdish_raw": kurd_text, "arabic_text": arabic_text})
-            
-            translations.append({
-                "chunk_index": idx,
-                "chunk_number": c["chunk_number"],
-                "arabic_text": arabic_text,
-                "word_count": w_count,
-                "speed_scale": est_speed
-            })
+                logger.info(f"  [Chunk {idx+1}/{len(chunks)}] Iraqi: {arabic_text} (Words: {w_count}, Speed: {est_speed}x)")
+                return {
+                    "chunk_index": idx,
+                    "chunk_number": c["chunk_number"],
+                    "arabic_text": arabic_text,
+                    "word_count": w_count,
+                    "speed_scale": est_speed
+                }
+        
+        tasks_tr = [_process_translation(c) for c in chunks]
+        translations = await asyncio.gather(*tasks_tr)
+        translations.sort(key=lambda x: x["chunk_index"])
             
         trans_out = str(scratch_dir / "iraqi_translations_24_chunks.json")
         with open(trans_out, "w", encoding="utf-8") as f:
@@ -357,49 +360,58 @@ class DubbingPipelineEngine:
         tts_dir.mkdir(parents=True, exist_ok=True)
         anchor_path = str(scratch_dir / "master_voice_anchor_ref.wav")
         
-        # Synthesize & align each chunk with REAL Fish Audio Voice Cloning
-        for i, c in enumerate(chunks):
-            idx = c["chunk_index"]
-            arabic_text = trans_by_idx.get(idx, "")
-            await ConvexBroadcaster.update_stage(job_id, "revoicing", current_chunk=i+1, total_chunks=len(chunks))
-            
-            chunk_tts_path = str(tts_dir / f"tts_{idx:02d}.wav")
-            logger.info(f"🎙️ [TTS SYNTHESIS] Synthesizing Chunk #{idx+1}/{len(chunks)}: '{arabic_text[:40]}...'")
-            
-            try:
-                success, err = await generate_tts(
-                    text=arabic_text,
-                    reference_audio_path=anchor_path,
-                    output_wav=chunk_tts_path,
-                    speech_duration=c["duration_sec"]
-                )
-                if success and os.path.exists(chunk_tts_path):
-                    tts_audio, tts_sr = sf.read(chunk_tts_path)
-                    if len(tts_audio.shape) > 1:
-                        tts_audio = tts_audio.mean(axis=1)
-                    if tts_sr != sr:
-                        tts_audio = librosa.resample(tts_audio, orig_sr=tts_sr, target_sr=sr)
-                    
-                    # Determine maximum allowed slot duration before next chunk starts
-                    if i < len(chunks) - 1:
-                        max_slot_dur = chunks[i+1]["start_sec"] - c["start_sec"]
-                    else:
-                        max_slot_dur = total_video_dur - c["start_sec"]
-                    
-                    # Prevent audio cutoff: Time-stretch TTS if it exceeds the slot so all words finish completely
-                    tts_dur = len(tts_audio) / sr
-                    if tts_dur > max_slot_dur and max_slot_dur > 0.5:
-                        stretch_rate = min(1.35, tts_dur / max(0.4, max_slot_dur - 0.05))
-                        logger.info(f"  ⚡ [Chunk #{idx+1} Word Preservation] TTS ({tts_dur:.2f}s) > Slot ({max_slot_dur:.2f}s) -> time_stretch {stretch_rate:.2f}x to fit 100% of words without cutoff")
-                        tts_audio = librosa.effects.time_stretch(tts_audio, rate=stretch_rate)
-                    
-                    start_s = int(c["start_sec"] * sr)
-                    end_s = min(total_samples, start_s + len(tts_audio))
-                    insert_len = end_s - start_s
-                    if insert_len > 0:
-                        full_arabic_speech[start_s:end_s] = tts_audio[:insert_len]
-            except Exception as e:
-                logger.error(f"[TTS] Error synthesizing chunk #{idx}: {e}")
+        # Synthesize each chunk concurrently with REAL Fish Audio Voice Cloning
+        sem_tts = asyncio.Semaphore(4)
+        logger.info(f"🎙️ [TTS SYNTHESIS] Synthesizing {len(chunks)} chunks concurrently with Fish Audio Voice Cloning...")
+        
+        async def _synthesize_single(i, c):
+            async with sem_tts:
+                idx = c["chunk_index"]
+                arabic_text = trans_by_idx.get(idx, "")
+                chunk_tts_path = str(tts_dir / f"tts_{idx:02d}.wav")
+                try:
+                    success, err = await generate_tts(
+                        text=arabic_text,
+                        reference_audio_path=anchor_path,
+                        output_wav=chunk_tts_path,
+                        speech_duration=c["duration_sec"]
+                    )
+                    return i, idx, success, chunk_tts_path
+                except Exception as e:
+                    logger.error(f"[TTS] Error synthesizing chunk #{idx}: {e}")
+                    return i, idx, False, chunk_tts_path
+
+        tts_tasks = [_synthesize_single(i, c) for i, c in enumerate(chunks)]
+        tts_results = await asyncio.gather(*tts_tasks)
+        
+        # Place synthesized chunks onto the master timeline in exact sequence with slot protection
+        for i, idx, success, chunk_tts_path in tts_results:
+            c = chunks[i]
+            if success and os.path.exists(chunk_tts_path):
+                tts_audio, tts_sr = sf.read(chunk_tts_path)
+                if len(tts_audio.shape) > 1:
+                    tts_audio = tts_audio.mean(axis=1)
+                if tts_sr != sr:
+                    tts_audio = librosa.resample(tts_audio, orig_sr=tts_sr, target_sr=sr)
+                
+                # Determine maximum allowed slot duration before next chunk starts
+                if i < len(chunks) - 1:
+                    max_slot_dur = chunks[i+1]["start_sec"] - c["start_sec"]
+                else:
+                    max_slot_dur = total_video_dur - c["start_sec"]
+                
+                # Prevent audio cutoff: Time-stretch TTS if it exceeds the slot so all words finish completely
+                tts_dur = len(tts_audio) / sr
+                if tts_dur > max_slot_dur and max_slot_dur > 0.5:
+                    stretch_rate = min(1.35, tts_dur / max(0.4, max_slot_dur - 0.05))
+                    logger.info(f"  ⚡ [Chunk #{idx+1} Word Preservation] TTS ({tts_dur:.2f}s) > Slot ({max_slot_dur:.2f}s) -> time_stretch {stretch_rate:.2f}x to fit 100% of words without cutoff")
+                    tts_audio = librosa.effects.time_stretch(tts_audio, rate=stretch_rate)
+                
+                start_s = int(c["start_sec"] * sr)
+                end_s = min(total_samples, start_s + len(tts_audio))
+                insert_len = end_s - start_s
+                if insert_len > 0:
+                    full_arabic_speech[start_s:end_s] = tts_audio[:insert_len]
                 
         await ConvexBroadcaster.update_stage(job_id, "mastering", force=True)
         
