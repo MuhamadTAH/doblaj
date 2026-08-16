@@ -1,5 +1,6 @@
 import os
 import asyncio
+import re
 import uuid
 import logging
 from typing import Optional
@@ -10,6 +11,52 @@ from fastapi import HTTPException
 # PIRD-013: versioned consent text. Bumping this version forces every
 # user to re-consent before any further biometric data is processed.
 CONSENT_TEXT_VERSION = "2026-07-26.1"
+
+
+# Part04 / Layer 2: per-field validation for the multipart Form fields
+# on `create_job`. Length caps and charset allowlists prevent log
+# injection, Convex-doc bloat, and path-prefix confusion downstream.
+_FIELD_CONSTRAINTS = {
+    "voice_id":            {"max_length": 128, "pattern": r"^[A-Za-z0-9_-]+$"},
+    "category":            {"max_length": 64,  "no_control_chars": True},
+    "entity":              {"max_length": 64,  "no_control_chars": True},
+    "consent_text_version": {"max_length": 32, "no_control_chars": True},
+}
+
+
+def _validate_form_field(name: str, value: Optional[str]) -> None:
+    """Validate one multipart Form field. Raises HTTP 400 on violation.
+
+    `None` is allowed (the field is optional). For known fields the
+    length cap and charset are looked up in `_FIELD_CONSTRAINTS`; for
+    unknown fields the call is a no-op (the route validates what it
+    declares; the helper does not invent constraints).
+    """
+    if hasattr(value, "default"):
+        value = value.default
+    if value is None:
+        return
+    if not isinstance(value, str):
+        raise HTTPException(status_code=400, detail=f"{name}: must be a string")
+
+    spec = _FIELD_CONSTRAINTS.get(name)
+    if spec is None:
+        return
+    if len(value) > spec["max_length"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{name}: max length {spec['max_length']} characters",
+        )
+    if spec.get("no_control_chars") and any(ord(c) < 0x20 or ord(c) == 0x7f for c in value):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{name}: control characters are not allowed",
+        )
+    if "pattern" in spec and not re.fullmatch(spec["pattern"], value):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{name}: invalid format",
+        )
 
 
 async def _check_voice_recording_consent(user, consent_text_version: Optional[str] = None) -> None:
@@ -164,7 +211,14 @@ async def create_job(
     # PIRD-006: enforce video content type.
     if not (file.content_type or "").startswith("video/"):
         raise HTTPException(status_code=400, detail=f"Expected video/* content type, got {file.content_type!r}")
-    
+
+    # Part04 / Layer 2: validate free-form Form fields before any
+    # downstream write or log line consumes them.
+    _validate_form_field("voice_id", voice_id)
+    _validate_form_field("category", category)
+    _validate_form_field("entity", entity)
+    _validate_form_field("consent_text_version", consent_text_version)
+
     # PIRD-013: voice-recording consent gate.
     await _check_voice_recording_consent(user, consent_text_version)
 
@@ -263,11 +317,11 @@ async def create_job(
     from app.services import r2
     
     try:
-        # RunPod Serverless path: upload source to R2 so the worker can pull it.
-        # Local fallback path (no RunPod): keep the file on local disk.
-        if runpod_endpoint and r2.R2_ENDPOINT:
+        # RunPod Serverless or Webhook Worker path: upload source to R2 so the worker can pull it.
+        # Local fallback path (no worker configured): keep the file on local disk.
+        if (runpod_endpoint or mcp_webhook_url) and r2.R2_ENDPOINT:
             source_r2_key = r2.dubbing_key(user.workspace_id, job_id, safe_filename)
-            logger.info(f"Uploading input video to R2 for Serverless job: {source_r2_key}")
+            logger.info(f"Uploading input video to R2 for worker: {source_r2_key}")
             await asyncio.to_thread(r2.upload_file, source_r2_key, str(input_path))
             # Clean up local input path to save space
             if input_path.exists():
@@ -295,8 +349,41 @@ async def create_job(
         logger.exception("Failed to create video job")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-    # Start orchestrator: RunPod Serverless (GPU) when configured, else local.
-    if runpod_endpoint and runpod_api_key:
+    mcp_webhook_url = os.getenv("MCP_WEBHOOK_URL")
+
+    # Start orchestrator: Webhook Push, RunPod Serverless (GPU), or fallback to local
+    if mcp_webhook_url:
+        logger.info(f"Triggering Local MCP Webhook Push {mcp_webhook_url} for job {job_id}")
+        async def trigger_webhook():
+            try:
+                payload = {
+                    "job_id": job_id,
+                    "workspace_id": user.workspace_id,
+                }
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.post(mcp_webhook_url, json=payload)
+                    resp.raise_for_status()
+                    logger.info(f"MCP Webhook Push triggered successfully: {resp.json()}")
+            except Exception as trigger_err:
+                logger.error(f"Failed to trigger Webhook for job {job_id}: {trigger_err}")
+                try:
+                    await database.add_workspace_minutes(user_client, workspace_id=user.workspace_id, minutes=duration_minutes)
+                    logger.info(f"Refunded {duration_minutes} minutes to workspace {safe_ws(user.workspace_id)} due to Webhook trigger failure")
+                except Exception as refund_err:
+                    logger.error(f"Failed to refund minutes for workspace {safe_ws(user.workspace_id)}: {refund_err}")
+                try:
+                    await database.update_job_status(
+                        user_client,
+                        workspace_id=user.workspace_id,
+                        job_id=job_id,
+                        status="failed",
+                        error=f"Failed to push to local MCP worker: {trigger_err}",
+                    )
+                except Exception as db_err:
+                    logger.error(f"Failed to write failure to database: {db_err}")
+
+        background_tasks.add_task(trigger_webhook)
+    elif runpod_endpoint and runpod_api_key:
         logger.info(f"Triggering RunPod Serverless endpoint {runpod_endpoint} for job {job_id}")
         async def trigger_runpod():
             try:
