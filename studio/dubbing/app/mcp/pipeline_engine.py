@@ -47,16 +47,34 @@ class DubbingPipelineEngine:
         dur_res = subprocess.run(cmd_dur, capture_output=True, text=True, check=True)
         total_video_dur = float(dur_res.stdout.strip())
         
-        # 3. Read audio data
-        data, sr = sf.read(raw_audio_path)
+        # 3. Neural AI Stem Separation (BS-RoFormer & DeepFilterNet3)
+        iso_dir = scratch_dir / "isolation"
+        iso_dir.mkdir(parents=True, exist_ok=True)
+        vocal_stem_path = str(scratch_dir / "vocals_stem.wav")
+        noise_stem_path = str(scratch_dir / "noise_stem.wav")
+        
+        logger.info(f"🎙️ [ISOLATION] Running BS-RoFormer & DeepFilterNet Neural Stem Separation...")
+        try:
+            from app.services.vcta import isolation
+            iso_res = await asyncio.to_thread(isolation.run_vcta_pipeline, raw_audio_path, str(iso_dir))
+            clean_voc = iso_res.get("paths", {}).get("vocals") or iso_res.get("vocals") or str(iso_dir / "vocals_stem_fish_44k1.wav")
+            clean_inst = iso_res.get("paths", {}).get("instrumental") or iso_res.get("instrumental") or str(iso_dir / "Audio_3_Noise_Only.wav")
+            
+            shutil.copy2(clean_voc, vocal_stem_path)
+            shutil.copy2(clean_inst, noise_stem_path)
+            logger.info(f"  ✅ BS-RoFormer neural separation complete: isolated vocals and background stems!")
+        except Exception as iso_err:
+            logger.warning(f"  [ISOLATION FALLBACK] Could not run RoFormer ({iso_err}). Using raw audio extraction.")
+            data_raw, sr_raw = sf.read(raw_audio_path)
+            if len(data_raw.shape) > 1: data_raw = data_raw.mean(axis=1)
+            sf.write(vocal_stem_path, data_raw, sr_raw)
+            sf.write(noise_stem_path, np.zeros_like(data_raw), sr_raw)
+            
+        # Read clean isolated vocals for transcription, VAD, and voice cloning
+        data, sr = sf.read(vocal_stem_path)
         if len(data.shape) > 1:
             data = data.mean(axis=1)
             
-        vocal_stem_path = str(scratch_dir / "vocals_stem.wav")
-        noise_stem_path = str(scratch_dir / "noise_stem.wav")
-        sf.write(vocal_stem_path, data, sr)
-        sf.write(noise_stem_path, data * 0.2, sr)
-        
         # 4. Extract Clean 4.0s Master Voice Anchor for Global Speaker Identity Lock
         anchor_path = str(scratch_dir / "master_voice_anchor_ref.wav")
         anchor_len = min(len(data), int(4.0 * sr))
@@ -434,7 +452,22 @@ class DubbingPipelineEngine:
                 
         await ConvexBroadcaster.update_stage(job_id, "mastering", force=True)
         
-        # Read original audio for background music / Quran outro preservation
+        # Load the REAL isolated background stem (BS-RoFormer isolated ambient sounds, music, car sounds, effects)
+        bg_stem_path = str(scratch_dir / "noise_stem.wav")
+        if os.path.exists(bg_stem_path):
+            bg_audio, bg_sr = sf.read(bg_stem_path)
+            if len(bg_audio.shape) > 1:
+                bg_audio = bg_audio.mean(axis=1)
+            if bg_sr != sr:
+                bg_audio = librosa.resample(bg_audio, orig_sr=bg_sr, target_sr=sr)
+            if len(bg_audio) > total_samples:
+                bg_audio = bg_audio[:total_samples]
+            elif len(bg_audio) < total_samples:
+                bg_audio = np.pad(bg_audio, (0, total_samples - len(bg_audio)))
+        else:
+            bg_audio = np.zeros(total_samples, dtype=np.float32)
+
+        # Read original audio for outro / music fade if needed
         orig_audio_path = str(scratch_dir / "orig_audio_outro.wav")
         cmd_ext = ["ffmpeg", "-y", "-i", original_video_path, "-vn", "-ar", "44100", "-ac", "1", orig_audio_path]
         subprocess.run(cmd_ext, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
@@ -443,29 +476,17 @@ class DubbingPipelineEngine:
         if len(orig_audio) > total_samples: orig_audio = orig_audio[:total_samples]
         elif len(orig_audio) < total_samples: orig_audio = np.pad(orig_audio, (0, total_samples - len(orig_audio)))
         
-        # Identify the end of dialogue to preserve pristine outro (Quran/music) without Kurdish vocal bleed
+        # Check if there is an outro silence section (e.g. Quran recitation or outro music after speech ends)
         last_speech_sec = max([c["end_sec"] for c in chunks]) if chunks else total_video_dur
-        has_outro = (total_video_dur - last_speech_sec) >= 2.0
-        
-        bg_mix_track = np.zeros(total_samples, dtype=np.float32)
+        has_outro = (total_video_dur - last_speech_sec) >= 1.5
         
         if has_outro:
-            outro_start_sample = int(last_speech_sec * sr)
-            fade_len = min(int(0.8 * sr), total_samples - outro_start_sample)
-            
-            # During speech: zero original vocal bleed (use quiet ambient noise if available, else zero)
-            # Crossfade into full original outro after dialogue finishes
-            for idx_pos in range(fade_len):
-                pos = outro_start_sample + idx_pos
-                if pos < total_samples:
-                    alpha = idx_pos / max(1, fade_len)
-                    bg_mix_track[pos] = alpha * orig_audio[pos]
-            post_fade = outro_start_sample + fade_len
-            if post_fade < total_samples:
-                bg_mix_track[post_fade:] = orig_audio[post_fade:] * 1.0
-        
-        # Mix Arabic speech with background track (zero Kurdish bleed during dialogue)
-        final_master_audio = full_arabic_speech + bg_mix_track
+            outro_start = int(last_speech_sec * sr)
+            bg_audio[outro_start:] = orig_audio[outro_start:]
+
+        # Mix synthesized Arabic speech with the REAL background sound track!
+        # Background music/noise is preserved at natural volume (0.90x) throughout the entire video
+        final_master_audio = full_arabic_speech + (bg_audio * 0.90)
         peak = np.max(np.abs(final_master_audio)) if len(final_master_audio) > 0 else 1.0
         if peak > 0.96:
             final_master_audio = final_master_audio * (0.96 / peak)
