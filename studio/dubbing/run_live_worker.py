@@ -138,12 +138,11 @@ async def handle_webhook_run_job(payload: WebhookPayload, background_tasks: Back
 
 def start_webhook_server():
     print("="*90)
-    print("  🚀 DOBLAJ LIVE LOCAL MCP WORKER (Push Webhook Mode)")
+    print("  [DOBLAJ LIVE LOCAL MCP WORKER] (Push Webhook Mode)")
     print("="*90)
     print("Listening on http://127.0.0.1:8002 for incoming Webhooks from Railway...")
-    print("Run this command in a NEW terminal to connect to Railway:")
-    print("    cloudflared tunnel --url http://127.0.0.1:8002\n")
-    uvicorn.run(app, host="127.0.0.1", port=8002, log_level="warning")
+    print("Permanent tunnel endpoint: https://worker.doblaj.com\n")
+    uvicorn.run(app, host="127.0.0.1", port=8002, log_level="info")
 
 if __name__ == "__main__":
     start_webhook_server()
