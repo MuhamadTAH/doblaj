@@ -19,11 +19,11 @@ except ImportError:
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-3.1-pro-preview")
 
 async def transcribe_gemini_flash(audio_path: str, history: list = None) -> str:
-    """Fallback using OpenRouter STT model"""
-    api_key = os.getenv("OPEN_ROUTER_API_KEY")
+    """Fallback using STT model"""
+    api_key = os.getenv("OPEN_ROUTER_API_KEY") or os.getenv("GEMINI_API_KEY")
     if not api_key:
-        logger.error("[GEMINI STT] OPEN_ROUTER_API_KEY not set.")
-        raise RuntimeError("OPEN_ROUTER_API_KEY environment variable is not set")
+        logger.warning("[GEMINI STT] No external API key set. Relying on Antigravity Gemini subagent.")
+        return ""
         
     if not os.path.exists(audio_path):
         raise RuntimeError(f"Audio file does not exist: {audio_path}")

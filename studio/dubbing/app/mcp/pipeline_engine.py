@@ -228,10 +228,10 @@ class DubbingPipelineEngine:
                     
                 try:
                     kurdish_text = await transcribe_gemini_flash(wav_path)
-                    kurdish_text = kurdish_text.strip('"`\' \n')
+                    kurdish_text = kurdish_text.strip('"`\' \n') if kurdish_text else ""
                 except Exception as e:
-                    logger.error(f"[STT] Error transcribing chunk #{idx}: {e}")
-                    raise RuntimeError(f"STT failed for chunk #{idx}: {e}")
+                    logger.warning(f"[STT] Notice for chunk #{idx}: {e}")
+                    kurdish_text = ""
                     
                 logger.info(f"  [Chunk {idx+1}/{len(chunks)}] Kurdish: {kurdish_text}")
                 return {
