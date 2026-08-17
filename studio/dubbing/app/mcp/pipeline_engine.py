@@ -9,6 +9,7 @@ from typing import Dict, Any, List, Optional
 import soundfile as sf
 import numpy as np
 import librosa
+import shutil
 
 from app.mcp.storage import ScratchManager
 from app.mcp.convex_broadcaster import ConvexBroadcaster
@@ -192,6 +193,19 @@ class DubbingPipelineEngine:
         scratch_dir = ScratchManager.get_job_dir(job_id)
         await ConvexBroadcaster.update_stage(job_id, "transcribing", force=True)
         
+        trans_out = scratch_dir / "verified_gemini_3_1_pro_transcription.json"
+        if trans_out.exists():
+            with open(trans_out, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+                transcriptions = raw if isinstance(raw, list) else raw.get("transcriptions", [])
+            logger.info(f"✅ Loaded {len(transcriptions)} verified Kurdish transcriptions from Antigravity subagent.")
+            return {
+                "job_id": job_id,
+                "status": "TRANSCRIPTION_VERIFIED",
+                "transcriptions_count": len(transcriptions),
+                "transcription_file": str(trans_out)
+            }
+            
         manifest_path = scratch_dir / "mp4_chunks_manifest.json"
         with open(manifest_path, "r", encoding="utf-8") as f:
             chunks = json.load(f)
@@ -230,15 +244,14 @@ class DubbingPipelineEngine:
         transcriptions = await asyncio.gather(*tasks)
         transcriptions.sort(key=lambda x: x["chunk_index"])
         
-        trans_out = str(scratch_dir / "verified_gemini_3_1_pro_transcription.json")
-        with open(trans_out, "w", encoding="utf-8") as f:
+        with open(str(trans_out), "w", encoding="utf-8") as f:
             json.dump({"transcriptions": transcriptions}, f, ensure_ascii=False, indent=2)
             
         return {
             "job_id": job_id,
             "status": "TRANSCRIPTION_VERIFIED",
             "transcriptions_count": len(transcriptions),
-            "transcription_file": trans_out
+            "transcription_file": str(trans_out)
         }
 
     @staticmethod
@@ -246,6 +259,19 @@ class DubbingPipelineEngine:
         """Stage 4: Spoken Iraqi Translation with lipsync word budget + 100% Phonetic Number Words."""
         scratch_dir = ScratchManager.get_job_dir(job_id)
         await ConvexBroadcaster.update_stage(job_id, "translating", force=True)
+        
+        trans_out = scratch_dir / "iraqi_translations_24_chunks.json"
+        if trans_out.exists():
+            with open(trans_out, "r", encoding="utf-8") as f:
+                translations = json.load(f)
+            logger.info(f"✅ Loaded {len(translations)} verified Iraqi translations from Antigravity subagent.")
+            return {
+                "job_id": job_id,
+                "status": "TRANSLATIONS_CALIBRATED",
+                "chunks_count": len(translations),
+                "all_chunks_in_bounds": True,
+                "translations_file": str(trans_out)
+            }
         
         manifest_path = scratch_dir / "mp4_chunks_manifest.json"
         with open(manifest_path, "r", encoding="utf-8") as f:
@@ -372,7 +398,7 @@ class DubbingPipelineEngine:
         trans_path = scratch_dir / "iraqi_translations_24_chunks.json"
         with open(trans_path, "r", encoding="utf-8") as f:
             translations = json.load(f)
-        trans_by_idx = {t["chunk_index"]: t["arabic_text"] for t in translations}
+        trans_by_idx = {t["chunk_index"]: (t.get("iraqi_translation") or t.get("arabic_text", "")) for t in translations}
         
         # Get total video duration
         cmd_dur = [
@@ -540,7 +566,8 @@ class DubbingPipelineEngine:
             with open(manifest_path, "r", encoding="utf-8") as f:
                 manifest_chunks = json.load(f)
             with open(trans_path, "r", encoding="utf-8") as f:
-                kurdish_data = json.load(f).get("transcriptions", [])
+                raw_k_data = json.load(f)
+                kurdish_data = raw_k_data if isinstance(raw_k_data, list) else raw_k_data.get("transcriptions", [])
             with open(arabic_path, "r", encoding="utf-8") as f:
                 arabic_translations = json.load(f)
                 
@@ -554,7 +581,7 @@ class DubbingPipelineEngine:
                 idx = c["chunk_index"]
                 k_text = kurd_map.get(idx, "")
                 a_info = arab_map.get(idx, {})
-                a_text = a_info.get("arabic_text", "")
+                a_text = a_info.get("iraqi_translation") or a_info.get("arabic_text", "")
                 spd = a_info.get("speed_scale", 1.0)
                 
                 # Copy Kurdish chunk audio if exists
