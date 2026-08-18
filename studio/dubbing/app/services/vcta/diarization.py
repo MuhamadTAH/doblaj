@@ -273,8 +273,8 @@ def execute_acoustic_routing(vocal_stem_path: str):
     # 3. Interval Subtraction
     final_primary_turns = subtract_purged_from_primary(raw_primary_turns, final_purged_turns)
 
-    # 4. Micro-Gap Cleanup (Drop orphaned fragments < 1.5s)
-    final_primary_turns = [t for t in final_primary_turns if (t["end"] - t["start"]) > 1.5]
+    # 4. Micro-Gap Cleanup (Drop only sub-200ms acoustic glitches)
+    final_primary_turns = [t for t in final_primary_turns if (t["end"] - t["start"]) > 0.2]
 
     logger.info(f"[STAGE 2 COMPLETE] Speech turns: {len(final_primary_turns)} | Purged turns: {len(final_purged_turns)}")
 

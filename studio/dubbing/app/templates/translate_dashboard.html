@@ -217,6 +217,20 @@
                         <input type="text" id="entityInput" list="entityOptions" placeholder="بۆ نموونە: ford_f150, toyota_camry..." style="padding: 0.75rem; background: #1e293b; border-radius: 8px; color: #fff; border: 1px solid var(--border-color); width: 100%;">
                         <datalist id="entityOptions"></datalist>
                     </div>
+                    <!-- Live Upload Progress Card -->
+                    <div id="step1ProgressCard" style="display:none; margin-top: 1rem; background: #0f172a; border: 1px solid rgba(99,102,241,0.3); border-radius: 8px; padding: 0.85rem 1rem;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 0.4rem;">
+                            <span id="step1Stats" style="color: #cbd5e1; font-weight: 600;">0.0 MB / 0.0 MB (0%)</span>
+                            <span id="step1Remain" style="color: #818cf8; font-weight: 600;">-- MB remaining</span>
+                        </div>
+                        <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.08); border-radius: 999px; overflow: hidden;">
+                            <div id="step1Bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #6366f1, #a855f7); border-radius: 999px; transition: width 0.15s ease;"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-top: 0.4rem; color: #94a3b8;">
+                            <span id="step1Speed">⚡ 0.0 MB/s</span>
+                            <span id="step1Eta">⏳ ETA: --</span>
+                        </div>
+                    </div>
                     <video id="res-1-video" controls style="display:none;"></video>
                 </div>
             </div>
@@ -377,30 +391,103 @@
         document.getElementById(`card-${stepNum}`).classList.add('done');
     }
 
-    async function apiCall(endpoint, formData, stepNum) {
+    async function apiCall(endpoint, formData, stepNum, onProgress = null) {
         lockAllButtons();
         startPolling();
         appendLog(`> Executing ${endpoint}...`, "INFO");
         
-        try {
-            const res = await fetch(endpoint, { method: 'POST', body: formData });
-            if (!res.ok) {
-                const errData = await res.json();
-                throw new Error(errData.detail || `HTTP ${res.status}`);
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            const startTime = Date.now();
+            let lastLoaded = 0;
+            let lastTime = startTime;
+            let speedAvg = 0;
+
+            if (xhr.upload && onProgress) {
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable && e.total > 0) {
+                        const now = Date.now();
+                        const loadedMB = (e.loaded / (1024 * 1024)).toFixed(1);
+                        const totalMB = (e.total / (1024 * 1024)).toFixed(1);
+                        const remainBytes = Math.max(0, e.total - e.loaded);
+                        const remainMB = (remainBytes / (1024 * 1024)).toFixed(1);
+                        const pct = Math.min(100, Math.round((e.loaded / e.total) * 100));
+
+                        const timeDiff = (now - lastTime) / 1000;
+                        if (timeDiff > 0.25) {
+                            const instantSpeed = ((e.loaded - lastLoaded) / (1024 * 1024)) / timeDiff;
+                            speedAvg = speedAvg === 0 ? instantSpeed : (speedAvg * 0.7 + instantSpeed * 0.3);
+                            lastLoaded = e.loaded;
+                            lastTime = now;
+                        } else if (speedAvg === 0) {
+                            const elapsed = (now - startTime) / 1000;
+                            if (elapsed > 0.2) speedAvg = (e.loaded / (1024 * 1024)) / elapsed;
+                        }
+
+                        let etaStr = '--';
+                        if (speedAvg > 0.05 && remainBytes > 0) {
+                            const remainSec = Math.round((remainBytes / (1024 * 1024)) / speedAvg);
+                            if (remainSec < 60) {
+                                etaStr = `${remainSec}s`;
+                            } else {
+                                const mins = Math.floor(remainSec / 60);
+                                const secs = remainSec % 60;
+                                etaStr = `${mins}m ${secs}s`;
+                            }
+                        }
+
+                        onProgress({
+                            loaded: e.loaded,
+                            total: e.total,
+                            loadedMB,
+                            totalMB,
+                            remainMB,
+                            pct,
+                            speedMBs: speedAvg > 0 ? speedAvg.toFixed(1) : '0.0',
+                            eta: etaStr
+                        });
+                    }
+                });
             }
-            const data = await res.json();
-            stopPolling();
-            appendLog(`> Success.`, "INFO");
-            markCardDone(stepNum);
-            unlockCard(stepNum + 1);
-            return data;
-        } catch (e) {
-            stopPolling();
-            setTerminalStatus("ERROR", "error");
-            appendLog(`> FATAL ERROR: ${e.message}`, "ERROR");
-            document.getElementById(`btn-${stepNum}`).disabled = false; // Re-enable current step
-            throw e;
-        }
+
+            xhr.addEventListener('load', () => {
+                stopPolling();
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        appendLog(`> Success.`, "INFO");
+                        markCardDone(stepNum);
+                        unlockCard(stepNum + 1);
+                        resolve(data);
+                    } catch (err) {
+                        resolve(xhr.responseText);
+                    }
+                } else {
+                    setTerminalStatus("ERROR", "error");
+                    let errDetail = `HTTP ${xhr.status}`;
+                    try {
+                        const errObj = JSON.parse(xhr.responseText);
+                        if (errObj.detail) errDetail = errObj.detail;
+                    } catch (_) {}
+                    appendLog(`> FATAL ERROR: ${errDetail}`, "ERROR");
+                    const btn = document.getElementById(`btn-${stepNum}`);
+                    if (btn) btn.disabled = false;
+                    reject(new Error(errDetail));
+                }
+            });
+
+            xhr.addEventListener('error', () => {
+                stopPolling();
+                setTerminalStatus("ERROR", "error");
+                appendLog(`> Network connection failed during upload`, "ERROR");
+                const btn = document.getElementById(`btn-${stepNum}`);
+                if (btn) btn.disabled = false;
+                reject(new Error('Network error'));
+            });
+
+            xhr.open('POST', endpoint);
+            xhr.send(formData);
+        });
     }
 
     async function saveSession() {
@@ -530,6 +617,18 @@
         const file = document.getElementById('videoInput').files[0];
         if (!file) { alert("Please select a video!"); return; }
         
+        const progCard = document.getElementById('step1ProgressCard');
+        const statsEl = document.getElementById('step1Stats');
+        const remainEl = document.getElementById('step1Remain');
+        const barEl = document.getElementById('step1Bar');
+        const speedEl = document.getElementById('step1Speed');
+        const etaEl = document.getElementById('step1Eta');
+        
+        if (progCard) progCard.style.display = 'block';
+        const fileMB = (file.size / (1024 * 1024)).toFixed(1);
+        if (statsEl) statsEl.textContent = `0.0 MB / ${fileMB} MB (0%)`;
+        if (remainEl) remainEl.textContent = `${fileMB} MB remaining`;
+        
         const fd = new FormData();
         fd.append("file", file);
         
@@ -543,7 +642,21 @@
             fd.append("category_id", categoryVal);
         }
         
-        const data = await apiCall('/video/manual/step1-upload', fd, 1);
+        const data = await apiCall('/video/manual/step1-upload', fd, 1, (p) => {
+            if (p.pct < 100) {
+                if (statsEl) statsEl.textContent = `${p.loadedMB} MB / ${p.totalMB} MB (${p.pct}%)`;
+                if (remainEl) remainEl.textContent = `${p.remainMB} MB remaining`;
+                if (barEl) barEl.style.width = `${p.pct}%`;
+                if (speedEl) speedEl.textContent = `⚡ ${p.speedMBs} MB/s`;
+                if (etaEl) etaEl.textContent = `⏳ ETA: ${p.eta}`;
+            } else {
+                if (statsEl) statsEl.textContent = `${p.totalMB} MB / ${p.totalMB} MB (100%)`;
+                if (remainEl) remainEl.textContent = `✓ Upload complete`;
+                if (barEl) barEl.style.width = '100%';
+                if (speedEl) speedEl.textContent = `⚡ Complete`;
+                if (etaEl) etaEl.textContent = `Processing on server...`;
+            }
+        });
         
         if (data.restored) {
             restoreState(data);

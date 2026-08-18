@@ -1,3 +1,5 @@
+import { uploadWithAuthProgress, type TokenGetter, type UploadProgressData } from "../lib/apiClient";
+
 // Dubbing API client. Calls /video/* through FastAPI. FastAPI verifies
 // the Clerk session cookie set by the shell, then proxies reads/writes
 // to the Convex backend.
@@ -17,6 +19,30 @@ export type DubJob = {
   updated_at?: string | null;
 };
 
+export type UploadProgressInfo = UploadProgressData;
+
+export async function submitDubJobWithProgress(
+  getToken: TokenGetter,
+  file: File,
+  meta?: { category?: string; entity?: string; consent_text_version?: string },
+  onProgress?: (progress: UploadProgressInfo) => void,
+  signal?: AbortSignal
+): Promise<{ id: string; status: DubJobStatus }> {
+  const form = new FormData();
+  form.append("file", file);
+  if (meta?.category) form.append("category", meta.category);
+  if (meta?.entity) form.append("entity", meta.entity);
+  if (meta?.consent_text_version) form.append("consent_text_version", meta.consent_text_version);
+
+  return uploadWithAuthProgress<{ id: string; status: DubJobStatus }>(
+    getToken,
+    `${API_BASE}/video/jobs`,
+    form,
+    onProgress,
+    signal
+  );
+}
+
 export async function submitDubJob(
   fetchClient: typeof fetch,
   file: File,
@@ -25,9 +51,6 @@ export async function submitDubJob(
 ): Promise<{ id: string; status: DubJobStatus }> {
   const form = new FormData();
   form.append("file", file);
-  // Pird: Optional category + entity so the downstream pipeline can
-  // tailor translation (e.g. preserve "Ford F-150" as a brand). Both
-  // are optional — backend falls back to "general" when missing.
   if (meta?.category) form.append("category", meta.category);
   if (meta?.entity) form.append("entity", meta.entity);
   if (meta?.consent_text_version) form.append("consent_text_version", meta.consent_text_version);

@@ -265,6 +265,9 @@ def find_best_silence_split(audio_data: np.ndarray, sample_rate: int, search_sta
             
     return best_time
 
+# Alias for backward compatibility
+find_optimal_split_point = find_best_silence_split
+
 
 def segment_audio_pause_first(
     audio_data: np.ndarray,
@@ -311,33 +314,56 @@ def segment_audio_pause_first(
     if in_pause:
         pauses.append((p_start, total_sec, total_sec - p_start))
         
-    # 3. Build chunks strictly by splitting on natural breath pauses
+    # 3. Build chunks strictly by selecting optimal natural breath pauses (3.5s to 9.0s)
     chunks = []
     cur_start = 0.0
     
-    for p_start, p_end, p_dur in pauses:
-        cur_len = p_start - cur_start
-        # Split if at least min_dur of speech or any major action pause >= 800ms
-        if cur_len >= min_dur or p_dur >= 0.8:
-            mid_split = (p_start + p_end) / 2.0
-            chunks.append({
-                "start": round(cur_start, 2),
-                "end": round(mid_split, 2),
-                "duration": round(mid_split - cur_start, 2),
-                "speaker": "SPEAKER_00"
-            })
-            cur_start = round(mid_split, 2)
-            
+    while (total_sec - cur_start) > 9.0:
+        win_min = cur_start + min_dur
+        win_max = cur_start + min(max_dur, total_sec - cur_start)
+        
+        # Check if there is an early major action pause (>=800ms) after min_dur
+        major_pauses = [p for p in pauses if p[0] >= win_min and p[0] <= win_max and p[2] >= 0.8]
+        
+        if major_pauses:
+            best_p = major_pauses[0]
+            split_time = (best_p[0] + best_p[1]) / 2.0
+        else:
+            # Look for all candidate pauses in the target sentence window [3.5s, 9.0s]
+            cand_pauses = [p for p in pauses if p[0] >= win_min and p[0] <= win_max]
+            if cand_pauses:
+                # Rank by pause duration (longest breath pause is best sentence boundary)
+                cand_pauses.sort(key=lambda p: p[2], reverse=True)
+                best_p = cand_pauses[0]
+                split_time = (best_p[0] + best_p[1]) / 2.0
+            else:
+                # Fallback: Progressive Silence Ladder backward scan for lowest energy valley
+                split_time = find_best_silence_split(
+                    audio_data=audio_data,
+                    sample_rate=sample_rate,
+                    search_start=win_min,
+                    search_end=win_max
+                )
+                
+        chunks.append({
+            "start": round(cur_start, 3),
+            "end": round(split_time, 3),
+            "duration": round(split_time - cur_start, 3),
+            "speaker": "SPEAKER_00"
+        })
+        cur_start = split_time
+        
     if cur_start < total_sec:
         rem_dur = total_sec - cur_start
+        # Smart Absorber: If tail is shorter than min_dur (<3.5s) and chunks exist, absorb into previous chunk
         if rem_dur < min_dur and chunks:
-            chunks[-1]["end"] = round(total_sec, 2)
-            chunks[-1]["duration"] = round(total_sec - chunks[-1]["start"], 2)
+            chunks[-1]["end"] = round(total_sec, 3)
+            chunks[-1]["duration"] = round(total_sec - chunks[-1]["start"], 3)
         else:
             chunks.append({
-                "start": round(cur_start, 2),
-                "end": round(total_sec, 2),
-                "duration": round(total_sec - cur_start, 2),
+                "start": round(cur_start, 3),
+                "end": round(total_sec, 3),
+                "duration": round(total_sec - cur_start, 3),
                 "speaker": "SPEAKER_00"
             })
             

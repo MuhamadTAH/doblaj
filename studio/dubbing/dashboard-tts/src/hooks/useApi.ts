@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useAuth } from '@clerk/clerk-react';
-import { getDubJobs, getDubStatus, submitDubJob } from '../api/dubbing';
+import { getDubJobs, getDubStatus, submitDubJob, submitDubJobWithProgress, type UploadProgressInfo } from '../api/dubbing';
 import { fetchVoices, generateTts, previewVoice, TtsRequest } from '../api/tts';
 import { deleteAccount } from '../api/user';
 import { getTelegramLinkNonce } from '../api/telegram';
@@ -37,11 +37,17 @@ export const useApi = () => {
   return useMemo(() => ({
     getDubJobs: (signal?: AbortSignal) => getDubJobs(authFetch, signal),
     getDubStatus: (jobId: string, signal?: AbortSignal) => getDubStatus(authFetch, jobId, signal),
-    submitDubJob: (file: File, meta?: { category?: string; entity?: string; consent_text_version?: string }, signal?: AbortSignal) => submitDubJob(authFetch, file, meta, signal),
+    submitDubJob: (
+      file: File,
+      meta?: { category?: string; entity?: string; consent_text_version?: string },
+      onProgress?: (p: UploadProgressInfo) => void,
+      signal?: AbortSignal
+    ) => submitDubJobWithProgress(getToken, file, meta, onProgress, signal),
     fetchVoices: (signal?: AbortSignal) => fetchVoices(authFetch, signal),
     generateTts: (req: TtsRequest, signal?: AbortSignal) => generateTts(authFetch, req, signal),
     previewVoice: (voiceId: string, signal?: AbortSignal) => previewVoice(authFetch, voiceId, signal),
     deleteAccount: (password: string, signal?: AbortSignal) => deleteAccount(authFetch, password, signal),
     getTelegramLinkNonce: (signal?: AbortSignal) => getTelegramLinkNonce(authFetch, signal),
-  }), [authFetch]);
+  }), [authFetch, getToken]);
 };
+

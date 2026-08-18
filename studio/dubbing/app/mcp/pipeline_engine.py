@@ -81,92 +81,108 @@ class DubbingPipelineEngine:
         anchor_len = min(len(data), int(4.0 * sr))
         sf.write(anchor_path, data[:anchor_len], sr)
         
-        # 5. Sentence-Aware VAD Pause Detection & Speech Onset/Offset Measurement
+        # 5. Sentence-Aware VAD Pause Detection (Pause-First Natural Segmentation: 3.5s to 9.0s)
         chunks_dir = scratch_dir / "chunks"
         chunks_dir.mkdir(parents=True, exist_ok=True)
         
-        # Detect true speech bursts using 25dB energy threshold
-        intervals = librosa.effects.split(data, top_db=25, frame_length=2048, hop_length=512)
-        
-        chunks = []
-        if len(intervals) == 0:
-            chunk_wav_path = str(chunks_dir / "chunk_00.wav")
-            sf.write(chunk_wav_path, data, sr)
-            chunks.append({
-                "chunk_index": 0,
-                "chunk_number": 1,
-                "start_sec": 0.0,
-                "end_sec": round(total_video_dur, 3),
-                "duration_sec": round(total_video_dur, 3),
-                "lead_silence_sec": 0.0,
-                "tail_silence_sec": 0.0,
-                "active_speech_duration_sec": round(total_video_dur, 3),
-                "wav_path": chunk_wav_path
-            })
-        else:
-            # Merge intra-sentence word pauses (< 0.35s) into full spoken sentences
-            min_gap_samples = int(0.35 * sr)
-            sentences = []
-            cur_s, cur_e = intervals[0]
-            for s, e in intervals[1:]:
-                if (s - cur_e) < min_gap_samples:
-                    cur_e = e
-                else:
-                    sentences.append((cur_s, cur_e))
-                    cur_s, cur_e = s, e
-            sentences.append((cur_s, cur_e))
-            
-            # Group sentences into natural conversational chunks (targeting 3.5s to 7.5s)
-            chunk_start_sec = 0.0
-            accum_sentences = []
-            
-            for i, (s, e) in enumerate(sentences):
-                accum_sentences.append((s, e))
-                s_sec = accum_sentences[0][0] / sr
-                e_sec = accum_sentences[-1][1] / sr
-                cur_speech_span = e_sec - s_sec
-                is_last = (i == len(sentences) - 1)
+        # Detect true host speech end to separate talking speech from Quran / outro music
+        frame_len_50ms = int(0.050 * sr)
+        num_f_total = len(data) // frame_len_50ms
+        active_indices = []
+        for fi in range(num_f_total):
+            f_chunk = data[fi * frame_len_50ms : (fi + 1) * frame_len_50ms]
+            f_rms = np.sqrt(np.mean(f_chunk**2) + 1e-10)
+            f_db = 20 * np.log10(max(f_rms, 1e-5))
+            if f_db >= -38.0:
+                active_indices.append(fi)
                 
-                if is_last:
-                    chunk_end_sec = total_video_dur
-                    should_close = True
-                else:
-                    next_s_sec = sentences[i+1][0] / sr
-                    next_e_sec = sentences[i+1][1] / sr
-                    next_span = next_e_sec - s_sec
+        if active_indices:
+            last_speech_sample = min(len(data), (active_indices[-1] + 1) * frame_len_50ms + int(0.4 * sr))
+            speech_end_sec = round(last_speech_sample / sr, 3)
+        else:
+            speech_end_sec = total_video_dur
+
+        # If there is a trailing outro (e.g. Quran recitation / music >= 2.0s), chunk ONLY the talking speech!
+        has_outro = (total_video_dur - speech_end_sec) >= 2.0
+        chunking_audio = data[:int(speech_end_sec * sr)] if has_outro else data
+        chunking_limit_dur = speech_end_sec if has_outro else total_video_dur
+        
+        from app.services.vcta.chunker import segment_audio_pause_first
+        
+        # Run pause-first acoustic segmentation on the talking speech
+        raw_chunks = segment_audio_pause_first(
+            audio_data=chunking_audio,
+            sample_rate=sr,
+            min_dur=3.5,
+            max_dur=10.0,
+            silence_thresh_db=-38.0,
+            min_pause_sec=0.25
+        )
+        
+        if not raw_chunks:
+            raw_chunks = [{"start": 0.0, "end": chunking_limit_dur, "duration": chunking_limit_dur}]
+            
+        chunks = []
+        for c_idx, rc in enumerate(raw_chunks):
+            c_start = float(rc["start"])
+            c_end = float(min(chunking_limit_dur, rc["end"]))
+            c_dur = round(c_end - c_start, 3)
+            
+            s_samp = int(c_start * sr)
+            e_samp = min(len(data), int(c_end * sr))
+            chunk_audio = data[s_samp:e_samp]
+            
+            # Save WAV chunk
+            chunk_wav_path = str(chunks_dir / f"chunk_{c_idx:02d}.wav")
+            sf.write(chunk_wav_path, chunk_audio, sr)
+            
+            # Cut exact MP4 video chunk using FFmpeg
+            chunk_mp4_name = f"chunk_{c_idx:02d}.mp4"
+            chunk_mp4_path = str(chunks_dir / chunk_mp4_name)
+            cmd_mp4 = [
+                "ffmpeg", "-y",
+                "-ss", str(c_start),
+                "-to", str(c_end),
+                "-i", video_path,
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24",
+                "-c:a", "aac", "-b:a", "128k",
+                chunk_mp4_path
+            ]
+            subprocess.run(cmd_mp4, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            
+            # Compute lead & tail silence for sub-millisecond timeline alignment
+            frame_len = int(0.020 * sr)
+            num_f = len(chunk_audio) // frame_len
+            active_f = []
+            for fi in range(num_f):
+                f_data = chunk_audio[fi * frame_len : (fi + 1) * frame_len]
+                f_rms = np.sqrt(np.mean(f_data**2) + 1e-10)
+                f_db = 20 * np.log10(max(f_rms, 1e-5))
+                if f_db >= -38.0:
+                    active_f.append(fi)
                     
-                    # Split exclusively at the natural silence between sentences
-                    if cur_speech_span >= 3.5 and next_span > 7.5:
-                        chunk_end_sec = round((e_sec + next_s_sec) / 2.0, 3)
-                        should_close = True
-                    else:
-                        should_close = False
-                        
-                if should_close:
-                    c_dur = round(chunk_end_sec - chunk_start_sec, 3)
-                    lead_sil = round(max(0.0, s_sec - chunk_start_sec), 3)
-                    tail_sil = round(max(0.0, chunk_end_sec - e_sec), 3)
-                    act_dur = round(max(0.4, e_sec - s_sec), 3)
-                    
-                    c_idx = len(chunks)
-                    s_samp = int(chunk_start_sec * sr)
-                    e_samp = min(len(data), int(chunk_end_sec * sr))
-                    chunk_wav_path = str(chunks_dir / f"chunk_{c_idx:02d}.wav")
-                    sf.write(chunk_wav_path, data[s_samp:e_samp], sr)
-                    
-                    chunks.append({
-                        "chunk_index": c_idx,
-                        "chunk_number": c_idx + 1,
-                        "start_sec": round(chunk_start_sec, 3),
-                        "end_sec": round(chunk_end_sec, 3),
-                        "duration_sec": c_dur,
-                        "lead_silence_sec": lead_sil,
-                        "tail_silence_sec": tail_sil,
-                        "active_speech_duration_sec": act_dur,
-                        "wav_path": chunk_wav_path
-                    })
-                    chunk_start_sec = chunk_end_sec
-                    accum_sentences = []
+            if active_f:
+                lead_sil = round(active_f[0] * 0.020, 3)
+                tail_sil = round((num_f - 1 - active_f[-1]) * 0.020, 3)
+                act_dur = round(max(0.4, (active_f[-1] - active_f[0] + 1) * 0.020), 3)
+            else:
+                lead_sil = 0.0
+                tail_sil = 0.0
+                act_dur = c_dur
+                
+            chunks.append({
+                "chunk_index": c_idx,
+                "chunk_number": c_idx + 1,
+                "chunk_file": chunk_mp4_name,
+                "start_sec": round(c_start, 3),
+                "end_sec": round(c_end, 3),
+                "duration_sec": c_dur,
+                "lead_silence_sec": lead_sil,
+                "tail_silence_sec": tail_sil,
+                "active_speech_duration_sec": act_dur,
+                "wav_path": chunk_wav_path,
+                "mp4_path": chunk_mp4_path
+            })
             
         manifest_path = str(scratch_dir / "mp4_chunks_manifest.json")
         with open(manifest_path, "w", encoding="utf-8") as f:
@@ -425,12 +441,13 @@ class DubbingPipelineEngine:
                 idx = c["chunk_index"]
                 arabic_text = trans_by_idx.get(idx, "")
                 chunk_tts_path = str(tts_dir / f"tts_{idx:02d}.wav")
+                act_dur = c.get("active_speech_duration_sec", c["duration_sec"])
                 try:
                     success, err = await generate_tts(
                         text=arabic_text,
                         reference_audio_path=anchor_path,
                         output_wav=chunk_tts_path,
-                        speech_duration=c["duration_sec"]
+                        speech_duration=act_dur
                     )
                     return i, idx, success, chunk_tts_path
                 except Exception as e:
@@ -440,7 +457,7 @@ class DubbingPipelineEngine:
         tts_tasks = [_synthesize_single(i, c) for i, c in enumerate(chunks)]
         tts_results = await asyncio.gather(*tts_tasks)
         
-        # Place synthesized chunks onto the master timeline in exact sequence with slot protection & silence alignment
+        # Place synthesized chunks onto the master timeline in exact sequence with acoustic onset & active speech alignment
         for i, idx, success, chunk_tts_path in tts_results:
             c = chunks[i]
             if success and os.path.exists(chunk_tts_path):
@@ -452,29 +469,34 @@ class DubbingPipelineEngine:
                 
                 lead_sil = c.get("lead_silence_sec", 0.0)
                 active_dur = c.get("active_speech_duration_sec", c["duration_sec"])
+                chunk_dur = c.get("duration_sec", active_dur)
+                k_samples = int(chunk_dur * sr)
                 
-                # Determine maximum allowed slot duration before next chunk's speech starts
-                if i < len(chunks) - 1:
-                    next_c = chunks[i+1]
-                    max_slot_dur = (next_c["start_sec"] + next_c.get("lead_silence_sec", 0.0)) - (c["start_sec"] + lead_sil)
-                else:
-                    max_slot_dur = (total_video_dur - c.get("tail_silence_sec", 0.0)) - (c["start_sec"] + lead_sil)
-                
-                max_slot_dur = max(0.5, max_slot_dur)
-                
-                # Prevent audio cutoff: Time-stretch TTS if it exceeds the slot so all words finish completely
+                # Align TTS speech duration to exact active Kurdish speech duration
                 tts_dur = len(tts_audio) / sr
-                if tts_dur > max_slot_dur:
-                    stretch_rate = min(1.35, tts_dur / max(0.4, max_slot_dur - 0.05))
-                    logger.info(f"  ⚡ [Chunk #{idx+1} Word Preservation] TTS ({tts_dur:.2f}s) > Slot ({max_slot_dur:.2f}s) -> time_stretch {stretch_rate:.2f}x to fit 100% of words without cutoff")
+                if abs(tts_dur - active_dur) > 0.15 and active_dur >= 0.5:
+                    stretch_rate = max(0.85, min(1.35, tts_dur / active_dur))
+                    logger.info(f"  ⚡ [Chunk #{idx+1} Exact Onset/Offset Match] TTS ({tts_dur:.2f}s) -> Aligned to active speech ({active_dur:.2f}s) via time_stretch {stretch_rate:.2f}x")
                     tts_audio = librosa.effects.time_stretch(tts_audio, rate=stretch_rate)
                 
-                # Align speech start at the EXACT frame the speaker begins talking (after lead silence)
-                start_s = int((c["start_sec"] + lead_sil) * sr)
-                end_s = min(total_samples, start_s + len(tts_audio))
-                insert_len = end_s - start_s
+                # Build exact padded chunk: lead_silence + stretched_tts + tail_silence = total chunk_duration
+                padded_chunk = np.zeros(k_samples, dtype=np.float32)
+                lead_samples = int(lead_sil * sr)
+                end_insert = min(k_samples, lead_samples + len(tts_audio))
+                insert_len = end_insert - lead_samples
                 if insert_len > 0:
-                    full_arabic_speech[start_s:end_s] = tts_audio[:insert_len]
+                    padded_chunk[lead_samples:end_insert] = tts_audio[:insert_len]
+                    
+                # Save aligned & silence-padded Arabic chunk for Audio Inspector & archival
+                aligned_wav_path = str(tts_dir / f"aligned_arabic_chunk_{idx:02d}.wav")
+                sf.write(aligned_wav_path, padded_chunk, sr)
+                
+                # Insert aligned chunk into full master track
+                start_s = int(c["start_sec"] * sr)
+                end_s = min(total_samples, start_s + k_samples)
+                slot_len = end_s - start_s
+                if slot_len > 0:
+                    full_arabic_speech[start_s:end_s] = padded_chunk[:slot_len]
                 
         await ConvexBroadcaster.update_stage(job_id, "mastering", force=True)
         
@@ -502,23 +524,52 @@ class DubbingPipelineEngine:
         if len(orig_audio) > total_samples: orig_audio = orig_audio[:total_samples]
         elif len(orig_audio) < total_samples: orig_audio = np.pad(orig_audio, (0, total_samples - len(orig_audio)))
         
-        # Check if there is an outro silence section (e.g. Quran recitation or outro music after speech ends)
+        # Build dynamic background stem with smooth 100% Quran outro restoration
         last_speech_sec = max([c["end_sec"] for c in chunks]) if chunks else total_video_dur
         has_outro = (total_video_dur - last_speech_sec) >= 1.5
         
+        bg_mix_track = np.zeros(total_samples, dtype=np.float32)
+        quran_start_sample = int(last_speech_sec * sr)
+        fade_len = int(0.6 * sr) # 600ms smooth crossfade
+        
         if has_outro:
-            outro_start = int(last_speech_sec * sr)
-            bg_audio[outro_start:] = orig_audio[outro_start:]
+            # During speech: background music at natural audible level (0.80x)
+            bg_mix_track[:quran_start_sample] = bg_audio[:quran_start_sample] * 0.80
+            # Smooth crossfade to 100% full original Quran recitation / outro
+            for fi in range(fade_len):
+                pos = quran_start_sample + fi
+                if pos < total_samples:
+                    alpha = fi / fade_len
+                    bg_mix_track[pos] = (1.0 - alpha) * (bg_audio[pos] * 0.80) + alpha * (orig_audio[pos] * 1.0)
+            # Full 1.0x volume for the entire Quran recitation to video end
+            post_fade = quran_start_sample + fade_len
+            if post_fade < total_samples:
+                bg_mix_track[post_fade:] = orig_audio[post_fade:] * 1.0
+        else:
+            # Entire video background music preserved at natural audible level (0.80x)
+            bg_mix_track = bg_audio * 0.80
 
-        # Mix synthesized Arabic speech with the REAL background sound track!
-        # Background music/noise is preserved at natural volume (0.90x) throughout the entire video
-        final_master_audio = full_arabic_speech + (bg_audio * 0.90)
+        # Master mixed audio: Voice (1.10x) + Natural Background Music (0.80x -> 1.0x Outro)
+        final_master_audio = (full_arabic_speech * 1.10) + bg_mix_track
         peak = np.max(np.abs(final_master_audio)) if len(final_master_audio) > 0 else 1.0
         if peak > 0.96:
             final_master_audio = final_master_audio * (0.96 / peak)
             
-        master_audio_path = str(scratch_dir / "final_master_audio.wav")
-        sf.write(master_audio_path, final_master_audio, sr)
+        unmastered_wav_path = str(scratch_dir / "unmastered_audio.wav")
+        sf.write(unmastered_wav_path, final_master_audio, sr)
+        
+        # Professional EBU R128 Loudness Normalization (-14.5 LUFS)
+        master_audio_path = str(scratch_dir / "final_master_audio_48k.wav")
+        mix_cmd = [
+            "ffmpeg", "-y",
+            "-i", unmastered_wav_path,
+            "-filter_complex",
+            "[0:a]loudnorm=I=-14.5:TP=-1.0:LRA=7.0[out]",
+            "-map", "[out]",
+            "-ar", "48000", "-ac", "2",
+            master_audio_path
+        ]
+        subprocess.run(mix_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
         
         # Remux video stream (copy) and master Arabic audio into final MP4
         final_video_path = str(scratch_dir / "final_dubbed_video.mp4")
@@ -590,8 +641,10 @@ class DubbingPipelineEngine:
                 if k_src.exists():
                     shutil.copy(str(k_src), str(audio_target_dir / k_dst_name))
                     
-                # Copy Arabic chunk audio if exists
-                a_src = scratch_dir / "tts_chunks" / f"tts_{idx:02d}.wav"
+                # Copy Arabic chunk audio if exists (prefer aligned & padded audio)
+                a_src_aligned = scratch_dir / "tts_chunks" / f"aligned_arabic_chunk_{idx:02d}.wav"
+                a_src_raw = scratch_dir / "tts_chunks" / f"tts_{idx:02d}.wav"
+                a_src = a_src_aligned if a_src_aligned.exists() else a_src_raw
                 a_dst_name = f"arabic_chunk_{idx:02d}.wav"
                 if a_src.exists():
                     shutil.copy(str(a_src), str(audio_target_dir / a_dst_name))

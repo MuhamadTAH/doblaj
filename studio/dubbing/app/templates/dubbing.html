@@ -726,6 +726,20 @@
                     <div class="step-label">Uploading video</div>
                     <div class="step-status" id="step-upload-status">Waiting</div>
                 </div>
+                <!-- Live Upload Progress Card -->
+                <div id="uploadProgressCard" style="display:none; margin-top: -0.25rem; margin-bottom: 0.5rem; background: var(--surface2); border: 1px solid rgba(99,102,241,0.3); border-radius: 12px; padding: 1rem 1.25rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; margin-bottom: 0.5rem;">
+                        <span id="uploadProgressStats" style="font-weight: 600; color: var(--text);">0.0 MB / 0.0 MB (0%)</span>
+                        <span id="uploadProgressRemain" style="color: var(--primary2, #818cf8); font-weight: 600;">-- MB remaining</span>
+                    </div>
+                    <div style="width: 100%; height: 10px; background: rgba(255,255,255,0.08); border-radius: 999px; overflow: hidden; position: relative;">
+                        <div id="uploadProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #6366f1, #a855f7); border-radius: 999px; transition: width 0.15s ease;"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; margin-top: 0.5rem; color: var(--muted);">
+                        <span id="uploadSpeed">⚡ 0.0 MB/s</span>
+                        <span id="uploadEta">⏳ ETA: --</span>
+                    </div>
+                </div>
                 <div class="step" id="step-audio">
                     <div class="step-icon">🎵</div>
                     <div class="step-label">Extracting &amp; separating audio</div>
@@ -916,9 +930,87 @@ dropZone.addEventListener('drop', e => {
 });
 
 // ────────────────────────────────────────────────────────────────
-// Upload & Ingest
+// Upload & Ingest with Real-time MB Progress Tracker
 // ────────────────────────────────────────────────────────────────
 submitBtn.addEventListener('click', startIngest);
+
+function uploadWithProgress(url, formData, onProgress) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        const startTime = Date.now();
+        let lastLoaded = 0;
+        let lastTime = startTime;
+        let speedAvg = 0;
+
+        xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable && e.total > 0) {
+                const now = Date.now();
+                const loadedMB = (e.loaded / (1024 * 1024)).toFixed(1);
+                const totalMB = (e.total / (1024 * 1024)).toFixed(1);
+                const remainBytes = Math.max(0, e.total - e.loaded);
+                const remainMB = (remainBytes / (1024 * 1024)).toFixed(1);
+                const pct = Math.min(100, Math.round((e.loaded / e.total) * 100));
+
+                const timeDiff = (now - lastTime) / 1000;
+                if (timeDiff > 0.25) {
+                    const instantSpeed = ((e.loaded - lastLoaded) / (1024 * 1024)) / timeDiff;
+                    speedAvg = speedAvg === 0 ? instantSpeed : (speedAvg * 0.7 + instantSpeed * 0.3);
+                    lastLoaded = e.loaded;
+                    lastTime = now;
+                } else if (speedAvg === 0) {
+                    const elapsed = (now - startTime) / 1000;
+                    if (elapsed > 0.2) speedAvg = (e.loaded / (1024 * 1024)) / elapsed;
+                }
+
+                let etaStr = '--';
+                if (speedAvg > 0.05 && remainBytes > 0) {
+                    const remainSec = Math.round((remainBytes / (1024 * 1024)) / speedAvg);
+                    if (remainSec < 60) {
+                        etaStr = `${remainSec}s`;
+                    } else {
+                        const mins = Math.floor(remainSec / 60);
+                        const secs = remainSec % 60;
+                        etaStr = `${mins}m ${secs}s`;
+                    }
+                }
+
+                onProgress({
+                    loaded: e.loaded,
+                    total: e.total,
+                    loadedMB,
+                    totalMB,
+                    remainMB,
+                    pct,
+                    speedMBs: speedAvg > 0 ? speedAvg.toFixed(1) : '0.0',
+                    eta: etaStr
+                });
+            }
+        });
+
+        xhr.addEventListener('load', () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    resolve(JSON.parse(xhr.responseText));
+                } catch(e) {
+                    resolve(xhr.responseText);
+                }
+            } else {
+                try {
+                    const err = JSON.parse(xhr.responseText);
+                    reject(new Error(err.detail || `Upload failed (HTTP ${xhr.status})`));
+                } catch(_) {
+                    reject(new Error(`Upload failed (HTTP ${xhr.status})`));
+                }
+            }
+        });
+
+        xhr.addEventListener('error', () => reject(new Error('Network connection failed during upload')));
+        xhr.addEventListener('abort', () => reject(new Error('Upload canceled')));
+
+        xhr.open('POST', url);
+        xhr.send(formData);
+    });
+}
 
 async function startIngest() {
     if (!selectedFile) return;
@@ -927,15 +1019,42 @@ async function startIngest() {
     document.getElementById('progressSection').style.display = 'block';
     document.getElementById('recentSection').style.display = 'none';
 
-    setStep('upload', 'active', 'Uploading video to server…');
+    const uploadProgressCard = document.getElementById('uploadProgressCard');
+    const uploadProgressBar = document.getElementById('uploadProgressBar');
+    const uploadProgressStats = document.getElementById('uploadProgressStats');
+    const uploadProgressRemain = document.getElementById('uploadProgressRemain');
+    const uploadSpeed = document.getElementById('uploadSpeed');
+    const uploadEta = document.getElementById('uploadEta');
+
+    if (uploadProgressCard) uploadProgressCard.style.display = 'block';
+
+    const fileSizeMB = (selectedFile.size / (1024 * 1024)).toFixed(1);
+    setStep('upload', 'active', `Uploading video (0% · ${fileSizeMB} MB remaining)…`);
+    if (uploadProgressStats) uploadProgressStats.textContent = `0.0 MB / ${fileSizeMB} MB (0%)`;
+    if (uploadProgressRemain) uploadProgressRemain.textContent = `${fileSizeMB} MB remaining`;
 
     const formData = new FormData();
     formData.append('file', selectedFile);
 
     try {
-        const r1 = await fetch('/video/manual/step1-upload', { method: 'POST', body: formData });
-        if (!r1.ok) throw new Error("Upload failed");
-        const d1 = await r1.json();
+        const d1 = await uploadWithProgress('/video/manual/step1-upload', formData, (p) => {
+            if (p.pct < 100) {
+                setStep('upload', 'active', `Uploading (${p.pct}% · ${p.remainMB} MB remaining)`);
+                if (uploadProgressStats) uploadProgressStats.textContent = `${p.loadedMB} MB / ${p.totalMB} MB (${p.pct}%)`;
+                if (uploadProgressRemain) uploadProgressRemain.textContent = `${p.remainMB} MB remaining`;
+                if (uploadProgressBar) uploadProgressBar.style.width = `${p.pct}%`;
+                if (uploadSpeed) uploadSpeed.textContent = `⚡ ${p.speedMBs} MB/s`;
+                if (uploadEta) uploadEta.textContent = `⏳ ETA: ${p.eta}`;
+            } else {
+                setStep('upload', 'active', 'Upload 100% complete! Processing on server…');
+                if (uploadProgressStats) uploadProgressStats.textContent = `${p.totalMB} MB / ${p.totalMB} MB (100%)`;
+                if (uploadProgressRemain) uploadProgressRemain.textContent = `✓ Upload complete`;
+                if (uploadProgressBar) uploadProgressBar.style.width = '100%';
+                if (uploadSpeed) uploadSpeed.textContent = `⚡ Complete`;
+                if (uploadEta) uploadEta.textContent = `Server analyzing audio…`;
+            }
+        });
+
         const sessionId = d1.session_id;
 
         setStep('upload', 'done', '✓ Done');

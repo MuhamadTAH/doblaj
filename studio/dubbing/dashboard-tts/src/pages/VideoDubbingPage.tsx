@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { t } from "@/lib/i18n";
-import { type DubJob } from "@/api/dubbing";
+import { type DubJob, type UploadProgressInfo } from "@/api/dubbing";
 import StageIcons, { activeStageIndex } from "@/components/StageIcons";
 import { useApi, AuthFailedError, AuthNetworkError } from "@/hooks/useApi";
 
@@ -80,12 +80,14 @@ export default function VideoDubbingPage() {
   const [file, setFile] = useState<File | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState(0);
+  const [uploadStats, setUploadStats] = useState<UploadProgressInfo | null>(null);
   const [statusMsg, setStatusMsg] = useState<string>("");
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [targetLang, setTargetLang] = useState<"ckb" | "ar">("ckb");
+
   // Pird: category + entity. category is one of the CATEGORIES ids (or
   // "" = not chosen); entity is either a sub-option value or a free-text
   // string when category === "other".
@@ -140,6 +142,7 @@ export default function VideoDubbingPage() {
     setJobId(null);
     setVideoUrl(null);
     setProgress(0);
+    setUploadStats(null);
     setPhase("idle");
     setStatusMsg("");
     setError(null);
@@ -153,6 +156,7 @@ export default function VideoDubbingPage() {
     setVideoUrl(null);
     setJobId(null);
     setProgress(0);
+    setUploadStats(null);
     setStatusMsg("");
     if (!f) {
       setFile(null);
@@ -186,19 +190,40 @@ export default function VideoDubbingPage() {
     if (!canSubmit) return; // Pird: button is disabled until both are set; this is the safety net.
     setError(null);
     setPhase("uploading");
-    setProgress(5);
+    setProgress(0);
+    const initialMB = (file.size / (1024 * 1024)).toFixed(1);
+    setUploadStats({
+      loadedBytes: 0,
+      totalBytes: file.size,
+      percent: 0,
+      loadedMB: "0.0",
+      totalMB: initialMB,
+      remainMB: initialMB,
+      speedMBs: "0.0",
+      etaFormatted: "--",
+    });
     setStatusMsg(t("status_uploading", "Uploading to pipeline…"));
 
     try {
-      const job = await api.submitDubJob(file, {
-        category: resolvedCategory || undefined,
-        entity: resolvedEntity || undefined,
-        consent_text_version: "2026-07-26.1",
-      });
+      const job = await api.submitDubJob(
+        file,
+        {
+          category: resolvedCategory || undefined,
+          entity: resolvedEntity || undefined,
+          consent_text_version: "2026-07-26.1",
+        },
+        (p) => {
+          setUploadStats(p);
+          setStatusMsg(
+            `Uploading (${p.percent}% · ${p.remainMB} MB remaining)`
+          );
+        }
+      );
       setJobId(job.id);
       setPhase("processing");
+      setUploadStats(null);
       setProgress(15);
-      setStatusMsg(t("status_uploading", "Uploading to pipeline…"));
+      setStatusMsg(t("status_separating", "Separating vocals from background…"));
 
       pollRef.current = window.setInterval(async () => {
         try {
@@ -702,7 +727,67 @@ export default function VideoDubbingPage() {
         );
         })()}
 
-        {((phase as string) === "uploading" || (phase as string) === "processing") && (
+        {phase === "uploading" && (
+          <motion.div
+            key="uploading"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.3 }}
+            className="w-full max-w-2xl mt-2 space-y-4"
+          >
+            {/* Header info */}
+            <div className="flex items-center gap-3 bg-white/[0.03] border border-white/[0.08] p-4 rounded-2xl">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-400/30 flex items-center justify-center text-cyan-400 shadow-glow shrink-0">
+                <svg className="w-6 h-6 animate-bounce text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-white truncate">{file?.name}</div>
+                <div className="text-xs text-ink-400 font-mono flex items-center gap-2 mt-0.5 flex-wrap">
+                  <span>{uploadStats ? `${uploadStats.loadedMB} MB / ${uploadStats.totalMB} MB (${uploadStats.percent}%)` : "Starting upload…"}</span>
+                  {uploadStats && (
+                    <span className="bg-cyan-500/10 border border-cyan-400/20 px-2 py-0.5 rounded-full text-cyan-300 font-bold">
+                      {uploadStats.remainMB} MB remaining
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Upload Progress Bar Card */}
+            <div className="bg-[#0b1019] border border-white/[0.08] p-5 rounded-2xl space-y-3">
+              <div className="flex items-center justify-between text-xs text-ink-300">
+                <span className="font-medium text-white flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping inline-block" />
+                  Uploading Video to Pipeline
+                </span>
+                <span className="font-mono text-cyan-300 font-bold text-sm">
+                  {uploadStats?.percent ?? 0}%
+                </span>
+              </div>
+
+              <div className="h-3.5 rounded-full bg-white/[0.06] overflow-hidden p-0.5 border border-white/[0.08]">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 shadow-glow"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${uploadStats?.percent ?? 0}%` }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-ink-400 font-mono pt-1">
+                <span>⚡ {uploadStats?.speedMBs || "0.0"} MB/s</span>
+                <span>⏳ ETA: {uploadStats?.etaFormatted || "--"}</span>
+              </div>
+            </div>
+
+            <StageIcons activeIndex={0} />
+          </motion.div>
+        )}
+
+        {phase === "processing" && (
           <motion.div
             key="processing"
             initial={{ opacity: 0, y: 8 }}

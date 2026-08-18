@@ -261,8 +261,8 @@ def execute_acoustic_routing(vocal_stem_path: str):
     # 3. Interval Subtraction
     final_primary_turns = subtract_purged_from_primary(raw_primary_turns, final_purged_turns)
 
-    # 4. Micro-Gap Cleanup (Drop orphaned fragments < 1.5s)
-    final_primary_turns = [t for t in final_primary_turns if (t["end"] - t["start"]) > 1.5]
+    # 4. Micro-Gap Cleanup (Drop only sub-200ms acoustic glitches)
+    final_primary_turns = [t for t in final_primary_turns if (t["end"] - t["start"]) > 0.2]
 
     logger.info(f"[STAGE 2 COMPLETE] Speech turns: {len(final_primary_turns)} | Purged turns: {len(final_purged_turns)}")
 
@@ -315,15 +315,10 @@ def process_vcta_acoustic_routing_and_restoration(
 
     primary_turns, purged_turns = execute_acoustic_routing(voc_wav_path)
 
-    host_mask = np.zeros(num_samples, dtype='float32')
+    host_mask = np.ones(num_samples, dtype='float32')
     sec_mask = np.zeros(num_samples, dtype='float32')
 
-    if primary_turns or purged_turns:
-        for turn in primary_turns:
-            s_idx = max(0, int(turn["start"] * sr))
-            e_idx = min(num_samples, int(turn["end"] * sr))
-            host_mask[s_idx:e_idx] = 1.0
-
+    if purged_turns:
         for turn in purged_turns:
             s_idx = max(0, int(turn["start"] * sr))
             e_idx = min(num_samples, int(turn["end"] * sr))
@@ -333,8 +328,9 @@ def process_vcta_acoustic_routing_and_restoration(
         if fade_samples > 1:
             kernel = np.hanning(fade_samples * 2)
             kernel = kernel / (np.sum(kernel) + 1e-9)
-            host_mask = np.clip(np.convolve(host_mask, kernel, mode='same'), 0.0, 1.0)
             sec_mask = np.clip(np.convolve(sec_mask, kernel, mode='same'), 0.0, 1.0)
+            
+        host_mask = np.clip(1.0 - sec_mask, 0.0, 1.0)
     else:
         host_mask = np.ones(num_samples, dtype='float32')
         sec_mask = np.zeros(num_samples, dtype='float32')
