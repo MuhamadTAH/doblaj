@@ -211,6 +211,244 @@ class JobStartRequest(BaseModel):
     duration_seconds: Optional[float] = None
 
 
+class ChunkedInitRequest(BaseModel):
+    filename: str
+    total_bytes: int
+    total_chunks: int
+    category: Optional[str] = None
+    entity: Optional[str] = None
+    consent_text_version: Optional[str] = None
+
+
+class ChunkedInitResponse(BaseModel):
+    job_id: str
+    chunk_size_bytes: int
+
+
+class ChunkedCompleteRequest(BaseModel):
+    job_id: str
+    filename: str
+    category: Optional[str] = None
+    entity: Optional[str] = None
+    consent_text_version: Optional[str] = None
+
+
+@router.post("/jobs/chunked/init", response_model=ChunkedInitResponse)
+@_rate_limited("10/minute")
+async def init_chunked_job(
+    payload: ChunkedInitRequest,
+    request: Request,
+    user: AuthenticatedUser = Depends(require_user_or_internal),
+) -> ChunkedInitResponse:
+    if not payload.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+    if ".." in payload.filename or "/" in payload.filename or "\\" in payload.filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    if payload.total_bytes > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"Upload exceeds {MAX_UPLOAD_BYTES} bytes limit")
+
+    _validate_form_field("category", payload.category)
+    _validate_form_field("entity", payload.entity)
+    _validate_form_field("consent_text_version", payload.consent_text_version)
+
+    await _check_voice_recording_consent(user, payload.consent_text_version)
+
+    job_id = str(uuid.uuid4())
+    upload_dir = Path("data/uploads")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = upload_dir / f"chunked_{job_id}.tmp"
+    if tmp_path.exists():
+        tmp_path.unlink()
+
+    return ChunkedInitResponse(
+        job_id=job_id,
+        chunk_size_bytes=20 * 1024 * 1024,  # 20 MB chunks
+    )
+
+
+@router.post("/jobs/chunked/upload")
+@_rate_limited("120/minute")
+async def upload_job_chunk(
+    request: Request,
+    job_id: str = Form(...),
+    chunk_index: int = Form(...),
+    chunk_file: UploadFile = File(...),
+    user: AuthenticatedUser = Depends(require_user_or_internal),
+):
+    if ".." in job_id or "/" in job_id or "\\" in job_id or len(job_id) > 64:
+        raise HTTPException(status_code=400, detail="Invalid job ID")
+
+    upload_dir = Path("data/uploads")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = upload_dir / f"chunked_{job_id}.tmp"
+
+    content = await chunk_file.read()
+    mode = "wb" if chunk_index == 0 else "ab"
+    with open(tmp_path, mode) as f:
+        f.write(content)
+
+    return {"received": True, "chunk_index": chunk_index, "bytes": len(content)}
+
+
+@router.post("/jobs/chunked/complete", response_model=VideoJobResponse)
+@_rate_limited("10/minute")
+async def complete_chunked_job(
+    payload: ChunkedCompleteRequest,
+    request: Request,
+    user: AuthenticatedUser = Depends(require_user_or_internal),
+    background_tasks: BackgroundTasks = None,
+) -> VideoJobResponse:
+    job_id = payload.job_id
+    if ".." in job_id or "/" in job_id or "\\" in job_id:
+        raise HTTPException(status_code=400, detail="Invalid job ID")
+
+    upload_dir = Path("data/uploads")
+    tmp_path = upload_dir / f"chunked_{job_id}.tmp"
+    if not tmp_path.exists():
+        raise HTTPException(status_code=400, detail="Chunked upload file not found or corrupted")
+
+    ext = Path(payload.filename).suffix or ".mp4"
+    safe_filename = f"{uuid.uuid4().hex}{ext}"
+    final_input_path = upload_dir / safe_filename
+    tmp_path.rename(final_input_path)
+
+    # 1. Probing duration
+    duration = await asyncio.to_thread(get_video_duration, str(final_input_path))
+    if duration <= 0:
+        if final_input_path.exists():
+            final_input_path.unlink()
+        raise HTTPException(status_code=400, detail="We couldn't read the audio track from the uploaded video. Ensure the file is not corrupted.")
+
+    import math
+    duration_minutes = math.ceil(duration / 60.0)
+
+    from app.core import db as database
+    user_client = database.get_user_client(user.access_token)
+
+    # 2. Check balance
+    try:
+        remaining_minutes = await database.get_workspace_minutes(user_client, workspace_id=user.workspace_id)
+    except Exception as e:
+        if final_input_path.exists():
+            final_input_path.unlink()
+        logger.exception("Failed to query workspace minutes balance")
+        raise HTTPException(status_code=402, detail="Unable to verify your minute balance. Please retry shortly.")
+
+    if remaining_minutes < duration_minutes:
+        if final_input_path.exists():
+            final_input_path.unlink()
+        raise HTTPException(
+            status_code=402,
+            detail=f"You do not have enough minutes. This video requires {duration_minutes} minutes, but you have {remaining_minutes} minutes remaining."
+        )
+
+    # 3. Deduct minutes
+    try:
+        await database.deduct_workspace_minutes(user_client, workspace_id=user.workspace_id, minutes=duration_minutes)
+    except Exception as e:
+        if final_input_path.exists():
+            final_input_path.unlink()
+        logger.exception("Failed to deduct workspace minutes balance")
+        raise HTTPException(status_code=500, detail="Failed to process billing reservation")
+
+    raw_ip = (request.headers.get("CF-Connecting-IP") or request.headers.get("X-Forwarded-For") or (request.client.host if getattr(request, "client", None) else "unknown"))
+    user_ip_address = str(raw_ip) if raw_ip and not hasattr(raw_ip, "_mock_return_value") else "unknown"
+    if isinstance(user_ip_address, str) and "," in user_ip_address:
+        user_ip_address = user_ip_address.split(",")[0].strip()
+
+    runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID", "")
+    runpod_api_key = os.getenv("RUNPOD_API_KEY", "")
+    mcp_webhook_url = os.getenv("MCP_WEBHOOK_URL", "")
+
+    source_r2_key = ""
+    from app.services import r2
+    try:
+        if (runpod_endpoint or mcp_webhook_url) and r2.R2_ENDPOINT:
+            source_r2_key = r2.dubbing_key(user.workspace_id, job_id, safe_filename)
+            logger.info(f"Uploading chunked video to R2 for worker: {source_r2_key}")
+            await asyncio.to_thread(r2.upload_file, source_r2_key, str(final_input_path))
+
+        job = await database.create_job(
+            user_client,
+            workspace_id=user.workspace_id,
+            owner_user_id=user.user_id,
+            job_id=job_id,
+            source_video_r2_key=source_r2_key,
+            consent_version=payload.consent_text_version or "",
+            user_ip_address=user_ip_address
+        )
+    except Exception as e:
+        try:
+            await database.add_workspace_minutes(user_client, workspace_id=user.workspace_id, minutes=duration_minutes)
+        except Exception:
+            pass
+        if final_input_path.exists():
+            final_input_path.unlink()
+        logger.exception("Failed to create video job from chunked upload")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    if mcp_webhook_url:
+        logger.info(f"Triggering Local MCP Webhook Push {mcp_webhook_url} for job {job_id}")
+        async def trigger_webhook():
+            try:
+                wb_payload = {"job_id": job_id, "workspace_id": user.workspace_id}
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(mcp_webhook_url, json=wb_payload)
+                    resp.raise_for_status()
+                    logger.info(f"MCP Webhook Push triggered: {resp.json()}")
+            except Exception as trigger_err:
+                logger.error(f"Failed to trigger Webhook: {trigger_err}")
+
+        asyncio.create_task(trigger_webhook())
+    elif runpod_endpoint and runpod_api_key:
+        async def trigger_runpod():
+            try:
+                url = f"https://api.runpod.ai/v2/{runpod_endpoint}/run"
+                headers = {"Authorization": f"Bearer {runpod_api_key}", "Content-Type": "application/json"}
+                wb_payload = {
+                    "input": {
+                        "job_id": job_id,
+                        "workspace_id": user.workspace_id,
+                        "category": payload.category,
+                        "entity": payload.entity,
+                        "source_video_r2_key": source_r2_key,
+                    }
+                }
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(url, json=wb_payload, headers=headers)
+                    resp.raise_for_status()
+            except Exception as trigger_err:
+                logger.error(f"Failed to trigger RunPod: {trigger_err}")
+
+        if background_tasks:
+            background_tasks.add_task(trigger_runpod)
+        else:
+            asyncio.create_task(trigger_runpod())
+    else:
+        # Local background processing fallback
+        if background_tasks:
+            background_tasks.add_task(
+                worker_process_video_job, job_id, str(final_input_path), user.workspace_id, payload.category, payload.entity
+            )
+        else:
+            asyncio.create_task(
+                asyncio.to_thread(worker_process_video_job, job_id, str(final_input_path), user.workspace_id, payload.category, payload.entity)
+            )
+
+    return VideoJobResponse(
+        id=job["id"],
+        store_id=job.get("store_id", ""),
+        status="pending",
+        progress=0,
+        input_path="",
+        output_path=job.get("result_video_r2_key") or "",
+        error=job.get("error") or "",
+        created_at=str(job.get("created_at", "")),
+        updated_at=str(job.get("updated_at", "")),
+    )
+
+
+
 @router.post("/jobs/upload-url", response_model=JobUploadUrlResponse)
 @_rate_limited("10/minute")
 async def get_job_upload_url(

@@ -1,4 +1,4 @@
-import { uploadWithAuthProgress, uploadDirectToPresignedUrl, getDubbingApiToken, type TokenGetter, type UploadProgressData } from "../lib/apiClient";
+import { uploadInChunksWithProgress, uploadWithAuthProgress, type TokenGetter, type UploadProgressData } from "../lib/apiClient";
 
 // Dubbing API client. Calls /video/* through FastAPI. FastAPI verifies
 // the Clerk session cookie set by the shell, then proxies reads/writes
@@ -28,77 +28,38 @@ export async function submitDubJobWithProgress(
   onProgress?: (progress: UploadProgressInfo) => void,
   signal?: AbortSignal
 ): Promise<{ id: string; status: DubJobStatus }> {
+  // Use robust 20MB chunked upload. Completely avoids 100MB Cloudflare proxy limits and R2 CORS preflights.
   try {
-    const token = await getDubbingApiToken(getToken, false);
+    return await uploadInChunksWithProgress<{ id: string; status: DubJobStatus }>(
+      getToken,
+      API_BASE,
+      file,
+      meta,
+      onProgress,
+      signal
+    );
+  } catch (err: any) {
+    // If chunked fails for small files, try standard fallback
+    if (file.size <= 50 * 1024 * 1024) {
+      console.warn("Chunked upload failed, falling back to standard upload:", err);
+      const form = new FormData();
+      form.append("file", file);
+      if (meta?.category) form.append("category", meta.category);
+      if (meta?.entity) form.append("entity", meta.entity);
+      if (meta?.consent_text_version) form.append("consent_text_version", meta.consent_text_version);
 
-    // 1. Get direct R2 presigned PUT URL
-    const initRes = await fetch(`${API_BASE}/video/jobs/upload-url`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        filename: file.name,
-        category: meta?.category,
-        entity: meta?.entity,
-        consent_text_version: meta?.consent_text_version,
-      }),
-      signal,
-    });
-
-    if (initRes.ok) {
-      const { job_id, upload_url } = await initRes.json();
-
-      // 2. Direct upload to Cloudflare R2 (bypasses 100MB proxy body caps and socket stalls)
-      await uploadDirectToPresignedUrl(
-        upload_url,
-        file,
-        file.type || "video/mp4",
+      return uploadWithAuthProgress<{ id: string; status: DubJobStatus }>(
+        getToken,
+        `${API_BASE}/video/jobs`,
+        form,
         onProgress,
         signal
       );
-
-      // 3. Trigger processing on backend
-      const startRes = await fetch(`${API_BASE}/video/jobs/${job_id}/start`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          category: meta?.category,
-          entity: meta?.entity,
-        }),
-        signal,
-      });
-
-      if (!startRes.ok) {
-        const err = await startRes.text();
-        throw new Error(`Failed to start job: ${err}`);
-      }
-
-      return { id: job_id, status: "pending" };
     }
-  } catch (err) {
-    console.warn("Direct R2 upload initiation failed, attempting multipart fallback:", err);
+    throw err;
   }
-
-  // Fallback: Standard multipart upload to FastAPI
-  const form = new FormData();
-  form.append("file", file);
-  if (meta?.category) form.append("category", meta.category);
-  if (meta?.entity) form.append("entity", meta.entity);
-  if (meta?.consent_text_version) form.append("consent_text_version", meta.consent_text_version);
-
-  return uploadWithAuthProgress<{ id: string; status: DubJobStatus }>(
-    getToken,
-    `${API_BASE}/video/jobs`,
-    form,
-    onProgress,
-    signal
-  );
 }
+
 
 
 export async function submitDubJob(

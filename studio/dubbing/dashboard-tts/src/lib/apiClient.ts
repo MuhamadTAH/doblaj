@@ -284,4 +284,177 @@ export async function uploadDirectToPresignedUrl(
   });
 }
 
+export async function uploadInChunksWithProgress<T = any>(
+  getToken: TokenGetter,
+  apiBase: string,
+  file: File,
+  meta?: { category?: string; entity?: string; consent_text_version?: string },
+  onProgress?: (data: UploadProgressData) => void,
+  signal?: AbortSignal
+): Promise<T> {
+  const token = await getDubbingApiToken(getToken, false);
+  const CHUNK_SIZE = 20 * 1024 * 1024; // 20 MB chunks
+  const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+  // 1. Initialize Chunked Job
+  const initRes = await fetch(`${apiBase}/video/jobs/chunked/init`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      filename: file.name,
+      total_bytes: file.size,
+      total_chunks: totalChunks,
+      category: meta?.category,
+      entity: meta?.entity,
+      consent_text_version: meta?.consent_text_version,
+    }),
+    signal,
+  });
+
+  if (!initRes.ok) {
+    const errText = await initRes.text();
+    let detail = `Failed to initialize upload (${initRes.status})`;
+    try {
+      const j = JSON.parse(errText);
+      detail = j.detail || detail;
+    } catch {}
+    throw new HttpError(initRes.status, detail);
+  }
+
+  const { job_id, chunk_size_bytes } = await initRes.json();
+  const effectiveChunkSize = chunk_size_bytes || CHUNK_SIZE;
+  const startTime = Date.now();
+  let uploadedBytesBeforeCurrentChunk = 0;
+
+  // 2. Upload each chunk sequentially with granular progress
+  for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+    if (signal?.aborted) {
+      throw new Error("Upload aborted by user.");
+    }
+
+    const startByte = chunkIdx * effectiveChunkSize;
+    const endByte = Math.min(file.size, startByte + effectiveChunkSize);
+    const chunkBlob = file.slice(startByte, endByte);
+
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${apiBase}/video/jobs/chunked/upload`, true);
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+
+      if (signal) {
+        signal.addEventListener("abort", () => xhr.abort());
+      }
+
+      if (xhr.upload && onProgress) {
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const currentTotalLoaded = uploadedBytesBeforeCurrentChunk + e.loaded;
+            const loadedMB = (currentTotalLoaded / (1024 * 1024)).toFixed(1);
+            const totalMB = (file.size / (1024 * 1024)).toFixed(1);
+            const remainMB = Math.max(0, (file.size - currentTotalLoaded) / (1024 * 1024)).toFixed(1);
+            const percent = Math.min(100, Math.round((currentTotalLoaded / file.size) * 100));
+
+            const elapsedSec = (Date.now() - startTime) / 1000;
+            let speedMBs = "0.0";
+            let etaFormatted = "--";
+
+            if (elapsedSec > 0.3 && currentTotalLoaded > 0) {
+              const bytesPerSec = currentTotalLoaded / elapsedSec;
+              const mbPerSec = bytesPerSec / (1024 * 1024);
+              speedMBs = mbPerSec.toFixed(1);
+
+              const remainingBytes = file.size - currentTotalLoaded;
+              if (remainingBytes > 0 && bytesPerSec > 0) {
+                const etaSec = Math.round(remainingBytes / bytesPerSec);
+                if (etaSec < 60) {
+                  etaFormatted = `${etaSec}s`;
+                } else {
+                  const m = Math.floor(etaSec / 60);
+                  const s = etaSec % 60;
+                  etaFormatted = `${m}m ${s < 10 ? "0" : ""}${s}s`;
+                }
+              } else {
+                etaFormatted = "0s";
+              }
+            }
+
+            onProgress({
+              loadedBytes: currentTotalLoaded,
+              totalBytes: file.size,
+              percent,
+              loadedMB,
+              totalMB,
+              remainMB,
+              speedMBs,
+              etaFormatted,
+            });
+          }
+        };
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          uploadedBytesBeforeCurrentChunk += chunkBlob.size;
+          resolve();
+        } else {
+          let errDetail = `Chunk ${chunkIdx + 1}/${totalChunks} upload failed (${xhr.status})`;
+          try {
+            const errJson = JSON.parse(xhr.responseText);
+            errDetail = errJson.detail || errDetail;
+          } catch {}
+          reject(new HttpError(xhr.status, errDetail));
+        }
+      };
+
+      xhr.onerror = () => {
+        reject(new AuthNetworkError(`Network error on chunk ${chunkIdx + 1}/${totalChunks}.`));
+      };
+
+      xhr.onabort = () => {
+        reject(new Error("Upload aborted by user."));
+      };
+
+      const chunkForm = new FormData();
+      chunkForm.append("job_id", job_id);
+      chunkForm.append("chunk_index", String(chunkIdx));
+      chunkForm.append("chunk_file", chunkBlob, file.name);
+
+      xhr.send(chunkForm);
+    });
+  }
+
+  // 3. Complete chunked job
+  const compRes = await fetch(`${apiBase}/video/jobs/chunked/complete`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      job_id,
+      filename: file.name,
+      category: meta?.category,
+      entity: meta?.entity,
+      consent_text_version: meta?.consent_text_version,
+    }),
+    signal,
+  });
+
+  if (!compRes.ok) {
+    const errText = await compRes.text();
+    let detail = `Failed to finalize chunked video (${compRes.status})`;
+    try {
+      const j = JSON.parse(errText);
+      detail = j.detail || detail;
+    } catch {}
+    throw new HttpError(compRes.status, detail);
+  }
+
+  return (await compRes.json()) as T;
+}
+
+
 
