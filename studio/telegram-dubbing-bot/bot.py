@@ -466,16 +466,14 @@ async def call_payment_ai(user_message: str, chat_id: int = 0) -> str:
         "داهات", "طلبات", "مبيعات", "ارباح", "تقرير", "داتا", "data"
     ]
     
-    from app.core.wayl_client import WaylClient
-    wayl = WaylClient()
-    links = []
     try:
+        from app.core.wayl_client import WaylClient
+        wayl = WaylClient()
         links = await wayl.list_links() or []
+        if any(k in msg_lower for k in analytics_keywords) and links:
+            return format_admin_sales_report(links)
     except Exception as e:
-        logger.warning({"service": "ai", "message": f"Failed to load links: {e}"})
-        
-    if any(k in msg_lower for k in analytics_keywords) and links:
-        return format_admin_sales_report(links)
+        logger.debug({"service": "ai", "message": f"WaylClient notice: {e}"})
         
     openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
     openrouter_model = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat")
