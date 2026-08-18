@@ -1091,10 +1091,14 @@ async def graceful_shutdown(sig):
 async def main():
     global bot_instance, dispatcher_instance, webhook_app_runner
     
-    # Setup Signal Handlers
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(graceful_shutdown(s)))
+    # Setup Signal Handlers (POSIX only)
+    if sys.platform != "win32":
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(graceful_shutdown(s)))
+            except (NotImplementedError, AttributeError):
+                pass
 
     # Init SQLite
     await init_db()
@@ -1106,13 +1110,17 @@ async def main():
     worker_task = asyncio.create_task(process_job_queue())
 
     # Start Aiohttp Webhook Server
+    webhook_port = int(os.getenv("BOT_WEBHOOK_PORT", "8005"))
     app = web.Application()
     app.router.add_post("/callback", internal_webhook)
     webhook_app_runner = web.AppRunner(app)
     await webhook_app_runner.setup()
-    site = web.TCPSite(webhook_app_runner, '0.0.0.0', 8000)
-    await site.start()
-    logger.info({"service": "devops", "message": "Internal Webhook Receiver started on 0.0.0.0:8000/callback"})
+    try:
+        site = web.TCPSite(webhook_app_runner, '0.0.0.0', webhook_port)
+        await site.start()
+        logger.info({"service": "devops", "message": f"Internal Webhook Receiver started on 0.0.0.0:{webhook_port}/callback"})
+    except OSError as port_err:
+        logger.warning({"service": "devops", "message": f"Could not bind webhook server on port {webhook_port} ({port_err}), continuing in polling mode"})
 
     # Start Aiogram Polling
     use_local_api = os.getenv("USE_LOCAL_TELEGRAM_API", "false").lower() == "true"
