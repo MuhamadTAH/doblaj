@@ -151,6 +151,146 @@ async def get_telegram_user_balance(telegram_chat_id: str):
         }
 
 
+class TelegramChatRequest(BaseModel):
+    telegram_chat_id: str
+    message: str
+
+class TelegramChatResponse(BaseModel):
+    reply: str
+    is_linked: bool = False
+    remaining_minutes: Optional[int] = None
+
+
+async def _generate_agent_reply(user_message: str, is_linked: bool, remaining_minutes: int, workspace_id: Optional[str]) -> str:
+    """Generate an intelligent trilingual response for the Telegram Doblaj AI agent."""
+    openrouter_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPEN_ROUTER_API_KEY") or ""
+    gemini_key = os.getenv("GEMINI_API_KEY") or ""
+
+    system_prompt = (
+        "You are the official Doblaj AI Assistant (دۆبلاژ ئەی ئای / مساعد دبلجة), a friendly and expert AI assistant for Doblaj Studio.\n\n"
+        "USER CONTEXT:\n"
+        f"- Account Linked: {'Yes (Workspace: ' + str(workspace_id) + ')' if is_linked else 'No (Guest / Unlinked)'}\n"
+        f"- Remaining Video Dubbing Minutes: {remaining_minutes} minutes\n\n"
+        "PLATFORM KNOWLEDGE:\n"
+        "- Doblaj Studio (doblaj.com) is an AI video dubbing platform translating Kurdish Sorani (کوردی سۆرانی) videos into natural Spoken Iraqi Arabic (العامية العراقية) with AI voice cloning.\n"
+        "- How to Dub a Video: Upload any video (MP4, MOV, MKV, WEBM, max 2000 MB) directly to this Telegram bot or on the web dashboard (doblaj.com/dubbing). The pipeline automatically separates vocals (Demucs), transcribes Kurdish audio, localizes to Iraqi Arabic, clones the speaker voice with Fish Audio, and delivers the final synced video.\n"
+        "- Account Linking: To link Telegram, users click 'Connect Telegram' in Settings (doblaj.com/settings) or send /start <nonce>.\n"
+        "- Pricing & Minutes: Users can top up their dubbing minutes at doblaj.com/pricing.\n\n"
+        "COMMUNICATION RULES:\n"
+        "1. Detect and reply in the EXACT language of the user: Kurdish Sorani (کوردی سۆرانی), Spoken Iraqi Arabic (العامية العراقية), or English.\n"
+        "2. Keep responses concise, clear, and formatted nicely with emojis (perfect for Telegram reading).\n"
+        "3. If the user asks about their balance or minutes, accurately report their remaining minutes.\n"
+        "4. If unlinked and asking to dub, politely guide them to link their account from doblaj.com/settings.\n"
+        "5. Be polite, helpful, and natural."
+    )
+
+    # 1. Try OpenRouter
+    if openrouter_key:
+        try:
+            model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-pro")
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message}
+                    ],
+                    "temperature": 0.5,
+                    "max_tokens": 800
+                }
+                resp = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {openrouter_key}",
+                        "HTTP-Referer": "https://doblaj.com",
+                        "X-Title": "Doblaj Telegram Bot",
+                        "Content-Type": "application/json"
+                    },
+                    json=payload
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    content = data["choices"][0]["message"]["content"]
+                    if content and content.strip():
+                        return content.strip()
+                else:
+                    logger.warning(f"[AI_AGENT] OpenRouter returned status {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.warning(f"[AI_AGENT] OpenRouter error: {e}")
+
+    # 2. Fallback to Gemini Direct API
+    if gemini_key:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                payload = {
+                    "contents": [
+                        {
+                            "role": "user",
+                            "parts": [
+                                {"text": system_prompt + "\n\nUser Question:\n" + user_message}
+                            ]
+                        }
+                    ],
+                    "generationConfig": {
+                        "temperature": 0.5,
+                        "maxOutputTokens": 800
+                    }
+                }
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            return parts[0].get("text", "").strip()
+        except Exception as e:
+            logger.warning(f"[AI_AGENT] Gemini fallback error: {e}")
+
+    # 3. Static Smart Fallback if no LLM key is configured
+    lower_msg = user_message.lower()
+    if any(w in lower_msg for w in ["balance", "minutes", "credit", "خاڵ", "باڵانس", "دقائق", "دقيقة", "رصيد"]):
+        if is_linked:
+            return f"📊 **باڵانسی هەژمارەکەت / رصيد حسابك / Account Balance:**\n\n✨ Remaining Dubbing Minutes: **{remaining_minutes} دقيقة / خولەک**\n\n🔗 Manage plan & top up at: https://doblaj.com/pricing"
+        else:
+            return "⚠️ هەژمارەکەت هێشتا نەبەستراوەتەوە بە دۆبلاژ ستۆدیۆ.\nحسابك غير مربوط بعد بـ Doblaj Studio.\n\nتکایە لە بەشی ڕێکخستنەکان (Settings) لە https://doblaj.com/settings هەژماری تێلیگرامەکەت ببەستەرەوە."
+
+    return (
+        "👋 سڵاو! من یاریدەدەری زیرەکی دەستکردی دۆبلاژم (Doblaj AI Assistant).\n"
+        "دەتوانیت ڤیدیۆ بنێریت بۆ ئەوەی دۆبلاژی بکەم لە کوردی سۆرانی بۆ عەرەبی عێراقی، یاخود هەر پرسیارێکت هەیە لێرە لێم بپرسە!\n\n"
+        "مرحباً بك! أنا مساعد الذكاء الاصطناعي لمنصة دبلجة (Doblaj AI).\n"
+        "يمكنك إرسال مقاطع الفيديو لدبلجتها فورياً من الكردية السورانية إلى العامية العراقية، أو طرح أي استفسار هنا!"
+    )
+
+
+@router.post("/chat", response_model=TelegramChatResponse)
+async def handle_telegram_chat(req: TelegramChatRequest, user: AuthenticatedUser = Depends(require_user_or_internal)):
+    """AI Agent endpoint for answering user text questions on Telegram."""
+    workspace_id = await db.get_workspace_by_telegram_id(req.telegram_chat_id)
+    is_linked = bool(workspace_id)
+    remaining_minutes = 0
+
+    if is_linked and workspace_id:
+        try:
+            remaining_minutes = int(await convex_db.get_workspace_minutes(workspace_id=workspace_id))
+        except Exception as e:
+            logger.warning(f"[TELEGRAM_CHAT] Could not fetch minutes for {workspace_id}: {e}")
+
+    reply = await _generate_agent_reply(
+        user_message=req.message,
+        is_linked=is_linked,
+        remaining_minutes=remaining_minutes,
+        workspace_id=workspace_id
+    )
+
+    return TelegramChatResponse(
+        reply=reply,
+        is_linked=is_linked,
+        remaining_minutes=remaining_minutes
+    )
+
+
 @router.get("/status")
 async def get_telegram_status():
     """Diagnostic endpoint to inspect Telegram bot runtime configuration."""
@@ -181,3 +321,4 @@ async def get_telegram_status():
         "openrouter_model": openrouter_model,
         "admin_ids": [x.strip() for x in os.getenv("TELEGRAM_ADMIN_IDS", "").split(",") if x.strip()]
     }
+
