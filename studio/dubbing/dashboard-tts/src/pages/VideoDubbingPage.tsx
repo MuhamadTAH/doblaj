@@ -286,9 +286,8 @@ export default function VideoDubbingPage() {
         }
       }, 1500);
     } catch (e: any) {
-      if (e instanceof AuthFailedError || e instanceof AuthNetworkError) return;
       setPhase("failed");
-      setError(e?.message ?? "Upload failed");
+      setError(e?.message ?? "Upload failed. Please check your connection and retry.");
     }
   };
 

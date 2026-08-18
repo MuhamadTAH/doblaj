@@ -318,7 +318,7 @@ async def start_uploaded_job(
     except Exception as e:
         logger.warning("Deduct minutes warning on start_uploaded_job: %s", e)
 
-    mcp_webhook_url = os.getenv("MCP_WEBHOOK_URL")
+    mcp_webhook_url = os.getenv("MCP_WEBHOOK_URL", "")
     runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID", "")
     runpod_api_key = os.getenv("RUNPOD_API_KEY", "")
 
@@ -366,6 +366,28 @@ async def start_uploaded_job(
             background_tasks.add_task(trigger_runpod)
         else:
             asyncio.create_task(trigger_runpod())
+    else:
+        # Local background processing fallback: download source from R2 and process locally
+        async def process_r2_locally():
+            upload_dir = Path("data/uploads")
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            local_path = upload_dir / f"{job_id}.mp4"
+            try:
+                logger.info(f"[LOCAL-WORKER] Downloading {source_r2_key} to {local_path}")
+                await asyncio.to_thread(r2.download_file, source_r2_key, str(local_path))
+                logger.info(f"[LOCAL-WORKER] Starting local pipeline execution for job {job_id}")
+                await asyncio.to_thread(worker_process_video_job, job_id, str(local_path), user.workspace_id, category, entity)
+            except Exception as loc_err:
+                logger.error(f"[LOCAL-WORKER] Local worker error for job {job_id}: {loc_err}")
+                try:
+                    await database.update_job_status(user_client, workspace_id=user.workspace_id, job_id=job_id, status="failed", error=str(loc_err))
+                except Exception:
+                    pass
+
+        if background_tasks:
+            background_tasks.add_task(process_r2_locally)
+        else:
+            asyncio.create_task(process_r2_locally())
 
     return VideoJobResponse(
         id=job["id"],
@@ -501,6 +523,7 @@ async def create_job(
     job_id = str(uuid.uuid4())
     runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID", "")
     runpod_api_key = os.getenv("RUNPOD_API_KEY", "")
+    mcp_webhook_url = os.getenv("MCP_WEBHOOK_URL", "")
 
     # Upload to R2 if running in serverless mode
     source_r2_key = ""
@@ -538,8 +561,6 @@ async def create_job(
             input_path.unlink()
         logger.exception("Failed to create video job")
         raise HTTPException(status_code=500, detail="Internal server error")
-
-    mcp_webhook_url = os.getenv("MCP_WEBHOOK_URL")
 
     # Start orchestrator: Webhook Push, RunPod Serverless (GPU), or fallback to local
     if mcp_webhook_url:
