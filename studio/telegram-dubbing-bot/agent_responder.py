@@ -61,20 +61,16 @@ async def query_balance(chat_id: int) -> dict:
     if not chat_id:
         return {"is_linked": False, "remaining_minutes": 0}
     
-    urls = [
-        f"{DUBBING_BACKEND_URL}/api/telegram/balance/{chat_id}",
-        f"https://api.doblaj.com/api/telegram/balance/{chat_id}",
-        f"http://127.0.0.1:8002/api/telegram/balance/{chat_id}"
-    ]
-    for url in urls:
-        try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
-                resp = await client.get(url)
-                if resp.status_code == 200:
-                    return resp.json()
-        except Exception:
-            continue
+    url = f"{DUBBING_BACKEND_URL}/api/telegram/balance/{chat_id}"
+    try:
+        async with httpx.AsyncClient(timeout=2.5) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                return resp.json()
+    except Exception as e:
+        logger.debug(f"Balance query failed for chat {chat_id}: {e}")
     return {"is_linked": False, "remaining_minutes": 0}
+
 
 
 def detect_language(text: str) -> str:
@@ -222,7 +218,7 @@ async def generate_response(user_text: str, chat_id: int) -> str:
             "💡 أرسل الفيديو الخاص بك هنا للبدء مباشرة، أو اسألني عن الرصيد والباقات!"
         )
 
-    if any(re.search(r'\b' + re.escape(w) + r'\b', lower) for w in ["hello", "hi", "hey", "how are you", "good morning", "good evening"]):
+    if any(re.search(r'\b' + re.escape(w) + r'\b', lower) for w in ["hello", "helo", "hllo", "hi", "hey", "how are you", "good morning", "good evening", "slaw", "salam"]):
         return (
             "👋 **Hello! Welcome to Doblaj AI Assistant!** 🎙️\n\n"
             "I'm here to assist you with dubbing Kurdish Sorani videos into natural **Spoken Iraqi Arabic** with AI voice cloning.\n\n"
