@@ -145,34 +145,25 @@ class AudioAssembler:
             shutil.copyfile(input_wav, output_wav)
         elif abs(delta) <= tolerance:
             logger.info(f"[AudioAssembler] PATH A: Perfect Fit (delta={delta:.3f}s)")
-            shutil.copyfile(input_wav, output_wav)
-            if delta > 0:
-                # Pird: list-args subprocess, no shell.
-                subprocess.run(
-                    [
-                        "ffmpeg", "-y",
-                        "-i", input_wav,
-                        "-t", str(self.target_duration),
-                        "-ar", "16000", "-ac", "1",
-                        output_wav,
-                    ],
-                    shell=False, check=False,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                )
+            if delta > 0.02:
+                # Apply micro-atempo to fit 100% of speech rather than cutting
+                micro_ratio = tts_dur / self.target_duration
+                self._apply_atempo_stretch(input_wav, output_wav, micro_ratio)
+            else:
+                shutil.copyfile(input_wav, output_wav)
         else:
             speed_ratio = tts_dur / self.target_duration
             
-            # Clamp the minimum speed_ratio so we never slow down more than 0.95x natural speed
+            # Clamp the minimum speed_ratio so we never slow down more than 0.90x natural speed
             # The remaining time will be padded with silence and crossfaded to prevent popping
-            if speed_ratio < 0.95:
-                logger.info(f"[AudioAssembler] Clamping extreme slowdown {speed_ratio:.3f} -> 0.95")
-                speed_ratio = 0.95
+            if speed_ratio < 0.90:
+                logger.info(f"[AudioAssembler] Clamping extreme slowdown {speed_ratio:.3f} -> 0.90")
+                speed_ratio = 0.90
                 
-            # Clamp the maximum speed_ratio so we never speed up more than 1.20x natural speed
-            # The overflow audio will be guillotine sliced with a 50ms fade-out
-            if speed_ratio > 1.20:
-                logger.info(f"[AudioAssembler] Clamping extreme speedup {speed_ratio:.3f} -> 1.20")
-                speed_ratio = 1.20
+            # If speed_ratio is high, stretch audio cleanly to fit without hard truncation
+            if speed_ratio > 1.35:
+                logger.warning(f"[AudioAssembler] High speedup required {speed_ratio:.3f} -> Capping at 1.35x to maintain speech intelligibility")
+                speed_ratio = 1.35
                 
             self._apply_atempo_stretch(input_wav, output_wav, speed_ratio)
 

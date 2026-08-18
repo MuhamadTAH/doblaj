@@ -320,14 +320,18 @@ class DubbingPipelineEngine:
                     arabic_text = "صورة الحادث لازم بفلوس تطلع، فليش تصرف فلوسك تعال اشوفك هنا."
                     
                 w_count = len(arabic_text.split())
-                est_speed = round(w_count / max(0.5, active_dur * 2.3), 2)
+                max_allowed_words = max(2, int(active_dur * 2.35))
+                est_speed = round(w_count / max(0.5, active_dur * 2.25), 2)
                 
-                # Real Speed Boundary Circuit Breaker & Calibration Loop [0.95x, 1.15x]
-                if (est_speed < 0.95 or est_speed > 1.15) and active_dur >= 1.0:
-                    desired_words = max(2, round(active_dur * 2.35))
-                    action = "expand and add natural phrasing in" if est_speed < 0.95 else "tighten and shorten to punchy"
-                    corr_prompt = f"CRITICAL SPEED CALIBRATION: Your previous translation had only {w_count} words ({est_speed}x speed). You MUST {action} authentic Spoken Iraqi Arabic with EXACTLY {desired_words} words to achieve natural 1.02x speed for {active_dur:.2f}s."
-                    logger.info(f"  ⚡ [Chunk {idx+1}] Speed violation ({est_speed}x) -> Calibrating to exact target ({desired_words} words)...")
+                # Real Speed Boundary & Word Ceiling Circuit Breaker [0.95x, 1.15x]
+                if (w_count > max_allowed_words or est_speed < 0.95 or est_speed > 1.15) and active_dur >= 1.0:
+                    desired_words = max(2, min(max_allowed_words, round(active_dur * 2.20)))
+                    action = "expand and add natural phrasing in" if est_speed < 0.95 else f"STRICTLY shorten to MAXIMUM {desired_words} words"
+                    corr_prompt = (
+                        f"CRITICAL DURATION & WORD CEILING: Your previous translation had {w_count} words ({est_speed}x speed), which exceeds the {active_dur:.2f}s slot and WILL GET CUT OFF. "
+                        f"You MUST rewrite authentic Spoken Iraqi Arabic with AT MOST {desired_words} words so the speech finishes comfortably within {active_dur:.2f}s."
+                    )
+                    logger.info(f"  ⚡ [Chunk {idx+1}] Word ceiling violation ({w_count} words vs {max_allowed_words} max) -> Calibrating to {desired_words} words...")
                     try:
                         retry_res = await translate_single_chunk_structured(
                             text=kurd_text,
@@ -338,7 +342,7 @@ class DubbingPipelineEngine:
                         retry_arabic = retry_res.get("arabic_text", "").strip('"`\' \n')
                         if retry_arabic:
                             retry_w = len(retry_arabic.split())
-                            retry_speed = round(retry_w / max(0.5, active_dur * 2.3), 2)
+                            retry_speed = round(retry_w / max(0.5, active_dur * 2.25), 2)
                             logger.info(f"  ✅ [Chunk {idx+1} Recalibrated] Iraqi: {retry_arabic} (Words: {retry_w}, Speed: {retry_speed}x)")
                             arabic_text = retry_arabic
                             w_count = retry_w
@@ -472,16 +476,28 @@ class DubbingPipelineEngine:
                 chunk_dur = c.get("duration_sec", active_dur)
                 k_samples = int(chunk_dur * sr)
                 
-                # Align TTS speech duration to exact active Kurdish speech duration
+                # Maximum available duration inside this chunk after leading silence
+                max_available_speech_dur = max(0.2, chunk_dur - lead_sil)
+                target_speech_dur = min(active_dur, max_available_speech_dur)
                 tts_dur = len(tts_audio) / sr
-                if abs(tts_dur - active_dur) > 0.15 and active_dur >= 0.5:
-                    stretch_rate = max(0.85, min(1.35, tts_dur / active_dur))
-                    logger.info(f"  ⚡ [Chunk #{idx+1} Exact Onset/Offset Match] TTS ({tts_dur:.2f}s) -> Aligned to active speech ({active_dur:.2f}s) via time_stretch {stretch_rate:.2f}x")
+                
+                # Guaranteed Zero-Cutoff Auto-Stretch:
+                # If TTS audio duration exceeds the available speech slot, automatically time-stretch
+                if tts_dur > target_speech_dur or (tts_dur + lead_sil) > chunk_dur:
+                    stretch_rate = max(1.01, tts_dur / target_speech_dur)
+                    logger.info(f"  ⚡ [Chunk #{idx+1} Zero-Cutoff Auto-Stretch] TTS ({tts_dur:.2f}s) > target ({target_speech_dur:.2f}s) -> Stretching at {stretch_rate:.3f}x to fit 100% of speech without cutoff")
+                    tts_audio = librosa.effects.time_stretch(tts_audio, rate=stretch_rate)
+                elif abs(tts_dur - target_speech_dur) > 0.20 and target_speech_dur >= 0.5:
+                    stretch_rate = max(0.85, min(1.35, tts_dur / target_speech_dur))
+                    logger.info(f"  ⚡ [Chunk #{idx+1} Cadence Match] TTS ({tts_dur:.2f}s) -> Aligned to active speech ({target_speech_dur:.2f}s) via time_stretch {stretch_rate:.2f}x")
                     tts_audio = librosa.effects.time_stretch(tts_audio, rate=stretch_rate)
                 
                 # Build exact padded chunk: lead_silence + stretched_tts + tail_silence = total chunk_duration
-                padded_chunk = np.zeros(k_samples, dtype=np.float32)
                 lead_samples = int(lead_sil * sr)
+                if lead_samples + len(tts_audio) > k_samples:
+                    lead_samples = max(0, k_samples - len(tts_audio))
+                    
+                padded_chunk = np.zeros(k_samples, dtype=np.float32)
                 end_insert = min(k_samples, lead_samples + len(tts_audio))
                 insert_len = end_insert - lead_samples
                 if insert_len > 0:
