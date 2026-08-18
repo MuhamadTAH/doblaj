@@ -475,41 +475,14 @@ async def call_payment_ai(user_message: str, chat_id: int = 0) -> str:
     except Exception as e:
         logger.debug({"service": "ai", "message": f"WaylClient notice: {e}"})
 
-    # 0. Subagent Chat Trigger Queue (Fast Realtime Response)
+    # 0. Direct Autonomous AI Subagent Engine
     try:
-        import uuid
-        queue_dir = Path(__file__).resolve().parent / "chat_queue"
-        inbox_dir = queue_dir / "inbox"
-        outbox_dir = queue_dir / "outbox"
-        inbox_dir.mkdir(parents=True, exist_ok=True)
-        outbox_dir.mkdir(parents=True, exist_ok=True)
-        
-        req_id = uuid.uuid4().hex[:8]
-        req_file = inbox_dir / f"REQ_{req_id}.json"
-        resp_file = outbox_dir / f"RESP_{req_id}.json"
-        
-        req_data = {
-            "req_id": req_id,
-            "chat_id": chat_id,
-            "text": user_message,
-            "timestamp": time.time()
-        }
-        req_file.write_text(json.dumps(req_data, ensure_ascii=False), encoding="utf-8")
-        
-        # Wait up to 10 seconds for subagent response
-        for _ in range(20):
-            await asyncio.sleep(0.5)
-            if resp_file.exists():
-                try:
-                    resp_data = json.loads(resp_file.read_text(encoding="utf-8"))
-                    resp_file.unlink(missing_ok=True)
-                    reply = resp_data.get("reply")
-                    if reply and reply.strip():
-                        return reply.strip()
-                except Exception:
-                    pass
+        from agent_responder import generate_response
+        reply = await generate_response(user_message, chat_id)
+        if reply and reply.strip():
+            return reply.strip()
     except Exception as e:
-        logger.debug({"service": "ai", "message": f"Subagent trigger queue notice: {e}"})
+        logger.debug({"service": "ai", "message": f"Direct agent_responder notice: {e}"})
         
     openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
     openrouter_model = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat")
