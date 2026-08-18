@@ -616,6 +616,24 @@ async def call_payment_ai(user_message: str, chat_id: int = 0) -> str:
         except Exception as e:
             logger.warning({"service": "ai", "message": f"Anthropic call notice: {e}"})
 
+    # 4. Backend Centralized AI Agent Fallback (Railway / Azure API)
+    try:
+        chat_url = f"{DUBBING_BACKEND_URL.rstrip('/')}/api/telegram/chat"
+        headers = {"x-internal-key": INTERNAL_API_KEY} if INTERNAL_API_KEY else {}
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            resp = await client.post(
+                chat_url,
+                json={"telegram_chat_id": str(chat_id), "message": user_message},
+                headers=headers
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                reply = data.get("reply")
+                if reply and reply.strip():
+                    return reply.strip()
+    except Exception as e:
+        logger.warning({"service": "ai", "message": f"Backend chat endpoint call notice: {e}"})
+
     return (
         "💡 **Doblaj Packages / پاکێجەکانی دۆبلاژ:**\n\n"
         "• ⚡ **Starter:** 5 min for $10 (15,000 IQD)\n"
