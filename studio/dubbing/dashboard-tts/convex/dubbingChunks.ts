@@ -60,12 +60,27 @@ export const updateInternal = mutation({
   args: {
     chunkId: v.string(),
     patch: v.any(),
+    expectedWorkspaceId: v.optional(v.string()),
     __internalApiKey: v.string(),},
   handler: async (ctx, args) => {
     requireInternalApiKey(args.__internalApiKey);
     const chunkId = await resolveChunkId(ctx, args.chunkId);
     const existing = await ctx.db.get(chunkId);
     if (!existing) throw new ConvexError("CHUNK_NOT_FOUND");
+    // PIRD-017 follow-up, Part03: refuse the write when the caller
+    // declared a workspace that does not own the chunk. Chunks derive
+    // their workspaceId from the parent job, so we compare the chunk's
+    // workspaceId directly against the expected id (no resolveWorkspaceId
+    // call needed — the chunk's workspaceId is already a resolved
+    // Convex Id<"workspaces">).
+    if (args.expectedWorkspaceId) {
+      // Resolve the expected id once for canonical comparison.
+      const normalized = ctx.db.normalizeId("workspaces", args.expectedWorkspaceId);
+      const expectedCanonical = normalized ?? args.expectedWorkspaceId;
+      if (existing.workspaceId !== expectedCanonical) {
+        throw new ConvexError("WORKSPACE_MISMATCH");
+      }
+    }
     const safePatch: Record<string, unknown> = {};
     const allowed = new Set([
       "transcriptSrc", "transcriptTgt", "audioPath",

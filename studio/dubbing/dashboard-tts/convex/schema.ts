@@ -264,16 +264,74 @@ export default defineSchema({
 
   transactions: defineTable({
     legacyId: v.string(),
+    referenceId: v.optional(v.string()),
     subyTransactionId: v.optional(v.string()),
     workspaceId: v.id("workspaces"),
     tier: v.optional(v.string()),
     amountUsd: v.optional(v.number()),
+    amount: v.optional(v.number()),
+    currency: v.optional(v.string()),
     minutesAdded: v.optional(v.number()),
+    status: v.optional(v.string()), // "complete", "refunded", "flagged"
     createdAt: v.optional(v.string()),
   })
     .index("by_legacy_id", ["legacyId"])
+    .index("by_reference_id", ["referenceId"])
     .index("by_suby_transaction_id", ["subyTransactionId"])
     .index("by_workspace_id", ["workspaceId"]),
+
+  expectedCharges: defineTable({
+    referenceId: v.string(),
+    workspaceId: v.id("workspaces"),
+    amount: v.number(),          // integer minor units (IQD dinars / USD cents)
+    currency: v.string(),        // "IQD" | "USD"
+    minutesGranted: v.number(),
+    tier: v.string(),
+    status: v.string(),          // "pending" | "complete" | "expired" | "flagged"
+    createdAt: v.string(),
+  })
+    .index("by_reference_id", ["referenceId"])
+    .index("by_workspace_id", ["workspaceId"])
+    .index("by_status", ["status"])
+    .index("by_status_and_created", ["status", "createdAt"]),
+
+  ledger: defineTable({
+    workspaceId: v.id("workspaces"),
+    referenceId: v.optional(v.string()),
+    delta: v.number(),           // signed integer (+5, -5)
+    type: v.string(),            // "purchase" | "refund" | "spend" | "manual_adjustment"
+    resultingBalance: v.number(),
+    actor: v.string(),           // "webhook" | "sweeper" | "sync-all" | "admin"
+    createdAt: v.number(),
+  })
+    .index("by_workspace_id", ["workspaceId"])
+    .index("by_reference_id", ["referenceId"]),
+
+  securityAlerts: defineTable({
+    type: v.string(),            // "amount_mismatch" | "chargeback_quarantine" | "signature_anomaly"
+    referenceId: v.optional(v.string()),
+    details: v.any(),
+    createdAt: v.number(),
+  })
+    .index("by_type", ["type"])
+    .index("by_reference_id", ["referenceId"]),
+
+  manualReviewQueue: defineTable({
+    referenceId: v.string(),
+    workspaceId: v.id("workspaces"),
+    amount: v.number(),
+    currency: v.string(),
+    minutesGranted: v.number(),
+    tier: v.string(),
+    reason: v.string(),          // "stale_pending_48h_unverified" | "webhook_after_expiry"
+    status: v.string(),          // "pending_review" | "resolved" | "dismissed"
+    lastKnownWaylStatus: v.optional(v.string()),
+    createdAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+  })
+    .index("by_reference_id", ["referenceId"])
+    .index("by_workspace_id", ["workspaceId"])
+    .index("by_status", ["status"]),
 
   // PIRD-013: GDPR consent ledger. Recorded on voice upload, voice clone,
   // and any other processing of biometric data. Records the policy
@@ -293,10 +351,8 @@ export default defineSchema({
     .index("by_user_type", ["userId", "consentType"]),
 
   webhookEvents: defineTable({
-    eventId: v.string(),
-    eventType: v.string(),
-    payload: v.any(),
-    status: v.string(), // PENDING, PROCESSED, FAILED
-    createdAt: v.string(),
-  }).index("by_event_id", ["eventId"]),
+    referenceId: v.string(),
+    rawPayload: v.string(),
+    receivedAt: v.number(),
+  }).index("by_reference_id", ["referenceId"]),
 });

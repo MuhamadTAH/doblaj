@@ -293,4 +293,22 @@ export const handleRefundKillSwitchInternal = mutation({
     return { newBalance: next, locked: shouldLock };
   },
 });
+export const getInternal = query({
+  args: {
+    workspaceId: v.string(),
+    __internalApiKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireInternalApiKey(args.__internalApiKey);
+    try {
+      const doc = await ctx.db.get(args.workspaceId as any);
+      if (doc) return doc;
+    } catch {}
+    return await ctx.db
+      .query("workspaces")
+      .withIndex("by_legacy_id", (q) => q.eq("legacyId", args.workspaceId))
+      .unique();
+  },
+});
+
 export const getAllForDebug = query({ handler: async (ctx) => { return await ctx.db.query("workspaces").collect(); } });
