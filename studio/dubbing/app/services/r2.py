@@ -119,6 +119,25 @@ def signed_url(
     )
 
 
+def signed_put_url(
+    key: str,
+    content_type: str = "video/mp4",
+    ttl_seconds: int = 3600,
+) -> str:
+    """Generate a presigned PUT URL for direct client-to-R2 upload."""
+    client = _client()
+    return client.generate_presigned_url(
+        "put_object",
+        Params={
+            "Bucket": R2_BUCKET,
+            "Key": key,
+            "ContentType": content_type,
+        },
+        ExpiresIn=ttl_seconds,
+    )
+
+
+
 def delete(key: str) -> None:
     """Delete an object. Silently succeeds if the object doesn't exist."""
     try:

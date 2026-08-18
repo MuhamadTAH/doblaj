@@ -1,4 +1,4 @@
-import { uploadWithAuthProgress, type TokenGetter, type UploadProgressData } from "../lib/apiClient";
+import { uploadWithAuthProgress, uploadDirectToPresignedUrl, getDubbingApiToken, type TokenGetter, type UploadProgressData } from "../lib/apiClient";
 
 // Dubbing API client. Calls /video/* through FastAPI. FastAPI verifies
 // the Clerk session cookie set by the shell, then proxies reads/writes
@@ -28,6 +28,63 @@ export async function submitDubJobWithProgress(
   onProgress?: (progress: UploadProgressInfo) => void,
   signal?: AbortSignal
 ): Promise<{ id: string; status: DubJobStatus }> {
+  try {
+    const token = await getDubbingApiToken(getToken, false);
+
+    // 1. Get direct R2 presigned PUT URL
+    const initRes = await fetch(`${API_BASE}/video/jobs/upload-url`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        filename: file.name,
+        category: meta?.category,
+        entity: meta?.entity,
+        consent_text_version: meta?.consent_text_version,
+      }),
+      signal,
+    });
+
+    if (initRes.ok) {
+      const { job_id, upload_url } = await initRes.json();
+
+      // 2. Direct upload to Cloudflare R2 (bypasses 100MB proxy body caps and socket stalls)
+      await uploadDirectToPresignedUrl(
+        upload_url,
+        file,
+        file.type || "video/mp4",
+        onProgress,
+        signal
+      );
+
+      // 3. Trigger processing on backend
+      const startRes = await fetch(`${API_BASE}/video/jobs/${job_id}/start`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          category: meta?.category,
+          entity: meta?.entity,
+        }),
+        signal,
+      });
+
+      if (!startRes.ok) {
+        const err = await startRes.text();
+        throw new Error(`Failed to start job: ${err}`);
+      }
+
+      return { id: job_id, status: "pending" };
+    }
+  } catch (err) {
+    console.warn("Direct R2 upload initiation failed, attempting multipart fallback:", err);
+  }
+
+  // Fallback: Standard multipart upload to FastAPI
   const form = new FormData();
   form.append("file", file);
   if (meta?.category) form.append("category", meta.category);
@@ -42,6 +99,7 @@ export async function submitDubJobWithProgress(
     signal
   );
 }
+
 
 export async function submitDubJob(
   fetchClient: typeof fetch,

@@ -190,6 +190,196 @@ def get_video_duration(path: str) -> float:
         return 0.0
 
 
+class JobUploadUrlRequest(BaseModel):
+    filename: str
+    category: Optional[str] = None
+    entity: Optional[str] = None
+    consent_text_version: Optional[str] = None
+    duration_seconds: Optional[float] = None
+
+
+class JobUploadUrlResponse(BaseModel):
+    job_id: str
+    upload_url: str
+    key: str
+    max_bytes: int = MAX_UPLOAD_BYTES
+
+
+class JobStartRequest(BaseModel):
+    category: Optional[str] = None
+    entity: Optional[str] = None
+    duration_seconds: Optional[float] = None
+
+
+@router.post("/jobs/upload-url", response_model=JobUploadUrlResponse)
+@_rate_limited("10/minute")
+async def get_job_upload_url(
+    payload: JobUploadUrlRequest,
+    request: Request,
+    user: AuthenticatedUser = Depends(require_user_or_internal),
+) -> JobUploadUrlResponse:
+    if not payload.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+    if ".." in payload.filename or "/" in payload.filename or "\\" in payload.filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    _validate_form_field("category", payload.category)
+    _validate_form_field("entity", payload.entity)
+    _validate_form_field("consent_text_version", payload.consent_text_version)
+
+    await _check_voice_recording_consent(user, payload.consent_text_version)
+
+    raw_ip = (request.headers.get("CF-Connecting-IP") or request.headers.get("X-Forwarded-For") or (request.client.host if getattr(request, "client", None) else "unknown"))
+    user_ip_address = str(raw_ip) if raw_ip and not hasattr(raw_ip, "_mock_return_value") else "unknown"
+    if isinstance(user_ip_address, str) and "," in user_ip_address:
+        user_ip_address = user_ip_address.split(",")[0].strip()
+
+    job_id = str(uuid.uuid4())
+    ext = Path(payload.filename).suffix or ".mp4"
+    safe_filename = f"{uuid.uuid4().hex}{ext}"
+    from app.services import r2
+    source_r2_key = r2.dubbing_key(user.workspace_id, job_id, safe_filename)
+
+    from app.core import db as database
+    user_client = database.get_user_client(user.access_token)
+
+    # Check balance
+    duration_minutes = 1
+    if payload.duration_seconds and payload.duration_seconds > 0:
+        import math
+        duration_minutes = math.ceil(payload.duration_seconds / 60.0)
+
+    try:
+        remaining_minutes = await database.get_workspace_minutes(user_client, workspace_id=user.workspace_id)
+    except Exception as e:
+        logger.exception("Failed to query workspace minutes balance")
+        raise HTTPException(status_code=402, detail="Unable to verify your minute balance. Please retry shortly.")
+
+    if remaining_minutes < duration_minutes:
+        raise HTTPException(
+            status_code=402,
+            detail=f"You do not have enough minutes. This requires {duration_minutes} min, but you have {remaining_minutes} min remaining."
+        )
+
+    # Create pending job in database
+    await database.create_job(
+        user_client,
+        workspace_id=user.workspace_id,
+        owner_user_id=user.user_id,
+        job_id=job_id,
+        source_video_r2_key=source_r2_key,
+        consent_version=payload.consent_text_version or "",
+        user_ip_address=user_ip_address,
+    )
+
+    # Generate presigned PUT URL
+    upload_url = r2.signed_put_url(source_r2_key, content_type="video/mp4", ttl_seconds=3600)
+
+    return JobUploadUrlResponse(
+        job_id=job_id,
+        upload_url=upload_url,
+        key=source_r2_key,
+        max_bytes=MAX_UPLOAD_BYTES,
+    )
+
+
+@router.post("/jobs/{job_id}/start", response_model=VideoJobResponse)
+@_rate_limited("10/minute")
+async def start_uploaded_job(
+    job_id: str,
+    payload: Optional[JobStartRequest] = None,
+    request: Request = None,
+    user: AuthenticatedUser = Depends(require_user_or_internal),
+    background_tasks: BackgroundTasks = None,
+) -> VideoJobResponse:
+    from app.services import r2
+    from app.core import db as database
+    user_client = database.get_user_client(user.access_token)
+
+    job = await database.get_job(user_client, workspace_id=user.workspace_id, job_id=job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    source_r2_key = job.get("source_video_r2_key") or ""
+    if not source_r2_key or not r2.exists(source_r2_key):
+        raise HTTPException(status_code=400, detail="Uploaded file not found in storage. Please upload again.")
+
+    category = payload.category if payload else None
+    entity = payload.entity if payload else None
+
+    # Deduct minutes
+    duration_minutes = 1
+    if payload and payload.duration_seconds and payload.duration_seconds > 0:
+        import math
+        duration_minutes = math.ceil(payload.duration_seconds / 60.0)
+
+    try:
+        await database.deduct_workspace_minutes(user_client, workspace_id=user.workspace_id, minutes=duration_minutes)
+    except Exception as e:
+        logger.warning("Deduct minutes warning on start_uploaded_job: %s", e)
+
+    mcp_webhook_url = os.getenv("MCP_WEBHOOK_URL")
+    runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID", "")
+    runpod_api_key = os.getenv("RUNPOD_API_KEY", "")
+
+    if mcp_webhook_url:
+        logger.info(f"Triggering Local MCP Webhook Push {mcp_webhook_url} for job {job_id}")
+        async def trigger_webhook():
+            try:
+                wb_payload = {
+                    "job_id": job_id,
+                    "workspace_id": user.workspace_id,
+                }
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(mcp_webhook_url, json=wb_payload)
+                    resp.raise_for_status()
+                    logger.info(f"MCP Webhook Push triggered successfully: {resp.json()}")
+            except Exception as trigger_err:
+                logger.error(f"Failed to trigger Webhook for job {job_id}: {trigger_err}")
+
+        asyncio.create_task(trigger_webhook())
+    elif runpod_endpoint and runpod_api_key:
+        logger.info(f"Triggering RunPod Serverless endpoint {runpod_endpoint} for job {job_id}")
+        async def trigger_runpod():
+            try:
+                url = f"https://api.runpod.ai/v2/{runpod_endpoint}/run"
+                headers = {
+                    "Authorization": f"Bearer {runpod_api_key}",
+                    "Content-Type": "application/json",
+                }
+                wb_payload = {
+                    "input": {
+                        "job_id": job_id,
+                        "workspace_id": user.workspace_id,
+                        "category": category,
+                        "entity": entity,
+                        "source_video_r2_key": source_r2_key,
+                    }
+                }
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(url, json=wb_payload, headers=headers)
+                    resp.raise_for_status()
+            except Exception as trigger_err:
+                logger.error(f"Failed to trigger RunPod Serverless for job {job_id}: {trigger_err}")
+
+        if background_tasks:
+            background_tasks.add_task(trigger_runpod)
+        else:
+            asyncio.create_task(trigger_runpod())
+
+    return VideoJobResponse(
+        id=job["id"],
+        store_id=job.get("store_id", ""),
+        status="pending",
+        progress=0,
+        input_path="",
+        output_path=job.get("result_video_r2_key") or "",
+        error=job.get("error") or "",
+        created_at=str(job.get("created_at", "")),
+        updated_at=str(job.get("updated_at", "")),
+    )
+
+
 @router.post("/jobs", response_model=VideoJobResponse)
 # PIRD-010: per-IP rate limit on job creation.
 @_rate_limited("5/minute")

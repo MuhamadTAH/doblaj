@@ -200,3 +200,88 @@ export async function uploadWithAuthProgress<T = any>(
   });
 }
 
+export async function uploadDirectToPresignedUrl(
+  uploadUrl: string,
+  file: File,
+  contentType = "video/mp4",
+  onProgress?: (data: UploadProgressData) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", uploadUrl, true);
+    xhr.setRequestHeader("Content-Type", contentType);
+
+    if (signal) {
+      signal.addEventListener("abort", () => xhr.abort());
+    }
+
+    const startTime = Date.now();
+
+    if (xhr.upload && onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && e.total > 0) {
+          const loadedMB = (e.loaded / (1024 * 1024)).toFixed(1);
+          const totalMB = (e.total / (1024 * 1024)).toFixed(1);
+          const remainMB = Math.max(0, (e.total - e.loaded) / (1024 * 1024)).toFixed(1);
+          const percent = Math.min(100, Math.round((e.loaded / e.total) * 100));
+
+          const elapsedSec = (Date.now() - startTime) / 1000;
+          let speedMBs = "0.0";
+          let etaFormatted = "--";
+
+          if (elapsedSec > 0.3 && e.loaded > 0) {
+            const bytesPerSec = e.loaded / elapsedSec;
+            const mbPerSec = bytesPerSec / (1024 * 1024);
+            speedMBs = mbPerSec.toFixed(1);
+
+            const remainingBytes = e.total - e.loaded;
+            if (remainingBytes > 0 && bytesPerSec > 0) {
+              const etaSec = Math.round(remainingBytes / bytesPerSec);
+              if (etaSec < 60) {
+                etaFormatted = `${etaSec}s`;
+              } else {
+                const m = Math.floor(etaSec / 60);
+                const s = etaSec % 60;
+                etaFormatted = `${m}m ${s < 10 ? "0" : ""}${s}s`;
+              }
+            } else {
+              etaFormatted = "0s";
+            }
+          }
+
+          onProgress({
+            loadedBytes: e.loaded,
+            totalBytes: e.total,
+            percent,
+            loadedMB,
+            totalMB,
+            remainMB,
+            speedMBs,
+            etaFormatted,
+          });
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(new HttpError(xhr.status, `Storage upload failed with HTTP ${xhr.status}`));
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new AuthNetworkError("Network request failed during direct upload to storage."));
+    };
+
+    xhr.onabort = () => {
+      reject(new Error("Upload aborted."));
+    };
+
+    xhr.send(file);
+  });
+}
+
+
