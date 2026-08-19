@@ -149,19 +149,20 @@ def extract_speaker_reference_samples(
                     collected_audio.append(np.zeros(int(0.05 * sr), dtype=np.float32))
                     collected_dur += (len(segment) / sr)
 
-            if collected_dur >= 15.0:  # 15s is the optimal Fish Audio sweet spot
+            # Cap at 90 seconds max to stay safely within Fish Audio's 10MB HTTP payload limit
+            if collected_dur >= 90.0:
                 break
 
         if collected_audio and collected_dur >= 2.0:
             full_spk_audio = np.concatenate(collected_audio)
         else:
-            # Fallback to first 10 seconds of vocal stem
-            anchor_len = min(len(data), int(10.0 * sr))
+            # Fallback to full vocal stem up to 60s
+            anchor_len = min(len(data), int(60.0 * sr))
             full_spk_audio = data[:anchor_len]
 
         out_path = str(scratch_dir / f"clean_voice_reference_{spk_id}.wav")
-        sf.write(out_path, full_spk_audio, sr)
+        sf.write(out_path, full_spk_audio, sr, subtype="PCM_16")
         results[spk_id] = out_path
-        logger.info(f"🎙️ [FISH-MODEL] Extracted {len(full_spk_audio)/sr:.2f}s clean speech reference for speaker '{spk_id}' -> {out_path}")
+        logger.info(f"🎙️ [FISH-MODEL] Extracted {len(full_spk_audio)/sr:.2f}s full-video clean speech reference for speaker '{spk_id}' -> {out_path}")
 
     return results
