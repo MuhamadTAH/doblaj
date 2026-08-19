@@ -272,15 +272,16 @@ find_optimal_split_point = find_best_silence_split
 def segment_audio_pause_first(
     audio_data: np.ndarray,
     sample_rate: int,
-    min_dur: float = 3.5,
+    min_dur: float = 0.0,
     max_dur: float = 10.0,
     silence_thresh_db: float = -38.0,
-    min_pause_sec: float = 0.25
+    min_pause_sec: float = 0.40
 ) -> list[dict]:
     """
-    Pause-First Natural Speech Segmentation:
-    Detects real physical acoustic pauses (>=250ms silence) and cuts strictly at natural
-    sentence/breath boundaries. Guarantees 100% semantic completeness with zero cut words.
+    Pause-First Natural Speech Segmentation (Zero-Min Duration):
+    Detects real physical acoustic pauses (>=400ms silence) and cuts strictly at every natural
+    pause/breath boundary. If a user says one single word (e.g. 1 second) and pauses, it creates
+    a dedicated chunk right there without requiring arbitrary minimum durations.
     """
     total_sec = len(audio_data) / sample_rate
     frame_len = int(0.020 * sample_rate)  # 20ms frame
@@ -314,59 +315,42 @@ def segment_audio_pause_first(
     if in_pause:
         pauses.append((p_start, total_sec, total_sec - p_start))
         
-    # 3. Build chunks strictly by selecting optimal natural breath pauses (3.5s to 9.0s)
+    # 3. Build chunks by splitting at every natural pause boundary
     chunks = []
     cur_start = 0.0
     
-    while (total_sec - cur_start) > 9.0:
-        win_min = cur_start + min_dur
-        win_max = cur_start + min(max_dur, total_sec - cur_start)
+    while cur_start < (total_sec - 0.25):
+        # Look for the next pause that starts after cur_start + 0.35s (at least 1 spoken word)
+        # and within the max_dur window
+        valid_pauses = [p for p in pauses if p[0] >= (cur_start + 0.35) and (p[0] - cur_start) <= max_dur]
         
-        # Check if there is an early major action pause (>=800ms) after min_dur
-        major_pauses = [p for p in pauses if p[0] >= win_min and p[0] <= win_max and p[2] >= 0.8]
-        
-        if major_pauses:
-            best_p = major_pauses[0]
+        if valid_pauses:
+            # Pick the earliest pause to slice cleanly right after the word/phrase
+            best_p = valid_pauses[0]
             split_time = (best_p[0] + best_p[1]) / 2.0
         else:
-            # Look for all candidate pauses in the target sentence window [3.5s, 9.0s]
-            cand_pauses = [p for p in pauses if p[0] >= win_min and p[0] <= win_max]
-            if cand_pauses:
-                # Rank by pause duration (longest breath pause is best sentence boundary)
-                cand_pauses.sort(key=lambda p: p[2], reverse=True)
-                best_p = cand_pauses[0]
-                split_time = (best_p[0] + best_p[1]) / 2.0
+            # If no pause within max_dur:
+            if (total_sec - cur_start) <= max_dur:
+                split_time = total_sec
             else:
-                # Fallback: Progressive Silence Ladder backward scan for lowest energy valley
+                # Search for lowest energy valley within window
                 split_time = find_best_silence_split(
                     audio_data=audio_data,
                     sample_rate=sample_rate,
-                    search_start=win_min,
-                    search_end=win_max
+                    search_start=cur_start + 3.0,
+                    search_end=cur_start + max_dur
                 )
                 
-        chunks.append({
-            "start": round(cur_start, 3),
-            "end": round(split_time, 3),
-            "duration": round(split_time - cur_start, 3),
-            "speaker": "SPEAKER_00"
-        })
-        cur_start = split_time
-        
-    if cur_start < total_sec:
-        rem_dur = total_sec - cur_start
-        # Smart Absorber: If tail is shorter than min_dur (<3.5s) and chunks exist, absorb into previous chunk
-        if rem_dur < min_dur and chunks:
-            chunks[-1]["end"] = round(total_sec, 3)
-            chunks[-1]["duration"] = round(total_sec - chunks[-1]["start"], 3)
-        else:
+        dur = round(split_time - cur_start, 3)
+        if dur >= 0.3:  # Only add valid spoken segments (>300ms)
             chunks.append({
                 "start": round(cur_start, 3),
-                "end": round(total_sec, 3),
-                "duration": round(total_sec - cur_start, 3),
+                "end": round(split_time, 3),
+                "duration": dur,
                 "speaker": "SPEAKER_00"
             })
-            
+        cur_start = split_time
+        
     return chunks
 
 

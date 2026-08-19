@@ -109,14 +109,14 @@ class DubbingPipelineEngine:
         
         from app.services.vcta.chunker import segment_audio_pause_first
         
-        # Run pause-first acoustic segmentation on the talking speech
+        # Run pause-first acoustic segmentation on the talking speech (Zero-Min duration: splits on any natural pause >= 400ms)
         raw_chunks = segment_audio_pause_first(
             audio_data=chunking_audio,
             sample_rate=sr,
-            min_dur=3.5,
+            min_dur=0.0,
             max_dur=10.0,
             silence_thresh_db=-38.0,
-            min_pause_sec=0.25
+            min_pause_sec=0.40
         )
         
         if not raw_chunks:
