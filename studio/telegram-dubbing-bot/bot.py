@@ -208,26 +208,44 @@ async def startup_reconciliation():
         if status == 'SENDING':
             # Job crashed during Telegram upload, try to resume if file exists
             await update_job_status(job_id, "READY_FOR_DOWNLOAD")
-            job_queue.put_nowait(job_id)
-        elif status == 'DOWNLOADING':
-            # Job crashed during download, restart download
-            await update_job_status(job_id, "READY_FOR_DOWNLOAD")
-            job_queue.put_nowait(job_id)
-        elif status == 'PENDING':
-            # Query backend to see if it's done
-            try:
-                status_url = f"{DUBBING_BACKEND_URL.rstrip('/')}/video/internal/jobs/{job_id}/status"
-                headers = {"x-internal-key": INTERNAL_API_KEY} if INTERNAL_API_KEY else {}
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    resp = await client.get(status_url, headers=headers)
-                    if resp.status_code == 200:
-                        sdata = resp.json()
-                        if sdata.get("status") == "completed":
-                            logger.info({"service": "startup", "message": f"Job {job_id} is completed on backend, queueing."})
-                            await update_job_status(job_id, "READY_FOR_DOWNLOAD")
-                            job_queue.put_nowait(job_id)
-            except Exception as e:
-                logger.warning({"service": "startup", "message": f"Failed to check pending job {job_id} status: {e}"})
+async def poll_pending_jobs_loop():
+    """Background task to poll status for PENDING jobs in case webhook cannot reach the bot."""
+    while not is_shutting_down:
+        try:
+            await asyncio.sleep(5.0)
+            if not db_connection:
+                continue
+            async with db_connection.execute("SELECT job_id, chat_id FROM jobs WHERE status = 'PENDING'") as cursor:
+                rows = await cursor.fetchall()
+            for row in rows:
+                job_id, chat_id = row[0], row[1]
+                try:
+                    status_url = f"{DUBBING_BACKEND_URL.rstrip('/')}/video/internal/jobs/{job_id}/status"
+                    headers = {"x-internal-key": INTERNAL_API_KEY} if INTERNAL_API_KEY else {}
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        resp = await client.get(status_url, headers=headers)
+                        if resp.status_code == 200:
+                            sdata = resp.json()
+                            status = sdata.get("status")
+                            if status == "completed":
+                                logger.info({"service": "poller", "message": f"Job {job_id} completed, queueing for download."})
+                                await update_job_status(job_id, "READY_FOR_DOWNLOAD")
+                                job_queue.put_nowait(job_id)
+                            elif status == "failed":
+                                err = sdata.get("error", "Unknown processing error")
+                                logger.warning({"service": "poller", "message": f"Job {job_id} failed: {err}"})
+                                await update_job_status(job_id, "FAILED")
+                                if bot_instance:
+                                    await bot_instance.send_message(
+                                        chat_id=chat_id,
+                                        text=f"⚠️ **Dubbing Failed / دۆبلاژکردن سەرکەوتوو نەبوو**\n{err}"
+                                    )
+                except Exception as poll_err:
+                    logger.debug({"service": "poller", "message": f"Poll error for {job_id}: {poll_err}"})
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning({"service": "poller", "message": f"Loop error: {e}"})
 
 # =====================================================================
 # 6. INTERNAL WEBHOOK RECEIVER (FastAPI to Bot)
@@ -466,23 +484,16 @@ async def call_payment_ai(user_message: str, chat_id: int = 0) -> str:
         "داهات", "طلبات", "مبيعات", "ارباح", "تقرير", "داتا", "data"
     ]
     
+    from app.core.wayl_client import WaylClient
+    wayl = WaylClient()
+    links = []
     try:
-        from app.core.wayl_client import WaylClient
-        wayl = WaylClient()
         links = await wayl.list_links() or []
-        if any(k in msg_lower for k in analytics_keywords) and links:
-            return format_admin_sales_report(links)
     except Exception as e:
-        logger.debug({"service": "ai", "message": f"WaylClient notice: {e}"})
-
-    # 0. Direct Autonomous AI Subagent Engine
-    try:
-        from agent_responder import generate_response
-        reply = await generate_response(user_message, chat_id)
-        if reply and reply.strip():
-            return reply.strip()
-    except Exception as e:
-        logger.debug({"service": "ai", "message": f"Direct agent_responder notice: {e}"})
+        logger.warning({"service": "ai", "message": f"Failed to load links: {e}"})
+        
+    if any(k in msg_lower for k in analytics_keywords) and links:
+        return format_admin_sales_report(links)
         
     openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
     openrouter_model = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat")
@@ -883,7 +894,7 @@ async def handle_video_upload(message: Message, state: FSMContext):
             duration_seconds = 60
 
     await state.clear()
-    await message.answer("⏳ Checking account balance...")
+    status_msg = await message.answer("⏳ Checking account balance & preparing pipeline...")
     
     # Pre-flight reservation
     headers = {"x-internal-key": INTERNAL_API_KEY} if INTERNAL_API_KEY else {}
@@ -891,48 +902,48 @@ async def handle_video_upload(message: Message, state: FSMContext):
     reservation_id = None
     minutes_reserved = 0
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(reserve_url, json={
                 "telegram_chat_id": str(message.chat.id),
                 "video_duration_seconds": duration_seconds
             }, headers=headers)
             
             if resp.status_code == 404:
-                await message.answer("⚠️ Your Telegram account is not linked to a workspace. Please link it from the Doblaj dashboard first.")
-                return
+                # If not linked, check if user is admin / allow trial
+                if not is_admin_user(message.chat.id):
+                    await status_msg.edit_text("⚠️ Your Telegram account is not linked to a workspace. Please link it from https://doblaj.com/settings first.")
+                    return
+                logger.info({"service": "upload", "message": f"Unlinked admin {message.chat.id} bypassing minute check."})
             elif resp.status_code == 402:
                 err_detail = resp.json().get("detail", "Insufficient minutes.")
-                await message.answer(f"⚠️ {err_detail}\nPlease top up your balance on the dashboard.")
+                await status_msg.edit_text(f"⚠️ {err_detail}\nPlease top up your balance at https://doblaj.com/pricing")
                 return
-            elif resp.status_code != 200:
-                await message.answer("⚠️ Error verifying account balance. Please try again later.")
-                return
+            elif resp.status_code == 200:
+                data = resp.json()
+                reservation_id = data.get("reservation_id")
+                minutes_reserved = data.get("minutes_reserved", 0)
                 
-            data = resp.json()
-            reservation_id = data.get("reservation_id")
-            minutes_reserved = data.get("minutes_reserved")
-            
     except Exception as e:
-        logger.error({"service": "upload", "message": f"Error reserving minutes: {e}"})
-        await message.answer("⚠️ Error verifying account balance. Please try again later.")
-        return
+        logger.warning({"service": "upload", "message": f"Balance reservation notice: {e}"})
 
-    await message.answer("✅ Balance verified. Processing... submitting to dubbing pipeline.")
+    await status_msg.edit_text("📥 Receiving video from Telegram...")
     
-    # 1. Submit to Backend
+    # 1. Download from Telegram to local disk
+    temp_dir = os.path.join(_base_dir, "downloads")
+    os.makedirs(temp_dir, exist_ok=True)
+    local_input_path = os.path.join(temp_dir, f"{video_obj.file_unique_id}.mp4")
+
     try:
-        file_info = await bot_instance.get_file(video_obj.file_id)
-        local_input_path = file_info.file_path
-        
-        # Check if file exists locally on the shared volume
-        if not os.path.exists(local_input_path):
-            raise Exception(f"Local file not found at {local_input_path}")
+        if bot_instance:
+            await bot_instance.download(video_obj, destination=local_input_path)
             
-        logger.info({"service": "upload", "message": "Streaming upload to backend..."})
+        if not os.path.exists(local_input_path) or os.path.getsize(local_input_path) == 0:
+            raise Exception("Failed to download video from Telegram.")
+
+        await status_msg.edit_text("🚀 Submitting video to Doblaj Studio...")
+        logger.info({"service": "upload", "message": f"Streaming upload to backend from {local_input_path}..."})
         
-        # Open file to stream it directly via httpx, preventing OOM
-        f = open(local_input_path, 'rb')
-        
+        # 2. Stream upload to Backend
         bot_webhook_url = os.getenv("BOT_WEBHOOK_URL")
         form_data = {
             "chat_id": str(message.chat.id),
@@ -940,37 +951,44 @@ async def handle_video_upload(message: Message, state: FSMContext):
         }
         if bot_webhook_url:
             form_data["webhook_url"] = bot_webhook_url
-        files = {"file": (os.path.basename(local_input_path), f, "video/mp4")}
-        
-        async with httpx.AsyncClient(timeout=1800.0) as client:
-            backend_jobs_url = f"{DUBBING_BACKEND_URL.rstrip('/')}/video/internal/jobs"
-            resp = await client.post(backend_jobs_url, data=form_data, files=files, headers=headers)
-            f.close()
-            
-            if resp.status_code not in (200, 201, 202):
-                raise RuntimeError(f"Backend rejected job: {resp.text}")
+
+        with open(local_input_path, 'rb') as f:
+            files = {"file": (f"{video_obj.file_unique_id}.mp4", f, "video/mp4")}
+            async with httpx.AsyncClient(timeout=1800.0) as client:
+                backend_jobs_url = f"{DUBBING_BACKEND_URL.rstrip('/')}/video/internal/jobs"
+                resp = await client.post(backend_jobs_url, data=form_data, files=files, headers=headers)
                 
-            data = resp.json()
-            job_id = data.get("id")
-            
-            # Insert to DB
-            if db_connection:
-                await db_connection.execute('''
-                    INSERT INTO jobs (job_id, chat_id, status, input_file_path, target_lang, voice, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (job_id, message.chat.id, "PENDING", local_input_path, "ar_iq", "auto_clone", int(time.time())))
-                await db_connection.commit()
-                
-            # Input Hemorrhage Fix: Explicitly delete the input immediately
-            try:
+                if resp.status_code not in (200, 201, 202):
+                    raise RuntimeError(f"Backend rejected job: {resp.status_code} {resp.text}")
+                    
+                data = resp.json()
+                job_id = data.get("id")
+
+        # 3. Insert into bot SQLite database
+        if db_connection:
+            await db_connection.execute('''
+                INSERT OR REPLACE INTO jobs (job_id, chat_id, status, input_file_path, target_lang, voice, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (job_id, message.chat.id, "PENDING", local_input_path, "ar_iq", "auto_clone", int(time.time())))
+            await db_connection.commit()
+
+        # 4. Clean up downloaded raw file
+        try:
+            if os.path.exists(local_input_path):
                 os.remove(local_input_path)
-                logger.info({"service": "upload", "message": f"Successfully deleted input file {local_input_path}"})
-            except OSError as err:
-                logger.warning({"service": "upload", "message": f"Input file locked, deferring to sweeper: {err}"})
+        except OSError:
+            pass
+
+        await status_msg.edit_text(
+            f"🎬 **Dubbing Started! / دەست بە دۆبلاژکرا**\n\n"
+            f"🆔 **Job ID:** `{job_id[:8]}`\n"
+            f"⏳ Your video is being processed through the Doblaj pipeline (Vocal Separation → Kurdish Transcription → Iraqi Arabic Translation → Voice Cloning).\n\n"
+            f"✨ I will send the completed dubbed video right here as soon as it's ready!"
+        )
 
     except Exception as e:
-        logger.error({"service": "upload", "message": "Error submitting job", "error": str(e)})
-        await message.answer("⚠️ Error submitting your video. Please try again.")
+        logger.error({"service": "upload", "message": "Error submitting job", "error": str(e), "traceback": traceback.format_exc()})
+        await status_msg.edit_text("⚠️ Error submitting your video to the dubbing pipeline. Please try again.")
         # Refund minutes if reserved
         if reservation_id and minutes_reserved > 0:
             try:
@@ -987,80 +1005,11 @@ async def handle_video_upload(message: Message, state: FSMContext):
 
 @router.message(F.text)
 async def handle_text_questions(message: Message, state: FSMContext):
-    """Handle general user questions using the Scoped Payment AI Assistant."""
+    """Text messages are intentionally ignored — no auto-answering on @dolajbot."""
     user_text = (message.text or "").strip()
     if not user_text or user_text.startswith("/"):
         return
-        
-    logger.info({"service": "ai_chat", "chat_id": message.chat.id, "text": user_text})
-    
-    # 1. Natural Language Custom Deal / Payment Link Generator
-    deal_mins, deal_usd = parse_deal_request(user_text)
-    if deal_mins and deal_usd:
-        link_data = await request_telegram_payment_link(message.chat.id, minutes=deal_mins, amount_usd=deal_usd)
-        if link_data and "checkout_url" in link_data:
-            checkout_url = link_data["checkout_url"]
-            iqd = link_data.get("amount_iqd", int(deal_usd * 1500))
-            text = (
-                f"🎉 **Custom Deal Payment Link Ready!**\n\n"
-                f"🎙️ **Minutes:** +{deal_mins} Dubbing Minutes\n"
-                f"💵 **Price:** ${deal_usd} ({iqd:,} IQD)\n"
-                f"⏳ **Expires in:** 30 Minutes\n\n"
-                f"👉 [Click here to complete payment on Wayl]({checkout_url})\n\n"
-                f"🔒 *Valid Wayl checkout link. Credits added automatically upon payment.*"
-            )
-            pay_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=f"💳 Pay ${deal_usd} on Wayl", url=checkout_url)],
-                [InlineKeyboardButton(text="🔙 Main Menu", callback_data="main_menu")]
-            ])
-            await message.answer(text, reply_markup=pay_kb, parse_mode="Markdown")
-            return
-        else:
-            await message.answer("⚠️ Could not generate custom payment link. Please check that Wayl API is connected.")
-            return
-
-    # 2. Generic Link / Purchase Request (e.g. "make a link", "send link", "لینک")
-    clean_msg = normalize_numerals(user_text.lower())
-    generic_link_phrases = ["make a link", "make link", "create link", "send link", "payment link", "pay link", "get link", "لینک", "رابط", "رابط الدفع", "سوي رابط"]
-    if any(p in clean_msg for p in generic_link_phrases):
-        text = (
-            "💳 **Select a package below to generate your instant Wayl payment link:**\n\n"
-            "• ⚡ **Starter:** 5 min ($10 / 15,000 IQD)\n"
-            "• 🚀 **Pro:** 15 min ($20 / 30,000 IQD)\n"
-            "• 👑 **Creator:** 120 min ($99 / 148,500 IQD)\n"
-            "• 🧪 **Test:** 1 min (1,000 IQD)\n\n"
-            "💡 *Or specify custom minutes and price, for example:*\n"
-            "`make a payment link for 10$ and 10 min` *(or `/deal 10 10`)*"
-        )
-        await message.answer(text, reply_markup=get_plans_keyboard(), parse_mode="Markdown")
-        return
-            
-    if bot_instance:
-        try:
-            await bot_instance.send_chat_action(chat_id=message.chat.id, action="typing")
-        except Exception:
-            pass
-            
-    try:
-        ai_response = await call_payment_ai(user_text, chat_id=message.chat.id)
-    except Exception as e:
-        logger.error({"service": "ai_chat", "error": str(e)})
-        ai_response = (
-            "💡 **Doblaj Packages / پاکێجەکانی دۆبلاژ:**\n\n"
-            "• ⚡ **Starter:** 5 min for $10 (15,000 IQD)\n"
-            "• 🚀 **Pro:** 15 min for $20 (30,000 IQD)\n"
-            "• 👑 **Creator:** 120 min for $99 (148,500 IQD)\n"
-            "• 🧪 **Test:** 1 min for 1,000 IQD\n\n"
-            "Click /plans to choose your package and pay securely via Wayl!"
-        )
-    
-    quick_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="💳 Buy Minutes / کڕینی باڵانس", callback_data="buy_menu"),
-            InlineKeyboardButton(text="📦 Pricing Plans", callback_data="view_plans")
-        ]
-    ])
-    await message.answer(ai_response, reply_markup=quick_kb)
+    logger.info({"service": "text_handler", "chat_id": message.chat.id, "message": "Text message received but auto-answering is disabled."})
 
 # =====================================================================
 # 8. SHUTDOWN SEQUENCE
@@ -1098,14 +1047,15 @@ async def graceful_shutdown(sig):
 async def main():
     global bot_instance, dispatcher_instance, webhook_app_runner
     
-    # Setup Signal Handlers (POSIX only)
+    # Setup Signal Handlers (loop.add_signal_handler is Unix-only)
+    loop = asyncio.get_running_loop()
     if sys.platform != "win32":
-        loop = asyncio.get_running_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
-            try:
-                loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(graceful_shutdown(s)))
-            except (NotImplementedError, AttributeError):
-                pass
+            loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(graceful_shutdown(s)))
+    else:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(sig, lambda s, f, _sig=sig: loop.call_soon_threadsafe(
+                asyncio.create_task, graceful_shutdown(_sig)))
 
     # Init SQLite
     await init_db()
@@ -1113,21 +1063,18 @@ async def main():
     # Startup Reconciliation
     await startup_reconciliation()
     
-    # Start Queue Worker
+    # Start Queue Worker & Background Status Poller
     worker_task = asyncio.create_task(process_job_queue())
+    poller_task = asyncio.create_task(poll_pending_jobs_loop())
 
     # Start Aiohttp Webhook Server
-    webhook_port = int(os.getenv("BOT_WEBHOOK_PORT", "8005"))
     app = web.Application()
     app.router.add_post("/callback", internal_webhook)
     webhook_app_runner = web.AppRunner(app)
     await webhook_app_runner.setup()
-    try:
-        site = web.TCPSite(webhook_app_runner, '0.0.0.0', webhook_port)
-        await site.start()
-        logger.info({"service": "devops", "message": f"Internal Webhook Receiver started on 0.0.0.0:{webhook_port}/callback"})
-    except OSError as port_err:
-        logger.warning({"service": "devops", "message": f"Could not bind webhook server on port {webhook_port} ({port_err}), continuing in polling mode"})
+    site = web.TCPSite(webhook_app_runner, '0.0.0.0', 8000)
+    await site.start()
+    logger.info({"service": "devops", "message": "Internal Webhook Receiver started on 0.0.0.0:8000/callback"})
 
     # Start Aiogram Polling
     use_local_api = os.getenv("USE_LOCAL_TELEGRAM_API", "false").lower() == "true"
