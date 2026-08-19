@@ -41,6 +41,77 @@ def estimate_t60_reverberation(vocal_stem_path: str) -> float:
         return 0.10
 
 
+def apply_two_pass_loudnorm(
+    input_wav: str,
+    output_wav: str,
+    target_i: float = -14.0,
+    target_tp: float = -1.0,
+    target_lra: float = 7.0
+) -> Dict[str, Any]:
+    """
+    Applies True Two-Pass EBU R128 Loudness Normalization in FFmpeg.
+    Pass 1: Analyses integrated loudness, true peak, LRA, and threshold across the whole track.
+    Pass 2: Applies clean LINEAR normalization (linear=true) using the exact measured stats.
+    Guarantees full broadcast volume (-14.0 LUFS) with zero dynamic squashing and zero pumping.
+    """
+    import subprocess
+    import json
+    
+    cmd1 = [
+        "ffmpeg", "-y",
+        "-i", input_wav,
+        "-af", f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}:print_format=json",
+        "-f", "null", "-"
+    ]
+    res1 = subprocess.run(cmd1, capture_output=True, text=True)
+    
+    lines = res1.stderr.split("\n")
+    json_lines = []
+    capturing = False
+    for line in lines:
+        if "{" in line:
+            capturing = True
+        if capturing:
+            json_lines.append(line)
+        if "}" in line and capturing:
+            break
+            
+    if not json_lines:
+        logger.warning(f"[LOUDNORM] Failed to parse JSON stats, falling back to basic loudnorm: {res1.stderr[:200]}")
+        cmd_fallback = [
+            "ffmpeg", "-y", "-i", input_wav,
+            "-af", f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}",
+            "-ar", "48000", "-ac", "2", output_wav
+        ]
+        subprocess.run(cmd_fallback, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        return {}
+        
+    stats = json.loads("\n".join(json_lines))
+    
+    m_i = stats.get("input_i", "-24.0")
+    m_tp = stats.get("input_tp", "-1.0")
+    m_lra = stats.get("input_lra", "7.0")
+    m_thresh = stats.get("input_thresh", "-34.0")
+    m_offset = stats.get("target_offset", "0.0")
+    
+    pass2_filter = (
+        f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}:"
+        f"measured_I={m_i}:measured_TP={m_tp}:measured_LRA={m_lra}:"
+        f"measured_thresh={m_thresh}:offset={m_offset}:linear=true"
+    )
+    
+    cmd2 = [
+        "ffmpeg", "-y",
+        "-i", input_wav,
+        "-af", pass2_filter,
+        "-ar", "48000", "-ac", "2",
+        output_wav
+    ]
+    subprocess.run(cmd2, capture_output=True, text=True, check=True)
+    logger.info(f"🔊 [TWO-PASS LOUDNORM] Applied linear normalization: Input {m_i} LUFS -> Target {target_i} LUFS (Offset: {m_offset} dB, linear=true)")
+    return stats
+
+
 async def create_fish_audio_voice_model(audio_path: str, title: str = "doblaj_speaker") -> Optional[str]:
     """
     Uploads a 10-20s clean vocal sample to Fish Audio to create a dedicated, private

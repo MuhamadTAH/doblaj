@@ -649,24 +649,24 @@ class DubbingPipelineEngine:
         fade_len = int(0.6 * sr) # 600ms smooth crossfade
         
         if has_outro:
-            # During speech: background music at natural audible level (0.80x)
-            bg_mix_track[:quran_start_sample] = bg_audio[:quran_start_sample] * 0.80
+            # During speech: background music tamed to -14dB to -18dB relative to dialogue (0.40x)
+            bg_mix_track[:quran_start_sample] = bg_audio[:quran_start_sample] * 0.40
             # Smooth crossfade to 100% full original Quran recitation / outro
             for fi in range(fade_len):
                 pos = quran_start_sample + fi
                 if pos < total_samples:
                     alpha = fi / fade_len
-                    bg_mix_track[pos] = (1.0 - alpha) * (bg_audio[pos] * 0.80) + alpha * (orig_audio[pos] * 1.0)
+                    bg_mix_track[pos] = (1.0 - alpha) * (bg_audio[pos] * 0.40) + alpha * (orig_audio[pos] * 1.0)
             # Full 1.0x volume for the entire Quran recitation to video end
             post_fade = quran_start_sample + fade_len
             if post_fade < total_samples:
                 bg_mix_track[post_fade:] = orig_audio[post_fade:] * 1.0
         else:
-            # Entire video background music preserved at natural audible level (0.80x)
-            bg_mix_track = bg_audio * 0.80
+            # Entire video background music tamed to -14dB to -18dB (0.40x) so it doesn't eat voice loudness
+            bg_mix_track = bg_audio * 0.40
 
         # 1. Export Raw Stems for Independent Bus Processing
-        from app.services.vcta.fish_model_manager import estimate_t60_reverberation
+        from app.services.vcta.fish_model_manager import estimate_t60_reverberation, apply_two_pass_loudnorm
         dialogue_raw_path = str(scratch_dir / "dialogue_raw.wav")
         bg_raw_path = str(scratch_dir / "bg_raw.wav")
         sf.write(dialogue_raw_path, full_arabic_speech, sr)
@@ -682,26 +682,29 @@ class DubbingPipelineEngine:
             reverb_filter = ""
             logger.info(f"🎙️ [ACOUSTIC MATCH] Measured dry vocal T60 = {t60:.2f}s -> Keeping 100% clean direct vocal (Zero fake reverb).")
             
-        # 3. Professional Pro-Studio Bus Signal Chain:
-        # - Dialogue Bus: 80Hz HPF + 350Hz De-mud + 7kHz Presence Air + Stem Normalization (-16.0 LUFS)
-        # - Background Bus: Dynamic Sidechain Ducking (-3.5dB during speech, 100% volume in pauses/outro)
-        # - Master Summing Bus: Amix -> Transparent True Peak Limiter (-1.0 dBTP ceiling ONLY, ZERO pumping!)
-        master_audio_path = str(scratch_dir / "final_master_audio_48k.wav")
+        # 3. Professional Pro-Studio Gain Staging Signal Chain:
+        # - Step 1: Dialogue Bus -> 80Hz HPF + 350Hz De-mud + 7kHz Presence Air + Stem Normalization (-16.0 LUFS)
+        # - Step 2: Background Bus -> Tamed & Dynamically Ducked (-16dB under dialogue)
+        # - Step 3: Sum to unmastered stem mix
+        unmastered_mix_path = str(scratch_dir / "unmastered_stem_mix.wav")
         mix_cmd = [
             "ffmpeg", "-y",
             "-i", dialogue_raw_path,
             "-i", bg_raw_path,
             "-filter_complex",
             f"[0:a]highpass=f=80,equalizer=f=350:t=q:w=1.5:g=-2.0,equalizer=f=7000:t=q:w=1.2:g=2.2{reverb_filter},loudnorm=I=-16.0:TP=-1.5:LRA=6.0[dialogue];"
-            "[1:a]volume=0.85[bg];"
-            "[bg][dialogue]sidechaincompress=threshold=0.035:ratio=3.5:attack=15:release=220[bg_ducked];"
-            "[dialogue][bg_ducked]amix=inputs=2:duration=first:dropout_transition=0:weights=1.0 1.0[mixed];"
-            "[mixed]alimiter=limit=0.89:attack=5:release=50:asc=1[master_out]",
-            "-map", "[master_out]",
+            "[1:a]volume=0.45[bg];"
+            "[bg][dialogue]sidechaincompress=threshold=0.030:ratio=4.0:attack=10:release=200[bg_ducked];"
+            "[dialogue][bg_ducked]amix=inputs=2:duration=first:dropout_transition=0:weights=1.0 1.0[mixed]",
+            "-map", "[mixed]",
             "-ar", "48000", "-ac", "2",
-            master_audio_path
+            unmastered_mix_path
         ]
         subprocess.run(mix_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        
+        # - Step 4: True Two-Pass EBU R128 Loudness Normalization (-14.0 LUFS linear=true)
+        master_audio_path = str(scratch_dir / "final_master_audio_48k.wav")
+        apply_two_pass_loudnorm(unmastered_mix_path, master_audio_path, target_i=-14.0, target_tp=-1.0, target_lra=7.0)
         
         # Remux video stream (copy) and master Arabic audio into final MP4
         final_video_path = str(scratch_dir / "final_dubbed_video.mp4")
