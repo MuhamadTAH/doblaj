@@ -209,25 +209,73 @@ async def create_internal_job(
     content = b"".join(chunks)
     del chunks
 
+    # 1. Resolve workspace_id from chat_id
+    workspace_id = os.getenv("BOT_SERVICE_WORKSPACE_ID", "telegram-bot-ws")
+    if chat_id:
+        try:
+            from app.core import database as sql_db
+            linked_ws = await sql_db.get_workspace_by_telegram_id(chat_id)
+            if linked_ws:
+                workspace_id = linked_ws
+        except Exception as e:
+            logger.warning(f"Error looking up workspace for chat_id {chat_id}: {e}")
+
+    # 2. Upload source video to Cloudflare R2 if available
+    source_r2_key = ""
+    from app.services import r2
+    if r2.R2_ENDPOINT:
+        try:
+            source_r2_key = r2.dubbing_key(workspace_id, job_id, f"source{ext}")
+            logger.info(f"[INTERNAL-JOB] Uploading input video to R2: {source_r2_key}")
+            await asyncio.to_thread(r2.upload_file, source_r2_key, str(saved_path))
+        except Exception as e:
+            logger.error(f"[INTERNAL-JOB] Failed to upload input video to R2: {e}")
+
+    # 3. Create real job in Convex
+    try:
+        from app.core import database_convex
+        await database_convex.create_job(
+            workspace_id=workspace_id,
+            owner_user_id=f"tg_{chat_id}" if chat_id else "telegram_bot",
+            job_id=job_id,
+            source_video_r2_key=source_r2_key,
+            consent_version="2026-07-26.1",
+            user_ip_address="telegram_bot"
+        )
+        logger.info(f"[INTERNAL-JOB] Created real job in Convex: {job_id}")
+    except Exception as e:
+        logger.error(f"[INTERNAL-JOB] Failed to create job in Convex: {e}")
+
+    # 4. Trigger local worker or MCP webhook if configured
+    mcp_webhook_url = os.getenv("MCP_WEBHOOK_URL", "")
+    if mcp_webhook_url:
+        async def trigger_mcp():
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    await client.post(mcp_webhook_url, json={"job_id": job_id, "workspace_id": workspace_id})
+                    logger.info(f"[INTERNAL-JOB] Pushed job {job_id} to MCP Webhook")
+            except Exception as err:
+                logger.warning(f"[INTERNAL-JOB] Failed to push to MCP webhook: {err}")
+        background_tasks.add_task(trigger_mcp)
+
     _JOB_STORE[job_id] = {
-        "status": "processing",
-        "progress": 10,
+        "status": "pending",
+        "progress": 5,
         "webhook_url": webhook_url,
         "chat_id": chat_id,
         "source": source,
         "saved_path": str(saved_path),
+        "workspace_id": workspace_id,
     }
 
     logger.info(
-        "[INTERNAL-JOB] created id=%s source=%s webhook=%s chat_id=%s bytes=%d",
-        job_id, source, webhook_url, chat_id, len(content),
+        "[INTERNAL-JOB] created id=%s source=%s webhook=%s chat_id=%s bytes=%d ws=%s",
+        job_id, source, webhook_url, chat_id, len(content), workspace_id
     )
-
-    background_tasks.add_task(_mock_process_and_callback, job_id)
 
     return InternalJobCreateResponse(
         id=job_id,
-        status="processing",
+        status="pending",
         webhook_url=webhook_url,
         chat_id=chat_id,
     )
@@ -240,20 +288,33 @@ async def get_internal_job_status(
 ):
     _check_internal_key(x_internal_key)
     
-    bot_workspace_id = os.getenv("BOT_SERVICE_WORKSPACE_ID", "telegram-bot-ws")
-    from app.core import db as database
-    
-    admin_client = database._get_service_role_client()
-    job = await database.get_job(admin_client, workspace_id=bot_workspace_id, job_id=job_id)
-    
+    # 1. Query Convex for live job status
+    try:
+        from app.core import database_convex
+        job = await database_convex.get_job(workspace_id="", job_id=job_id)
+        if job:
+            status = job.get("status", "pending")
+            status_str = "completed" if status in ("done", "completed") else status
+            base = os.getenv("DUBBING_URL", "").rstrip("/")
+            video_url = f"{base}/video/internal/jobs/{job_id}/download" if status_str == "completed" else None
+            return InternalJobStatusResponse(
+                id=job_id,
+                status=status_str,
+                progress=int(job.get("progress", 0)),
+                video_url=video_url,
+                error=job.get("error"),
+            )
+    except Exception as e:
+        logger.warning(f"[INTERNAL-JOB] Error querying Convex for status of {job_id}: {e}")
+
+    # 2. Fallback to in-memory store
+    job = _JOB_STORE.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    status = job.get("status", "pending")
-    status_str = "completed" if status in ("done", "completed") else status
-    
-    base = os.getenv("DUBBING_URL", "http://localhost:8002").rstrip("/")
-    video_url = f"{base}/api/video/internal/jobs/{job_id}/download" if status_str == "completed" else None
+    status_str = job.get("status", "pending")
+    base = os.getenv("DUBBING_URL", "").rstrip("/")
+    video_url = f"{base}/video/internal/jobs/{job_id}/download" if status_str == "completed" else None
 
     return InternalJobStatusResponse(
         id=job_id,
@@ -272,29 +333,22 @@ async def download_internal_job(
     from fastapi.responses import FileResponse, RedirectResponse
     _check_internal_key(x_internal_key)
     
-    bot_workspace_id = os.getenv("BOT_SERVICE_WORKSPACE_ID", "telegram-bot-ws")
-    from app.core import db as database
-    
-    admin_client = database._get_service_role_client()
-    job = await database.get_job(admin_client, workspace_id=bot_workspace_id, job_id=job_id)
-    
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-        
-    status = job.get("status", "pending")
-    if status not in ("completed", "done"):
-        raise HTTPException(status_code=400, detail="Job not completed")
-
-    output_path = job.get("result_video_r2_key") or job.get("resultVideoR2Key") or ""
+    output_path = ""
+    try:
+        from app.core import database_convex
+        job = await database_convex.get_job(workspace_id="", job_id=job_id)
+        if job:
+            output_path = job.get("result_video_r2_key") or job.get("resultVideoR2Key") or ""
+    except Exception as e:
+        logger.warning(f"[INTERNAL-JOB] Error reading job from Convex for download: {e}")
 
     from app.services import r2
-    if r2.R2_ENDPOINT and output_path and output_path.startswith("dubbing/"):
+    if r2.R2_ENDPOINT and output_path and (output_path.startswith("dubbing/") or output_path.startswith("results/")):
         try:
             url = r2.signed_url(output_path, filename=f"dubbed_{job_id[:8]}.mp4", inline=False)
             return RedirectResponse(url)
         except Exception as e:
             logger.error(f"Failed to generate signed URL for R2 key {output_path}: {e}")
-            raise HTTPException(status_code=500, detail="Failed to generate download URL")
 
     if output_path and output_path.startswith("/static"):
         output_path = output_path.lstrip("/")
