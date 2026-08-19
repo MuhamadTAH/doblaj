@@ -26,15 +26,42 @@ AGENT_DONE_FILENAME = "AGENT_TRANSCRIBE_DONE"
 AGENT_WAIT_TIMEOUT_SEC = 600  # 10 minutes max wait for agent
 
 
-async def process_single_job(job: dict) -> None:
-    """Executes the full local MCP pipeline on a job received from Railway/Convex.
+async def wait_for_agent_transcription_and_translation(job_id: str, scratch_dir: Path, timeout_sec: int = 600) -> bool:
+    ready_file = scratch_dir / AGENT_READY_FILENAME
+    done_file = scratch_dir / AGENT_DONE_FILENAME
     
-    After stem separation, it writes a AGENT_TRANSCRIBE_READY sentinel file so 
-    the Antigravity agent watcher loop can pick up the job, transcribe the Kurdish
-    Sorani chunks, translate into Spoken Iraqi Arabic, and write the JSON files.
-    Once AGENT_TRANSCRIBE_DONE is written by the agent, this function continues
-    with voice synthesis and final delivery.
-    """
+    # 1. Write AGENT_TRANSCRIBE_READY
+    manifest_path = scratch_dir / "mp4_chunks_manifest.json"
+    ready_data = {
+        "job_id": job_id,
+        "manifest_path": str(manifest_path),
+        "timestamp": time.time()
+    }
+    with open(ready_file, "w", encoding="utf-8") as f:
+        json.dump(ready_data, f, indent=2)
+        
+    # 2. Append to NOTIFY_QUEUE.txt to trigger FileSystemWatcher
+    notify_file = Path("tmp/doblaj_scratch/NOTIFY_QUEUE.txt")
+    notify_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(notify_file, "a", encoding="utf-8") as f:
+        f.write(f"JOB_READY:{job_id} at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        
+    logger.info(f"✨ [AGENT HANDOFF] Sentinel written: {ready_file}. Notified Antigravity subagent session. Waiting for AGENT_TRANSCRIBE_DONE...")
+    
+    # 3. Wait for AGENT_TRANSCRIBE_DONE
+    start_t = time.time()
+    while time.time() - start_t < timeout_sec:
+        if done_file.exists():
+            logger.info(f"✅ [AGENT HANDOFF] Subagents completed transcription & translation for {job_id} in {time.time() - start_t:.1f}s!")
+            return True
+        await asyncio.sleep(2.0)
+        
+    logger.warning(f"⚠️ [AGENT HANDOFF] Timed out after {timeout_sec}s waiting for Antigravity subagents. Falling back to internal engine...")
+    return False
+
+
+async def process_single_job(job: dict) -> None:
+    """Executes the full local MCP pipeline on a job received from Railway/Convex."""
     job_id = job.get("legacyId") or job.get("id") or job.get("_id")
     workspace_id = job.get("workspace_id") or job.get("workspaceId", "default")
     source_r2_key = job.get("source_video_r2_key") or job.get("sourceVideoR2Key")
@@ -64,15 +91,19 @@ async def process_single_job(job: dict) -> None:
         chunks_count = sep_res["chunks_count"]
         logger.info(f"  Stems separated & VAD sliced into {chunks_count} chunks")
 
-        # --- STAGE 3: Kurdish Transcription (ASR) ---
+        # --- STAGE 3 & 4: Antigravity Subagents Handoff (Kurdish STT & Iraqi Translation) ---
         await database_convex.update_job_status(job_id=job_id, status="transcribing", progress=45)
-        logger.info(f"[STAGE 3: ASR] Transcribing {chunks_count} Kurdish Sorani audio chunks...")
-        await DubbingPipelineEngine.transcribe_kurdish(job_id)
-
-        # --- STAGE 4: Kurdish -> Spoken Iraqi Arabic Translation ---
-        await database_convex.update_job_status(job_id=job_id, status="translating", progress=65)
-        logger.info(f"[STAGE 4: TRANSLATION] Translating {chunks_count} chunks into Spoken Iraqi Arabic...")
-        await DubbingPipelineEngine.translate_and_calibrate(job_id)
+        subagent_done = await wait_for_agent_transcription_and_translation(job_id, scratch_dir, timeout_sec=AGENT_WAIT_TIMEOUT_SEC)
+        
+        if not subagent_done:
+            # Fallback only if subagent session timed out
+            logger.info(f"[STAGE 3: ASR] Transcribing {chunks_count} Kurdish Sorani audio chunks...")
+            await DubbingPipelineEngine.transcribe_kurdish(job_id)
+            await database_convex.update_job_status(job_id=job_id, status="translating", progress=65)
+            logger.info(f"[STAGE 4: TRANSLATION] Translating {chunks_count} chunks into Spoken Iraqi Arabic...")
+            await DubbingPipelineEngine.translate_and_calibrate(job_id)
+        else:
+            await database_convex.update_job_status(job_id=job_id, status="translating", progress=65)
 
         # --- STAGE 5: Neural Voice Cloning & Audio Mastering ---
         await database_convex.update_job_status(job_id=job_id, status="revoicing", progress=80)

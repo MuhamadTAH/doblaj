@@ -88,29 +88,49 @@ async def handle_video_dubbing(message: Message, bot: Bot):
         chunks_count = sep_res["chunks_count"]
         logger.info(f"[TG-BOT] Chunks created: {chunks_count}")
 
-        # Step 4: STAGE 2 - Kurdish Transcription (Gemini 3.1 Pro Dual-Pass)
+        # Step 4: STAGE 2 & 3 - Antigravity Subagents Handoff (Kurdish STT & Iraqi Translation)
         try:
             await status_msg.edit_text(
-                f"⏳ **قۆناغی ٢/٤: دەرهێنانی دەقی کوردی سۆرانی... (45%)**\n"
-                f"📝 دەرهێنانی دەق بۆ {chunks_count} بەش بە کوردیی سۆرانیی ڕەسەن...",
+                f"⏳ **قۆناغی ٢/٤: دەرهێنان و وەرگێڕانی دەق بە زیرەکی دەستکرد... (45%)**\n"
+                f"📝 دەرهێنانی دەقی {chunks_count} بەش بە کوردی سۆرانی و وەرگێڕان بۆ شێوەزاری عێراقی...",
                 parse_mode=ParseMode.MARKDOWN
             )
         except Exception:
             pass
 
-        await DubbingPipelineEngine.transcribe_kurdish(job_id)
+        # Write sentinel and notify Antigravity subagent session
+        ready_file = scratch_dir / "AGENT_TRANSCRIBE_READY"
+        done_file = scratch_dir / "AGENT_TRANSCRIBE_DONE"
+        manifest_path = scratch_dir / "mp4_chunks_manifest.json"
+        ready_data = {
+            "job_id": job_id,
+            "manifest_path": str(manifest_path),
+            "timestamp": time.time()
+        }
+        with open(ready_file, "w", encoding="utf-8") as f:
+            json.dump(ready_data, f, indent=2)
 
-        # Step 5: STAGE 3 - Kurdish -> Spoken Iraqi Arabic Translation
-        try:
-            await status_msg.edit_text(
-                f"⏳ **قۆناغی ٣/٤: وەرگێڕان بۆ عەرەبی عێراقی... (65%)**\n"
-                f"🇮🇶 وەرگێڕانی {chunks_count} بەش بە شێوەزاری عێراقی و بەپێی کاتی وتار...",
-                parse_mode=ParseMode.MARKDOWN
-            )
-        except Exception:
-            pass
+        notify_file = Path("tmp/doblaj_scratch/NOTIFY_QUEUE.txt")
+        notify_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(notify_file, "a", encoding="utf-8") as f:
+            f.write(f"JOB_READY:{job_id} at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-        await DubbingPipelineEngine.translate_and_calibrate(job_id)
+        logger.info(f"✨ [TG-BOT] Sentinel written: {ready_file}. Waiting for Antigravity subagents...")
+
+        # Wait for subagents to complete
+        start_t = time.time()
+        subagent_done = False
+        while time.time() - start_t < 600:
+            if done_file.exists():
+                logger.info(f"✅ [TG-BOT] Subagents finished job {job_id} in {time.time() - start_t:.1f}s!")
+                subagent_done = True
+                break
+            await asyncio.sleep(2.0)
+
+        if not subagent_done:
+            logger.warning("[TG-BOT] Subagent timeout. Falling back to internal engine.")
+            await DubbingPipelineEngine.transcribe_kurdish(job_id)
+            await DubbingPipelineEngine.translate_and_calibrate(job_id)
 
         # Step 6: STAGE 4 - Neural Voice Cloning & Mastering
         try:
