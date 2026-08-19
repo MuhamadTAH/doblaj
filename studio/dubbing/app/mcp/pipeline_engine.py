@@ -416,7 +416,7 @@ class DubbingPipelineEngine:
             chunks = json.load(f)
             
         trans_path = scratch_dir / "iraqi_translations_24_chunks.json"
-        with open(trans_path, "r", encoding="utf-8") as f:
+        with open(trans_path, "r", encoding="utf-8-sig") as f:
             translations = json.load(f)
         trans_by_idx = {t["chunk_index"]: (t.get("iraqi_translation") or t.get("arabic_text", "")) for t in translations}
         
@@ -519,7 +519,7 @@ class DubbingPipelineEngine:
                 
             if corr_applied:
                 # Reload updated translations
-                with open(trans_path, "r", encoding="utf-8") as f:
+                with open(trans_path, "r", encoding="utf-8-sig") as f:
                     translations = json.load(f)
                 trans_by_idx = {t["chunk_index"]: (t.get("iraqi_translation") or t.get("arabic_text", "")) for t in translations}
                 
@@ -704,12 +704,12 @@ class DubbingPipelineEngine:
             if not (manifest_path.exists() and trans_path.exists() and arabic_path.exists()):
                 return
                 
-            with open(manifest_path, "r", encoding="utf-8") as f:
+            with open(manifest_path, "r", encoding="utf-8-sig") as f:
                 manifest_chunks = json.load(f)
-            with open(trans_path, "r", encoding="utf-8") as f:
+            with open(trans_path, "r", encoding="utf-8-sig") as f:
                 raw_k_data = json.load(f)
                 kurdish_data = raw_k_data if isinstance(raw_k_data, list) else raw_k_data.get("transcriptions", [])
-            with open(arabic_path, "r", encoding="utf-8") as f:
+            with open(arabic_path, "r", encoding="utf-8-sig") as f:
                 arabic_translations = json.load(f)
                 
             kurd_map = {t["chunk_index"]: t["kurdish_sorani"] for t in kurdish_data}
