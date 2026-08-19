@@ -149,10 +149,21 @@ async def _call_fish_speech(
             
     return False, "Max retries reached."
 
-async def generate_tts(text: str, reference_audio_path: str, output_wav: str, is_padded: bool = False, speech_duration: float = 0.0, speed: float = 1.0) -> tuple[bool, str]:
+async def generate_tts(
+    text: str,
+    reference_audio_path: str = "",
+    output_wav: str = "",
+    is_padded: bool = False,
+    speech_duration: float = 0.0,
+    speed: float = 1.0,
+    reference_id: str | None = None
+) -> tuple[bool, str]:
     """
-    Public entry point for TTS generation. Handles padded audio trimming and enforces Fish Audio 10s limit.
+    Public entry point for TTS generation. Handles Voice Model ID (reference_id) or raw reference audio.
     """
+    if reference_id:
+        return await _call_fish_speech(text=text, reference_audio_path="", output_wav=output_wav, reference_id=reference_id, speed=speed)
+
     target_ref = reference_audio_path or ""
 
     duration = 0.0

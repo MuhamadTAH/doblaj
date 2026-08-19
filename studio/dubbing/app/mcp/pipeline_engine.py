@@ -438,9 +438,29 @@ class DubbingPipelineEngine:
         tts_dir.mkdir(parents=True, exist_ok=True)
         anchor_path = str(scratch_dir / "master_voice_anchor_ref.wav")
         
-        # Synthesize each chunk concurrently with REAL Fish Audio Voice Cloning
+        # 1. Multi-Speaker & Single-Speaker Clean Audio Reference Extraction
+        from app.services.vcta.fish_model_manager import (
+            extract_speaker_reference_samples,
+            create_fish_audio_voice_model,
+            delete_fish_audio_voice_model
+        )
+        vocal_stem_path = str(scratch_dir / "vocals_stem.wav")
+        speaker_samples = extract_speaker_reference_samples(vocal_stem_path, chunks, scratch_dir)
+        
+        # 2. Dynamically Create Dedicated Fish Audio Voice Models for Each Speaker (Single & Multi-Speaker)
+        created_model_ids: Dict[str, str] = {}
+        for spk_id, sample_wav in speaker_samples.items():
+            m_title = f"doblaj_{job_id[:8]}_{spk_id}"
+            m_id = await create_fish_audio_voice_model(sample_wav, title=m_title)
+            if m_id:
+                created_model_ids[spk_id] = m_id
+                logger.info(f"✨ [VOICE CLONING] Speaker '{spk_id}' -> Dedicated Fish Voice Model ID: {m_id}")
+            else:
+                logger.info(f"🎙️ [VOICE CLONING] Speaker '{spk_id}' -> Using Rich 15s Clean Audio Anchor: {sample_wav}")
+
+        # Synthesize each chunk concurrently with Fish Audio Voice Model or Rich Anchor
         sem_tts = asyncio.Semaphore(4)
-        logger.info(f"🎙️ [TTS SYNTHESIS] Synthesizing {len(chunks)} chunks concurrently with Fish Audio Voice Cloning...")
+        logger.info(f"🎙️ [TTS SYNTHESIS] Synthesizing {len(chunks)} chunks across {len(speaker_samples)} speaker(s)...")
         
         async def _synthesize_single(i, c):
             async with sem_tts:
@@ -448,16 +468,20 @@ class DubbingPipelineEngine:
                 arabic_text = trans_by_idx.get(idx, "")
                 chunk_tts_path = str(tts_dir / f"tts_{idx:02d}.wav")
                 act_dur = c.get("active_speech_duration_sec", c["duration_sec"])
+                spk_id = str(c.get("speaker_id") or c.get("speaker") or c.get("speaker_label") or "speaker_0").strip()
+                ref_id = created_model_ids.get(spk_id)
+                ref_wav = speaker_samples.get(spk_id, anchor_path)
                 try:
                     success, err = await generate_tts(
                         text=arabic_text,
-                        reference_audio_path=anchor_path,
+                        reference_audio_path=ref_wav,
                         output_wav=chunk_tts_path,
-                        speech_duration=act_dur
+                        speech_duration=act_dur,
+                        reference_id=ref_id
                     )
                     return i, idx, success, chunk_tts_path
                 except Exception as e:
-                    logger.error(f"[TTS] Error synthesizing chunk #{idx}: {e}")
+                    logger.error(f"[TTS] Error synthesizing chunk #{idx} (Speaker '{spk_id}'): {e}")
                     return i, idx, False, chunk_tts_path
 
         tts_tasks = [_synthesize_single(i, c) for i, c in enumerate(chunks)]
@@ -680,6 +704,10 @@ class DubbingPipelineEngine:
         DubbingPipelineEngine._export_to_audio_inspector(job_id, scratch_dir)
 
         await ConvexBroadcaster.update_stage(job_id, "completed", force=True)
+        
+        # Clean up temporary Fish Audio Voice Models in background
+        for m_id in created_model_ids.values():
+            asyncio.create_task(delete_fish_audio_voice_model(m_id))
         
         return {
             "job_id": job_id,
