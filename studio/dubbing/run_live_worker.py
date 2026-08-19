@@ -34,7 +34,10 @@ async def wait_for_agent_transcription_and_translation(job_id: str, scratch_dir:
     manifest_path = scratch_dir / "mp4_chunks_manifest.json"
     ready_data = {
         "job_id": job_id,
+        "full_video_mp4": str(scratch_dir / "source_video.mp4"),
+        "full_vocals_wav": str(scratch_dir / "vocals_stem.wav"),
         "manifest_path": str(manifest_path),
+        "chunks_dir": str(scratch_dir / "chunks"),
         "timestamp": time.time()
     }
     with open(ready_file, "w", encoding="utf-8") as f:
