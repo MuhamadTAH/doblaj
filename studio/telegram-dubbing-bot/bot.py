@@ -1083,14 +1083,27 @@ async def main():
     worker_task = asyncio.create_task(process_job_queue())
     poller_task = asyncio.create_task(poll_pending_jobs_loop())
 
-    # Start Aiohttp Webhook Server
-    app = web.Application()
-    app.router.add_post("/callback", internal_webhook)
-    webhook_app_runner = web.AppRunner(app)
-    await webhook_app_runner.setup()
-    site = web.TCPSite(webhook_app_runner, '0.0.0.0', 8000)
-    await site.start()
-    logger.info({"service": "devops", "message": "Internal Webhook Receiver started on 0.0.0.0:8000/callback"})
+    # Start Aiohttp Webhook Server (fail-soft across port conflicts)
+    try:
+        app = web.Application()
+        app.router.add_post("/callback", internal_webhook)
+        webhook_app_runner = web.AppRunner(app)
+        await webhook_app_runner.setup()
+        webhook_port = int(os.getenv("BOT_WEBHOOK_PORT", "8000"))
+        started = False
+        for p in (webhook_port, 8005, 8010, 8085):
+            try:
+                site = web.TCPSite(webhook_app_runner, '0.0.0.0', p)
+                await site.start()
+                logger.info({"service": "devops", "message": f"Internal Webhook Receiver started on 0.0.0.0:{p}/callback"})
+                started = True
+                break
+            except OSError:
+                continue
+        if not started:
+            logger.warning({"service": "devops", "message": "Could not bind webhook port, relying on background poller."})
+    except Exception as wh_err:
+        logger.warning({"service": "devops", "message": f"Webhook server init notice: {wh_err}"})
 
     # Start Aiogram Polling
     use_local_api = os.getenv("USE_LOCAL_TELEGRAM_API", "false").lower() == "true"
