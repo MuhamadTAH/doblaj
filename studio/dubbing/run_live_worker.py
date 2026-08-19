@@ -179,27 +179,58 @@ from pydantic import BaseModel
 import uvicorn
 
 app = FastAPI(title="Local MCP Webhook Worker")
+_active_jobs = set()
 
 class WebhookPayload(BaseModel):
     job_id: str
-    workspace_id: str = "default"
+    workspace_id: str = ""
+
+async def _run_job_wrapper(job: dict, jid: str):
+    try:
+        await process_single_job(job)
+    finally:
+        _active_jobs.discard(jid)
+
+async def convex_polling_loop():
+    """Continuously poll Convex for pending jobs so processing starts automatically."""
+    logger.info("[POLLER] Convex pending jobs autonomous poller started.")
+    while True:
+        try:
+            await asyncio.sleep(4.0)
+            c = database_convex._get_client()
+            pending_jobs = c.query('dubbingJobs:listByStatusInternal', database_convex._internal_args({'status': 'pending', 'limit': 5})) or []
+            for job in pending_jobs:
+                jid = job.get("legacyId") or job.get("id") or job.get("_id")
+                if jid and jid not in _active_jobs:
+                    _active_jobs.add(jid)
+                    logger.info(f"[AUTONOMOUS WORKER] Detected pending job {jid} in Convex! Starting processing...")
+                    asyncio.create_task(_run_job_wrapper(job, jid))
+        except Exception as e:
+            logger.debug(f"[POLLER] Notice: {e}")
+
+@app.on_event("startup")
+async def on_startup():
+    asyncio.create_task(convex_polling_loop())
 
 @app.post("/webhook/run_job")
 async def handle_webhook_run_job(payload: WebhookPayload, background_tasks: BackgroundTasks):
     logger.info(f"[WEBHOOK RECEIVED] Triggering job {payload.job_id}")
 
-    job = await database_convex.get_job(job_id=payload.job_id, workspace_id=payload.workspace_id)
+    job = await database_convex.get_job(job_id=payload.job_id, workspace_id="")
     if not job:
         raise HTTPException(status_code=404, detail="Job not found in Convex")
 
-    background_tasks.add_task(process_single_job, job)
+    jid = payload.job_id
+    if jid not in _active_jobs:
+        _active_jobs.add(jid)
+        background_tasks.add_task(_run_job_wrapper, job, jid)
     return {"status": "accepted", "job_id": payload.job_id, "message": "Job queued locally"}
 
 def start_webhook_server():
     print("=" * 90)
-    print("  [DOBLAJ LIVE LOCAL MCP WORKER] (Push Webhook Mode)")
+    print("  [DOBLAJ LIVE LOCAL MCP WORKER] (Autonomous Polling + Push Webhook Mode)")
     print("=" * 90)
-    print("Listening on http://127.0.0.1:8002 for incoming Webhooks from Railway...")
+    print("Listening on http://127.0.0.1:8002 & polling Convex for pending jobs automatically...")
     print("Permanent tunnel endpoint: https://worker.doblaj.com\n")
     uvicorn.run(app, host="127.0.0.1", port=8002, log_level="info")
 
