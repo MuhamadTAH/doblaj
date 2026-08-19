@@ -275,11 +275,11 @@ def segment_audio_pause_first(
     min_dur: float = 0.0,
     max_dur: float = 10.0,
     silence_thresh_db: float = -38.0,
-    min_pause_sec: float = 0.40
+    min_pause_sec: float = 0.25
 ) -> list[dict]:
     """
     Pause-First Natural Speech Segmentation (Zero-Min Duration):
-    Detects real physical acoustic pauses (>=400ms silence) and cuts strictly at every natural
+    Detects real physical acoustic pauses (>=250ms silence) and cuts strictly at every natural
     pause/breath boundary. If a user says one single word (e.g. 1 second) and pauses, it creates
     a dedicated chunk right there without requiring arbitrary minimum durations.
     """
