@@ -461,6 +461,80 @@ class DubbingPipelineEngine:
         tts_tasks = [_synthesize_single(i, c) for i, c in enumerate(chunks)]
         tts_results = await asyncio.gather(*tts_tasks)
         
+        # Check if any chunk needs acoustic text correction from the translator agent
+        correction_requests = []
+        for i, idx, success, chunk_tts_path in tts_results:
+            c = chunks[i]
+            if success and os.path.exists(chunk_tts_path):
+                info = sf.info(chunk_tts_path)
+                tts_dur = info.duration
+                lead_sil = c.get("lead_silence_sec", 0.0)
+                active_dur = c.get("active_speech_duration_sec", c["duration_sec"])
+                chunk_dur = c.get("duration_sec", active_dur)
+                target_speech_dur = min(active_dur, max(0.2, chunk_dur - lead_sil))
+                
+                # If audio is significantly longer than target (>1.25x) or shorter (<0.70x)
+                if tts_dur > (target_speech_dur * 1.25) or (target_speech_dur >= 2.0 and tts_dur < (target_speech_dur * 0.70)):
+                    curr_text = trans_by_idx.get(idx, "")
+                    curr_words = len(curr_text.split())
+                    target_words = max(2, int(target_speech_dur * 2.2))
+                    issue = "TOO_LONG" if tts_dur > target_speech_dur else "TOO_SHORT"
+                    correction_requests.append({
+                        "chunk_index": idx,
+                        "chunk_number": c["chunk_number"],
+                        "current_text": curr_text,
+                        "current_tts_duration_sec": round(tts_dur, 2),
+                        "target_duration_sec": round(target_speech_dur, 2),
+                        "current_word_count": curr_words,
+                        "target_word_count": target_words,
+                        "issue": issue
+                    })
+
+        if correction_requests:
+            corr_req_file = scratch_dir / "CORRECTION_REQUEST.json"
+            with open(corr_req_file, "w", encoding="utf-8") as f:
+                json.dump(correction_requests, f, ensure_ascii=False, indent=2)
+                
+            corr_ready_file = scratch_dir / "AGENT_CORRECTION_READY"
+            with open(corr_ready_file, "w", encoding="utf-8") as f:
+                json.dump({"job_id": job_id, "chunks_needing_correction": len(correction_requests), "timestamp": time.time()}, f, indent=2)
+                
+            notify_file = Path("tmp/doblaj_scratch/NOTIFY_QUEUE.txt")
+            notify_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(notify_file, "a", encoding="utf-8") as f:
+                f.write(f"CORRECTION_READY:{job_id} at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                
+            logger.info(f"✨ [CORRECTION LOOP] Flagged {len(correction_requests)} chunks for text correction. Sent CORRECTION_REQUEST.json. Waiting for AGENT_CORRECTION_DONE...")
+            
+            # Wait up to 300s for agent to write AGENT_CORRECTION_DONE
+            corr_done_file = scratch_dir / "AGENT_CORRECTION_DONE"
+            start_wait = time.time()
+            corr_applied = False
+            while time.time() - start_wait < 300:
+                if corr_done_file.exists():
+                    logger.info(f"✅ [CORRECTION LOOP] Received AGENT_CORRECTION_DONE for {job_id} in {time.time() - start_wait:.1f}s!")
+                    corr_applied = True
+                    break
+                await asyncio.sleep(2.0)
+                
+            if corr_applied:
+                # Reload updated translations
+                with open(trans_path, "r", encoding="utf-8") as f:
+                    translations = json.load(f)
+                trans_by_idx = {t["chunk_index"]: (t.get("iraqi_translation") or t.get("arabic_text", "")) for t in translations}
+                
+                # Re-synthesize ONLY the corrected chunks
+                corr_indices = {r["chunk_index"] for r in correction_requests}
+                logger.info(f"🎙️ [CORRECTION LOOP] Re-synthesizing {len(corr_indices)} corrected chunks with Fish Audio...")
+                re_tasks = [_synthesize_single(i, c) for i, c in enumerate(chunks) if c["chunk_index"] in corr_indices]
+                re_results = await asyncio.gather(*re_tasks)
+                
+                # Update tts_results list
+                results_map = {idx: (i, idx, s, p) for i, idx, s, p in tts_results}
+                for i, idx, s, p in re_results:
+                    results_map[idx] = (i, idx, s, p)
+                tts_results = [results_map[c["chunk_index"]] for c in chunks]
+        
         # Place synthesized chunks onto the master timeline in exact sequence with acoustic onset & active speech alignment
         for i, idx, success, chunk_tts_path in tts_results:
             c = chunks[i]
