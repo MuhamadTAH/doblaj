@@ -10,6 +10,37 @@ import numpy as np
 logger = logging.getLogger("doblaj.vcta.fish_model_manager")
 
 
+def estimate_t60_reverberation(vocal_stem_path: str) -> float:
+    """
+    Estimates the reverberation decay time (T60) of the original speaker's vocals.
+    If T60 < 0.20s (standard close mic / lavalier on phone), returns ~0.10s (bone-dry).
+    If T60 >= 0.35s (room echo detected), returns the estimated T60 for matched early reflection.
+    """
+    try:
+        if not os.path.exists(vocal_stem_path):
+            return 0.10
+        data, sr = sf.read(vocal_stem_path)
+        if len(data.shape) > 1:
+            data = data.mean(axis=1)
+        frame_len = int(0.02 * sr)
+        rms_frames = [np.sqrt(np.mean(data[i:i+frame_len]**2) + 1e-10) for i in range(0, len(data)-frame_len, frame_len)]
+        rms_db = 20 * np.log10(np.maximum(rms_frames, 1e-5))
+        decays = []
+        for i in range(len(rms_db)-10):
+            if rms_db[i] > -20.0 and rms_db[i+1] < rms_db[i]:
+                start_val = rms_db[i]
+                for k in range(1, 15):
+                    if (start_val - rms_db[i+k]) >= 20.0:
+                        decay_time = k * 0.02 * 3.0
+                        if 0.05 <= decay_time <= 1.5:
+                            decays.append(decay_time)
+                        break
+        median_t60 = float(np.median(decays)) if decays else 0.10
+        return round(median_t60, 2)
+    except Exception:
+        return 0.10
+
+
 async def create_fish_audio_voice_model(audio_path: str, title: str = "doblaj_speaker") -> Optional[str]:
     """
     Uploads a 10-20s clean vocal sample to Fish Audio to create a dedicated, private

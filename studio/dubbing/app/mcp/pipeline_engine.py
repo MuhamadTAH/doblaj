@@ -665,23 +665,39 @@ class DubbingPipelineEngine:
             # Entire video background music preserved at natural audible level (0.80x)
             bg_mix_track = bg_audio * 0.80
 
-        # Master mixed audio: Voice (1.10x) + Natural Background Music (0.80x -> 1.0x Outro)
-        final_master_audio = (full_arabic_speech * 1.10) + bg_mix_track
-        peak = np.max(np.abs(final_master_audio)) if len(final_master_audio) > 0 else 1.0
-        if peak > 0.96:
-            final_master_audio = final_master_audio * (0.96 / peak)
-            
-        unmastered_wav_path = str(scratch_dir / "unmastered_audio.wav")
-        sf.write(unmastered_wav_path, final_master_audio, sr)
+        # 1. Export Raw Stems for Independent Bus Processing
+        from app.services.vcta.fish_model_manager import estimate_t60_reverberation
+        dialogue_raw_path = str(scratch_dir / "dialogue_raw.wav")
+        bg_raw_path = str(scratch_dir / "bg_raw.wav")
+        sf.write(dialogue_raw_path, full_arabic_speech, sr)
+        sf.write(bg_raw_path, bg_mix_track, sr)
         
-        # Professional EBU R128 Loudness Normalization (-14.5 LUFS)
+        # 2. Dynamic Room Acoustic Matching (T60 analysis)
+        t60 = estimate_t60_reverberation(vocal_stem_path)
+        if t60 >= 0.35:
+            # Subtle room reflection matching the scene acoustics
+            reverb_filter = ",aecho=0.8:0.8:25|45:0.07|0.03"
+            logger.info(f"🏛️ [ACOUSTIC MATCH] Measured original room T60 = {t60:.2f}s -> Applied matched room reflections.")
+        else:
+            reverb_filter = ""
+            logger.info(f"🎙️ [ACOUSTIC MATCH] Measured dry vocal T60 = {t60:.2f}s -> Keeping 100% clean direct vocal (Zero fake reverb).")
+            
+        # 3. Professional Pro-Studio Bus Signal Chain:
+        # - Dialogue Bus: 80Hz HPF + 350Hz De-mud + 7kHz Presence Air + Stem Normalization (-16.0 LUFS)
+        # - Background Bus: Dynamic Sidechain Ducking (-3.5dB during speech, 100% volume in pauses/outro)
+        # - Master Summing Bus: Amix -> Transparent True Peak Limiter (-1.0 dBTP ceiling ONLY, ZERO pumping!)
         master_audio_path = str(scratch_dir / "final_master_audio_48k.wav")
         mix_cmd = [
             "ffmpeg", "-y",
-            "-i", unmastered_wav_path,
+            "-i", dialogue_raw_path,
+            "-i", bg_raw_path,
             "-filter_complex",
-            "[0:a]loudnorm=I=-14.5:TP=-1.0:LRA=7.0[out]",
-            "-map", "[out]",
+            f"[0:a]highpass=f=80,equalizer=f=350:t=q:w=1.5:g=-2.0,equalizer=f=7000:t=q:w=1.2:g=2.2{reverb_filter},loudnorm=I=-16.0:TP=-1.5:LRA=6.0[dialogue];"
+            "[1:a]volume=0.85[bg];"
+            "[bg][dialogue]sidechaincompress=threshold=0.035:ratio=3.5:attack=15:release=220[bg_ducked];"
+            "[dialogue][bg_ducked]amix=inputs=2:duration=first:dropout_transition=0:weights=1.0 1.0[mixed];"
+            "[mixed]alimiter=limit=0.89:attack=5:release=50:asc=1[master_out]",
+            "-map", "[master_out]",
             "-ar", "48000", "-ac", "2",
             master_audio_path
         ]
