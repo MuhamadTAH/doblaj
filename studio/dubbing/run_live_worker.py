@@ -23,10 +23,10 @@ from app.mcp.storage import ScratchManager
 
 AGENT_READY_FILENAME = "AGENT_TRANSCRIBE_READY"
 AGENT_DONE_FILENAME = "AGENT_TRANSCRIBE_DONE"
-AGENT_WAIT_TIMEOUT_SEC = 600  # 10 minutes max wait for agent
+AGENT_WAIT_TIMEOUT_SEC = 3600  # 1 hour max wait for agent session
 
 
-async def wait_for_agent_transcription_and_translation(job_id: str, scratch_dir: Path, timeout_sec: int = 600) -> bool:
+async def wait_for_agent_transcription_and_translation(job_id: str, scratch_dir: Path, timeout_sec: int = 3600) -> bool:
     ready_file = scratch_dir / AGENT_READY_FILENAME
     done_file = scratch_dir / AGENT_DONE_FILENAME
     
@@ -59,7 +59,7 @@ async def wait_for_agent_transcription_and_translation(job_id: str, scratch_dir:
             return True
         await asyncio.sleep(2.0)
         
-    logger.warning(f"⚠️ [AGENT HANDOFF] Timed out after {timeout_sec}s waiting for Antigravity subagents. Falling back to internal engine...")
+    logger.error(f"❌ [AGENT HANDOFF] Timed out after {timeout_sec}s waiting for Antigravity subagents. Aborting without bad fallbacks.")
     return False
 
 
@@ -99,14 +99,11 @@ async def process_single_job(job: dict) -> None:
         subagent_done = await wait_for_agent_transcription_and_translation(job_id, scratch_dir, timeout_sec=AGENT_WAIT_TIMEOUT_SEC)
         
         if not subagent_done:
-            # Fallback only if subagent session timed out
-            logger.info(f"[STAGE 3: ASR] Transcribing {chunks_count} Kurdish Sorani audio chunks...")
-            await DubbingPipelineEngine.transcribe_kurdish(job_id)
-            await database_convex.update_job_status(job_id=job_id, status="translating", progress=65)
-            logger.info(f"[STAGE 4: TRANSLATION] Translating {chunks_count} chunks into Spoken Iraqi Arabic...")
-            await DubbingPipelineEngine.translate_and_calibrate(job_id)
-        else:
-            await database_convex.update_job_status(job_id=job_id, status="translating", progress=65)
+            logger.error(f"[WORKER ERROR] Job {job_id} aborted: Subagents did not write AGENT_TRANSCRIBE_DONE within {AGENT_WAIT_TIMEOUT_SEC}s.")
+            await database_convex.update_job_status(job_id=job_id, status="failed", progress=0)
+            return
+
+        await database_convex.update_job_status(job_id=job_id, status="translating", progress=65)
 
         # --- STAGE 5: Neural Voice Cloning & Audio Mastering ---
         await database_convex.update_job_status(job_id=job_id, status="revoicing", progress=80)

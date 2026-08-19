@@ -120,10 +120,10 @@ async def handle_video_dubbing(message: Message, bot: Bot):
 
         logger.info(f"✨ [TG-BOT] Sentinel written: {ready_file}. Waiting for Antigravity subagents...")
 
-        # Wait for subagents to complete
+        # Wait for subagents to complete (up to 1 hour)
         start_t = time.time()
         subagent_done = False
-        while time.time() - start_t < 600:
+        while time.time() - start_t < 3600:
             if done_file.exists():
                 logger.info(f"✅ [TG-BOT] Subagents finished job {job_id} in {time.time() - start_t:.1f}s!")
                 subagent_done = True
@@ -131,9 +131,9 @@ async def handle_video_dubbing(message: Message, bot: Bot):
             await asyncio.sleep(2.0)
 
         if not subagent_done:
-            logger.warning("[TG-BOT] Subagent timeout. Falling back to internal engine.")
-            await DubbingPipelineEngine.transcribe_kurdish(job_id)
-            await DubbingPipelineEngine.translate_and_calibrate(job_id)
+            logger.error(f"❌ [TG-BOT] Subagent timeout after 3600s for job {job_id}. Aborting without bad fallback.")
+            await status_msg.edit_text("❌ کات بەسەرچوو: وەرگێڕان لە کاتی دیاریکراودا تەواو نەبوو.")
+            return
 
         # Step 6: STAGE 4 - Neural Voice Cloning & Mastering
         try:
