@@ -64,69 +64,19 @@ async def process_single_job(job: dict) -> None:
         chunks_count = sep_res["chunks_count"]
         logger.info(f"  Stems separated & VAD sliced into {chunks_count} chunks")
 
-        # --- STAGE 3: Write sentinel → Wait for Antigravity Agent ---
-        # Write the "READY" file so the Antigravity watcher loop picks up this job
-        ready_file = scratch_dir / AGENT_READY_FILENAME
-        done_file = scratch_dir / AGENT_DONE_FILENAME
-        done_file.unlink(missing_ok=True)  # clear any stale done signal
-
-        ready_payload = {
-            "job_id": job_id,
-            "chunks_count": chunks_count,
-            "manifest_path": sep_res["manifest_path"]
-        }
-        ready_file.write_text(json.dumps(ready_payload, ensure_ascii=False), encoding="utf-8")
-        logger.info(f"[AGENT HANDOFF] Written sentinel file: {ready_file}")
-
-        # Push-notify the agent watcher by appending job_id to the notify queue.
-        # The agent uses a FileSystemWatcher on this file — it wakes up INSTANTLY
-        # without any polling delay the moment we write here.
-        notify_queue = scratch_dir.parent / "NOTIFY_QUEUE.txt"
-        with open(notify_queue, "a", encoding="utf-8") as nq:
-            nq.write(f"{job_id}\n")
-        logger.info(f"[AGENT HANDOFF] Pushed job_id to notify queue → agent waking up now")
-
-        # Also call the local agent_watcher /trigger endpoint so it writes
-        # the PROCESS_NOW flag instantly — Antigravity's cron picks it up
-        # on the very next tick (within 1 min) without any polling cost.
-        try:
-            import urllib.request
-            trigger_data = json.dumps({"job_id": job_id}).encode("utf-8")
-            req = urllib.request.Request(
-                "http://127.0.0.1:8003/trigger",
-                data=trigger_data,
-                headers={"Content-Type": "application/json"},
-                method="POST"
-            )
-            urllib.request.urlopen(req, timeout=2)
-            logger.info(f"[AGENT HANDOFF] Push trigger sent to agent_watcher successfully")
-        except Exception as e:
-            logger.warning(f"[AGENT HANDOFF] Could not reach agent_watcher on port 8003: {e} (agent will still pick up via queue)")
-
-        logger.info(f"[AGENT HANDOFF] Waiting for Antigravity to transcribe & translate {chunks_count} chunks...")
-
+        # --- STAGE 3: Kurdish Transcription (ASR) ---
         await database_convex.update_job_status(job_id=job_id, status="transcribing", progress=45)
+        logger.info(f"[STAGE 3: ASR] Transcribing {chunks_count} Kurdish Sorani audio chunks...")
+        await DubbingPipelineEngine.transcribe_kurdish(job_id)
 
-        # Poll until agent writes AGENT_TRANSCRIBE_DONE
-        elapsed = 0
-        poll_interval = 3
-        while elapsed < AGENT_WAIT_TIMEOUT_SEC:
-            if done_file.exists():
-                logger.info(f"[AGENT HANDOFF] Agent completed transcription & translation!")
-                break
-            await asyncio.sleep(poll_interval)
-            elapsed += poll_interval
+        # --- STAGE 4: Kurdish -> Spoken Iraqi Arabic Translation ---
+        await database_convex.update_job_status(job_id=job_id, status="translating", progress=65)
+        logger.info(f"[STAGE 4: TRANSLATION] Translating {chunks_count} chunks into Spoken Iraqi Arabic...")
+        await DubbingPipelineEngine.translate_and_calibrate(job_id)
 
-        if not done_file.exists():
-            raise TimeoutError(f"Agent did not complete transcription within {AGENT_WAIT_TIMEOUT_SEC}s")
-
-        # Clean up sentinel files
-        ready_file.unlink(missing_ok=True)
-        done_file.unlink(missing_ok=True)
-
-        # --- STAGE 4: Neural Voice Cloning & Audio Mastering ---
-        await database_convex.update_job_status(job_id=job_id, status="revoicing", progress=75)
-        logger.info(f"[TTS] Synthesizing Iraqi Arabic cloned voice for {chunks_count} chunks...")
+        # --- STAGE 5: Neural Voice Cloning & Audio Mastering ---
+        await database_convex.update_job_status(job_id=job_id, status="revoicing", progress=80)
+        logger.info(f"[TTS] Synthesizing Iraqi Arabic cloned voice with Fish Audio for {chunks_count} chunks...")
         master_res = await DubbingPipelineEngine.synthesize_and_master(job_id, local_source_path)
         final_mp4_path = master_res["final_video_path"]
         logger.info(f"  Master MP4 rendered: {final_mp4_path}")
@@ -211,6 +161,10 @@ async def convex_polling_loop():
 @app.on_event("startup")
 async def on_startup():
     asyncio.create_task(convex_polling_loop())
+    tg_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    if tg_token:
+        from app.services.telegram_dubbing_bot import start_telegram_bot
+        asyncio.create_task(start_telegram_bot(tg_token))
 
 @app.post("/webhook/run_job")
 async def handle_webhook_run_job(payload: WebhookPayload, background_tasks: BackgroundTasks):
