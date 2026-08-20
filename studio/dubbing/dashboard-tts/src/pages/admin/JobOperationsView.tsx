@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { usePaginatedQuery } from "convex/react";
+import { usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useAuth } from "@clerk/clerk-react";
 import { downloadJobSource, retryJob, failJob, nukeJob } from "../../api/adminApi";
@@ -14,6 +14,7 @@ export const JobOperationsView: React.FC = () => {
   );
 
   const [inspectJob, setInspectJob] = useState<any | null>(null);
+  const [activeNodeTab, setActiveNodeTab] = useState<"node1" | "node2">("node1");
   const [inspectVideoUrl, setInspectVideoUrl] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<any | null>(null);
   const [actionType, setActionType] = useState<"RETRY" | "FAIL" | "NUKE" | null>(null);
@@ -22,8 +23,15 @@ export const JobOperationsView: React.FC = () => {
   const [overrideProvider, setOverrideProvider] = useState("runpod");
   const [actionLoading, setActionLoading] = useState(false);
 
-  const handleInspect = async (job: any) => {
+  // Live real-time subscription to chunks for inspected job
+  const jobChunks = useQuery(
+    api.adminQuery.listChunksForJob,
+    inspectJob ? { jobId: inspectJob._id } : "skip"
+  ) || [];
+
+  const handleInspect = async (job: any, initialTab: "node1" | "node2" = "node1") => {
     setInspectJob(job);
+    setActiveNodeTab(initialTab);
     setInspectVideoUrl(null);
     try {
       const data = await downloadJobSource(getToken, job._id);
@@ -88,7 +96,7 @@ export const JobOperationsView: React.FC = () => {
               Live Watch Engine
             </span>
           </h1>
-          <p className="text-xs text-ink-400">Click any job to open the real-time Live Node Watch and inspect extracted media metadata</p>
+          <p className="text-xs text-ink-400">Inspect real-time execution across Node 1 (Ingestion) and Node 2 (Demucs + Silero VAD)</p>
         </div>
 
         <div className="flex items-center gap-1.5 bg-ink-900/60 p-1 rounded-xl border border-white/[0.06] overflow-x-auto">
@@ -117,9 +125,9 @@ export const JobOperationsView: React.FC = () => {
                 <th className="py-3.5 px-4">Job ID / Legacy</th>
                 <th className="py-3.5 px-4">Status & Stage</th>
                 <th className="py-3.5 px-4">Duration & Res</th>
+                <th className="py-3.5 px-4">VAD Chunks</th>
                 <th className="py-3.5 px-4">Language / TTS</th>
                 <th className="py-3.5 px-4">API Cost</th>
-                <th className="py-3.5 px-4">Created</th>
                 <th className="py-3.5 px-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -130,7 +138,7 @@ export const JobOperationsView: React.FC = () => {
                   <tr key={job._id} className="hover:bg-white/[0.02] transition-colors font-mono">
                     <td className="py-3 px-4">
                       <button
-                        onClick={() => handleInspect(job)}
+                        onClick={() => handleInspect(job, "node1")}
                         className="text-left group flex flex-col hover:opacity-80 transition-opacity"
                       >
                         <div className="font-semibold text-brand-300 group-hover:underline truncate max-w-[140px] flex items-center gap-1.5">
@@ -167,19 +175,21 @@ export const JobOperationsView: React.FC = () => {
                       </div>
                     </td>
                     <td className="py-3 px-4 text-ink-300">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${job.chunksCount ? "bg-purple-500/20 text-purple-300 border border-purple-500/30" : "text-ink-500"}`}>
+                        {job.chunksCount ? `${job.chunksCount} chunks` : "Pending VAD"}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-ink-300">
                       <div>{job.sourceLang || "ckb"} ➔ {job.targetLang || "ar-IQ"}</div>
                       <div className="text-[10px] text-ink-500">{job.ttsProvider || "fish"}</div>
                     </td>
                     <td className="py-3 px-4 text-purple-300 font-semibold">
                       ${(job.total_cost_usd ?? job.api_cost ?? 0).toFixed(3)}
                     </td>
-                    <td className="py-3 px-4 text-ink-500 text-[11px]">
-                      {new Date(job.createdAt || job._creationTime).toLocaleString()}
-                    </td>
                     <td className="py-3 px-4 text-right space-x-1.5">
                       <button
-                        onClick={() => handleInspect(job)}
-                        title="Live Watch & Node 1 Inspection"
+                        onClick={() => handleInspect(job, "node1")}
+                        title="Live Watch & Pipeline Inspector"
                         className="px-2.5 py-1 rounded bg-brand-500/20 hover:bg-brand-500/30 text-brand-300 border border-brand-500/30 text-[11px] font-bold"
                       >
                         👁️ Watch
@@ -241,11 +251,11 @@ export const JobOperationsView: React.FC = () => {
       </div>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* LIVE WATCH & NODE 1 INSPECTION MODAL                         */}
+      {/* LIVE WATCH & PIPELINE INSPECTOR MODAL                        */}
       {/* ───────────────────────────────────────────────────────────── */}
       {inspectJob && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 overflow-y-auto">
-          <div className="max-w-3xl w-full rounded-2xl border border-white/10 bg-[#0c0e14] p-6 space-y-6 shadow-2xl my-8">
+          <div className="max-w-4xl w-full rounded-2xl border border-white/10 bg-[#0c0e14] p-6 space-y-6 shadow-2xl my-8">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
               <div>
@@ -253,7 +263,7 @@ export const JobOperationsView: React.FC = () => {
                   <span className="text-xl font-bold text-white tracking-tight">Live Pipeline Watch</span>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    NODE 1: UPLOAD_COMPLETE
+                    {inspectJob.status}
                   </span>
                 </div>
                 <p className="text-xs text-ink-400 font-mono mt-1">
@@ -270,124 +280,223 @@ export const JobOperationsView: React.FC = () => {
             </div>
 
             {/* Pipeline Stage Stepper */}
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-              <div className="p-2.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-center space-y-1">
+            <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+              <button
+                onClick={() => setActiveNodeTab("node1")}
+                className={`p-2.5 rounded-xl border text-center space-y-1 transition-all ${
+                  activeNodeTab === "node1"
+                    ? "border-brand-500/60 bg-brand-500/20 shadow-lg shadow-brand-500/10"
+                    : "border-white/[0.08] bg-ink-900/40 hover:bg-white/[0.04]"
+                }`}
+              >
                 <div className="text-[10px] font-mono font-bold text-emerald-400">NODE 1</div>
                 <div className="text-xs font-bold text-white">Direct Upload</div>
                 <div className="text-[9px] text-emerald-300/80 font-mono">✅ Ingested</div>
-              </div>
+              </button>
 
-              <div className="p-2.5 rounded-xl border border-white/[0.06] bg-ink-900/40 text-center space-y-1 opacity-70">
-                <div className="text-[10px] font-mono font-bold text-ink-400">NODE 2</div>
-                <div className="text-xs font-bold text-ink-200">Demucs Vocal</div>
-                <div className="text-[9px] text-ink-500 font-mono">Separation</div>
-              </div>
+              <button
+                onClick={() => setActiveNodeTab("node2")}
+                className={`p-2.5 rounded-xl border text-center space-y-1 transition-all ${
+                  activeNodeTab === "node2"
+                    ? "border-brand-500/60 bg-brand-500/20 shadow-lg shadow-brand-500/10"
+                    : jobChunks.length > 0
+                    ? "border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20"
+                    : "border-white/[0.08] bg-ink-900/40 hover:bg-white/[0.04]"
+                }`}
+              >
+                <div className="text-[10px] font-mono font-bold text-purple-400">NODE 2</div>
+                <div className="text-xs font-bold text-white">Demucs & VAD</div>
+                <div className="text-[9px] text-purple-300/80 font-mono">
+                  {jobChunks.length > 0 ? `✅ ${jobChunks.length} Chunks` : "Separation"}
+                </div>
+              </button>
 
-              <div className="p-2.5 rounded-xl border border-white/[0.06] bg-ink-900/40 text-center space-y-1 opacity-70">
+              <div className="p-2.5 rounded-xl border border-white/[0.06] bg-ink-900/40 text-center space-y-1 opacity-60">
                 <div className="text-[10px] font-mono font-bold text-ink-400">NODE 3</div>
                 <div className="text-xs font-bold text-ink-200">Kurdish ASR</div>
                 <div className="text-[9px] text-ink-500 font-mono">Transcription</div>
               </div>
 
-              <div className="p-2.5 rounded-xl border border-white/[0.06] bg-ink-900/40 text-center space-y-1 opacity-70">
+              <div className="p-2.5 rounded-xl border border-white/[0.06] bg-ink-900/40 text-center space-y-1 opacity-60">
                 <div className="text-[10px] font-mono font-bold text-ink-400">NODE 4</div>
                 <div className="text-xs font-bold text-ink-200">Iraqi Arabic</div>
                 <div className="text-[9px] text-ink-500 font-mono">Localization</div>
               </div>
 
-              <div className="p-2.5 rounded-xl border border-white/[0.06] bg-ink-900/40 text-center space-y-1 opacity-70">
+              <div className="p-2.5 rounded-xl border border-white/[0.06] bg-ink-900/40 text-center space-y-1 opacity-60">
                 <div className="text-[10px] font-mono font-bold text-ink-400">NODE 5</div>
                 <div className="text-xs font-bold text-ink-200">TTS Synthesis</div>
                 <div className="text-[9px] text-ink-500 font-mono">Voice Clone</div>
               </div>
 
-              <div className="p-2.5 rounded-xl border border-white/[0.06] bg-ink-900/40 text-center space-y-1 opacity-70">
+              <div className="p-2.5 rounded-xl border border-white/[0.06] bg-ink-900/40 text-center space-y-1 opacity-60">
                 <div className="text-[10px] font-mono font-bold text-ink-400">NODE 6</div>
                 <div className="text-xs font-bold text-ink-200">Master Mux</div>
                 <div className="text-[9px] text-ink-500 font-mono">Render Output</div>
               </div>
             </div>
 
-            {/* Node 1 Inspection Card: Video Player + FFprobe Metadata Grid */}
-            <div className="space-y-4 rounded-xl border border-white/[0.08] bg-ink-950/60 p-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-400 font-mono flex items-center gap-2">
-                <span>📹 Node 1 Inspection: Source Video & Extracted FFprobe Metadata</span>
-              </h3>
+            {/* TAB 1: NODE 1 INSPECTION */}
+            {activeNodeTab === "node1" && (
+              <div className="space-y-4 rounded-xl border border-white/[0.08] bg-ink-950/60 p-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-400 font-mono flex items-center gap-2">
+                  <span>📹 Node 1 Inspection: Source Video & Extracted FFprobe Metadata</span>
+                </h3>
 
-              {/* Video Player */}
-              {inspectVideoUrl ? (
-                <div className="rounded-xl overflow-hidden border border-white/10 bg-black aspect-video max-h-[320px] w-full flex items-center justify-center relative">
-                  <video
-                    src={inspectVideoUrl}
-                    controls
-                    playsInline
-                    className="w-full h-full object-contain"
-                    preload="auto"
-                  />
-                </div>
-              ) : (
-                <div className="rounded-xl border border-white/[0.06] bg-black/40 p-6 text-center text-xs text-ink-400 font-mono">
-                  Loading signed streaming URL from Cloudflare R2...
-                </div>
-              )}
-
-              {/* Extracted Metadata Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 font-mono text-xs">
-                <div className="p-3 rounded-lg border border-white/[0.06] bg-ink-900/50">
-                  <span className="text-[10px] text-ink-500 uppercase">Duration</span>
-                  <div className="text-sm font-bold text-white mt-0.5">
-                    {inspectJob.mediaMetadata?.durationSec
-                      ? `${inspectJob.mediaMetadata.durationSec}s`
-                      : (inspectJob.total_duration_sec ? `${inspectJob.total_duration_sec}s` : "0.0s")}
+                {/* Video Player */}
+                {inspectVideoUrl ? (
+                  <div className="rounded-xl overflow-hidden border border-white/10 bg-black aspect-video max-h-[300px] w-full flex items-center justify-center relative">
+                    <video
+                      src={inspectVideoUrl}
+                      controls
+                      playsInline
+                      className="w-full h-full object-contain"
+                      preload="auto"
+                    />
                   </div>
-                  <span className="text-[10px] text-ink-500">
-                    {inspectJob.mediaMetadata?.durationMs ? `${inspectJob.mediaMetadata.durationMs} ms` : "--"}
-                  </span>
-                </div>
-
-                <div className="p-3 rounded-lg border border-white/[0.06] bg-ink-900/50">
-                  <span className="text-[10px] text-ink-500 uppercase">Resolution & FPS</span>
-                  <div className="text-sm font-bold text-white mt-0.5">
-                    {inspectJob.mediaMetadata?.resolution || "1920x1080"}
+                ) : (
+                  <div className="rounded-xl border border-white/[0.06] bg-black/40 p-6 text-center text-xs text-ink-400 font-mono">
+                    Loading signed streaming URL from Cloudflare R2...
                   </div>
-                  <span className="text-[10px] text-ink-500">
-                    {inspectJob.mediaMetadata?.fps ? `${inspectJob.mediaMetadata.fps} FPS` : "30.0 FPS"}
-                  </span>
-                </div>
+                )}
 
-                <div className="p-3 rounded-lg border border-white/[0.06] bg-ink-900/50">
-                  <span className="text-[10px] text-ink-500 uppercase">Codecs</span>
-                  <div className="text-sm font-bold text-brand-300 mt-0.5 truncate">
-                    {inspectJob.mediaMetadata?.videoCodec || "H.264"} / {inspectJob.mediaMetadata?.audioCodec || "AAC"}
+                {/* Extracted Metadata Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 font-mono text-xs">
+                  <div className="p-3 rounded-lg border border-white/[0.06] bg-ink-900/50">
+                    <span className="text-[10px] text-ink-500 uppercase">Duration</span>
+                    <div className="text-sm font-bold text-white mt-0.5">
+                      {inspectJob.mediaMetadata?.durationSec
+                        ? `${inspectJob.mediaMetadata.durationSec}s`
+                        : (inspectJob.total_duration_sec ? `${inspectJob.total_duration_sec}s` : "0.0s")}
+                    </div>
+                    <span className="text-[10px] text-ink-500">
+                      {inspectJob.mediaMetadata?.durationMs ? `${inspectJob.mediaMetadata.durationMs} ms` : "--"}
+                    </span>
                   </div>
-                  <span className="text-[10px] text-ink-500">Video / Audio</span>
-                </div>
 
-                <div className="p-3 rounded-lg border border-white/[0.06] bg-ink-900/50">
-                  <span className="text-[10px] text-ink-500 uppercase">Audio Sample Rate</span>
-                  <div className="text-sm font-bold text-emerald-400 mt-0.5">
-                    {inspectJob.mediaMetadata?.audioSampleRate
-                      ? `${inspectJob.mediaMetadata.audioSampleRate} Hz`
-                      : "48,000 Hz"}
+                  <div className="p-3 rounded-lg border border-white/[0.06] bg-ink-900/50">
+                    <span className="text-[10px] text-ink-500 uppercase">Resolution & FPS</span>
+                    <div className="text-sm font-bold text-white mt-0.5">
+                      {inspectJob.mediaMetadata?.resolution || "1920x1080"}
+                    </div>
+                    <span className="text-[10px] text-ink-500">
+                      {inspectJob.mediaMetadata?.fps ? `${inspectJob.mediaMetadata.fps} FPS` : "30.0 FPS"}
+                    </span>
                   </div>
-                  <span className="text-[10px] text-ink-500">
-                    {inspectJob.mediaMetadata?.audioChannels === 2 ? "Stereo (2 ch)" : "Mono (1 ch)"}
-                  </span>
-                </div>
 
-                <div className="p-3 rounded-lg border border-white/[0.06] bg-ink-900/50 col-span-2 sm:col-span-4">
-                  <span className="text-[10px] text-ink-500 uppercase">Cloudflare R2 Storage Key</span>
-                  <div className="text-xs font-bold text-white mt-0.5 truncate select-all">
-                    {inspectJob.sourceVideoR2Key || "dubbing/.../source.mp4"}
+                  <div className="p-3 rounded-lg border border-white/[0.06] bg-ink-900/50">
+                    <span className="text-[10px] text-ink-500 uppercase">Codecs</span>
+                    <div className="text-sm font-bold text-brand-300 mt-0.5 truncate">
+                      {inspectJob.mediaMetadata?.videoCodec || "H.264"} / {inspectJob.mediaMetadata?.audioCodec || "AAC"}
+                    </div>
+                    <span className="text-[10px] text-ink-500">Video / Audio</span>
                   </div>
-                  <div className="flex items-center gap-4 text-[10px] text-ink-400 mt-1">
-                    <span>Size: {inspectJob.mediaMetadata?.fileSizeBytes ? `${(inspectJob.mediaMetadata.fileSizeBytes / (1024 * 1024)).toFixed(2)} MB` : "--"}</span>
-                    <span>Bitrate: {inspectJob.mediaMetadata?.bitrateKbps ? `${inspectJob.mediaMetadata.bitrateKbps} kbps` : "--"}</span>
-                    <span>Container: {inspectJob.mediaMetadata?.formatName || "mp4"}</span>
+
+                  <div className="p-3 rounded-lg border border-white/[0.06] bg-ink-900/50">
+                    <span className="text-[10px] text-ink-500 uppercase">Audio Sample Rate</span>
+                    <div className="text-sm font-bold text-emerald-400 mt-0.5">
+                      {inspectJob.mediaMetadata?.audioSampleRate
+                        ? `${inspectJob.mediaMetadata.audioSampleRate} Hz`
+                        : "48,000 Hz"}
+                    </div>
+                    <span className="text-[10px] text-ink-500">
+                      {inspectJob.mediaMetadata?.audioChannels === 2 ? "Stereo (2 ch)" : "Mono (1 ch)"}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-lg border border-white/[0.06] bg-ink-900/50 col-span-2 sm:col-span-4">
+                    <span className="text-[10px] text-ink-500 uppercase">Cloudflare R2 Storage Key</span>
+                    <div className="text-xs font-bold text-white mt-0.5 truncate select-all">
+                      {inspectJob.sourceVideoR2Key || "dubbing/.../source.mp4"}
+                    </div>
+                    <div className="flex items-center gap-4 text-[10px] text-ink-400 mt-1">
+                      <span>Size: {inspectJob.mediaMetadata?.fileSizeBytes ? `${(inspectJob.mediaMetadata.fileSizeBytes / (1024 * 1024)).toFixed(2)} MB` : "--"}</span>
+                      <span>Bitrate: {inspectJob.mediaMetadata?.bitrateKbps ? `${inspectJob.mediaMetadata.bitrateKbps} kbps` : "--"}</span>
+                      <span>Container: {inspectJob.mediaMetadata?.formatName || "mp4"}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
+
+            {/* TAB 2: NODE 2 DEMUCS & SILERO VAD INSPECTION */}
+            {activeNodeTab === "node2" && (
+              <div className="space-y-4 rounded-xl border border-white/[0.08] bg-ink-950/60 p-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-purple-400 font-mono flex items-center gap-2">
+                    <span>🎛️ Node 2 Inspection: Demucs Vocal Isolation & Silero VAD Chunks</span>
+                  </h3>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                    {jobChunks.length} Segmented Chunks
+                  </span>
+                </div>
+
+                {/* Stems Overview */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs">
+                  <div className="p-3 rounded-lg border border-white/[0.06] bg-ink-900/50 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-ink-500 uppercase">Background Music / SFX Stem</span>
+                      <span className="text-[10px] text-emerald-400 font-bold">44.1kHz Stereo</span>
+                    </div>
+                    <div className="text-xs font-semibold text-white truncate">
+                      {inspectJob.bgAudioR2Key || `dubbing/.../stems/no_vocals.wav`}
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-lg border border-white/[0.06] bg-ink-900/50 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-ink-500 uppercase">Isolated Vocals Stem</span>
+                      <span className="text-[10px] text-purple-400 font-bold">44.1kHz High-Res</span>
+                    </div>
+                    <div className="text-xs font-semibold text-white truncate">
+                      {inspectJob.isolatedVocalsR2Key || `dubbing/.../stems/vocals.wav`}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Silero VAD Chunks Table */}
+                <div className="rounded-xl border border-white/[0.06] overflow-hidden bg-ink-900/30">
+                  <div className="p-3 border-b border-white/[0.06] bg-ink-950/80 text-[11px] font-mono font-bold text-ink-300 flex items-center justify-between">
+                    <span>Silero VAD Speech Boundaries & Sliced 44.1kHz Vocal Chunks</span>
+                    <span className="text-[10px] text-ink-500">Status: PENDING_ASR</span>
+                  </div>
+
+                  {jobChunks.length > 0 ? (
+                    <div className="max-h-[260px] overflow-y-auto divide-y divide-white/[0.04] text-xs font-mono">
+                      {jobChunks.map((chunk: any) => (
+                        <div key={chunk._id} className="p-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
+                          <div className="flex items-center gap-3">
+                            <span className="px-2 py-0.5 rounded bg-brand-500/20 text-brand-300 font-bold text-[10px]">
+                              #{chunk.chunkIndex + 1}
+                            </span>
+                            <div>
+                              <div className="text-white font-semibold flex items-center gap-2">
+                                <span>{chunk.startTime.toFixed(2)}s ➔ {chunk.endTime.toFixed(2)}s</span>
+                                <span className="text-[10px] text-purple-300">({chunk.speechDuration.toFixed(2)}s)</span>
+                              </div>
+                              <div className="text-[10px] text-ink-500 truncate max-w-[280px]">
+                                {chunk.kurdish_raw_audio_url || "R2 chunk key"}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/20">
+                              {chunk.status || "PENDING_ASR"}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-xs text-ink-400 font-mono space-y-2">
+                      <p>No VAD chunks generated yet.</p>
+                      <p className="text-[11px] text-ink-500">Trigger Node 2 to run Demucs separation and Silero VAD segmentation.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Actions Footer */}
             <div className="flex justify-end gap-2 pt-2 border-t border-white/[0.08]">

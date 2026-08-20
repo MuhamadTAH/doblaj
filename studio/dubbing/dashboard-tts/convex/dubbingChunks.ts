@@ -217,3 +217,86 @@ export const insertInternal = mutation({
     return await ctx.db.insert("dubbingChunks", docData);
   },
 });
+
+export const batchInsertChunksInternal = mutation({
+  args: {
+    __internalApiKey: v.string(),
+    jobId: v.string(),
+    bgAudioR2Key: v.optional(v.string()),
+    isolatedVocalsR2Key: v.optional(v.string()),
+    chunks: v.array(
+      v.object({
+        legacyId: v.string(),
+        chunkIndex: v.number(),
+        startTime: v.number(),
+        endTime: v.number(),
+        speechDuration: v.number(),
+        vad_duration_sec: v.optional(v.number()),
+        kurdish_raw_audio_url: v.optional(v.string()),
+        ttsAudioR2Key: v.optional(v.string()),
+        status: v.string(),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    requireInternalApiKey(args.__internalApiKey);
+    let realJobId: any = args.jobId;
+    if (args.jobId.length !== 32) {
+      const j = await ctx.db
+        .query("dubbingJobs")
+        .withIndex("by_legacy_id", (q: any) => q.eq("legacyId", args.jobId))
+        .first();
+      if (!j) throw new ConvexError("JOB_NOT_FOUND");
+      realJobId = j._id;
+    }
+    const jobDoc: any = await ctx.db.get(realJobId);
+    if (!jobDoc) throw new ConvexError("JOB_NOT_FOUND");
+    const realWorkspaceId = jobDoc.workspaceId;
+
+    // Delete any existing old chunks for this job (idempotent overwrite on retry)
+    const existingChunks = await ctx.db
+      .query("dubbingChunks")
+      .withIndex("by_workspace_job", (q) =>
+        q.eq("workspaceId", realWorkspaceId).eq("jobId", realJobId)
+      )
+      .collect();
+    for (const ec of existingChunks) {
+      await ctx.db.delete(ec._id);
+    }
+
+    const insertedIds = [];
+    const now = new Date().toISOString();
+
+    for (const c of args.chunks) {
+      const id = await ctx.db.insert("dubbingChunks", {
+        legacyId: c.legacyId,
+        workspaceId: realWorkspaceId,
+        jobId: realJobId,
+        chunkIndex: c.chunkIndex,
+        startTime: c.startTime,
+        endTime: c.endTime,
+        speechDuration: c.speechDuration,
+        vad_duration_sec: c.vad_duration_sec ?? c.speechDuration,
+        kurdish_raw_audio_url: c.kurdish_raw_audio_url,
+        ttsAudioR2Key: c.ttsAudioR2Key,
+        status: c.status,
+        createdAt: now,
+        updatedAt: now,
+      });
+      insertedIds.push(id);
+    }
+
+    const jobPatch: Record<string, any> = {
+      status: "SEPARATION_COMPLETE",
+      progress: 25,
+      chunksCount: args.chunks.length,
+      updatedAt: now,
+    };
+    if (args.bgAudioR2Key) jobPatch.bgAudioR2Key = args.bgAudioR2Key;
+    if (args.isolatedVocalsR2Key) jobPatch.isolatedVocalsR2Key = args.isolatedVocalsR2Key;
+
+    await ctx.db.patch(realJobId, jobPatch);
+
+    return { success: true, count: insertedIds.length, chunkIds: insertedIds };
+  },
+});

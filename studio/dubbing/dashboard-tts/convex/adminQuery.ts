@@ -295,3 +295,29 @@ export const listTransactionsPaginated = query({
     }
   },
 });
+
+export const listChunksForJob = query({
+  args: { jobId: v.string() },
+  handler: async (ctx, args) => {
+    try {
+      let realJobId: any = args.jobId;
+      if (args.jobId.length !== 32) {
+        const j = await ctx.db
+          .query("dubbingJobs")
+          .withIndex("by_legacy_id", (q: any) => q.eq("legacyId", args.jobId))
+          .first();
+        if (!j) return [];
+        realJobId = j._id;
+      }
+      return await ctx.db
+        .query("dubbingChunks")
+        .filter((q: any) => q.eq(q.field("jobId"), realJobId))
+        .order("asc")
+        .collect();
+    } catch (err) {
+      console.error("[LIST-CHUNKS-ERROR]", err);
+      return [];
+    }
+  },
+});
+

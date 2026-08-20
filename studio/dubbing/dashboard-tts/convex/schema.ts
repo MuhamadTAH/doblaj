@@ -59,6 +59,8 @@ export default defineSchema({
     progress: v.number(),
     sourceVideoR2Key: v.optional(v.string()),
     resultVideoR2Key: v.optional(v.string()),
+    bgAudioR2Key: v.optional(v.string()),
+    isolatedVocalsR2Key: v.optional(v.string()),
     sourceLang: v.string(),
     targetLang: v.string(),
     ttsProvider: v.string(),

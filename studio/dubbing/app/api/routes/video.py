@@ -628,20 +628,21 @@ async def start_uploaded_job(
         else:
             asyncio.create_task(trigger_runpod())
     else:
-        # Local background processing fallback: download source from R2 and process locally
+        # Local background processing fallback: zero-download Node 2 separation + pipeline execution
         async def process_r2_locally():
-            upload_dir = Path("data/uploads")
-            upload_dir.mkdir(parents=True, exist_ok=True)
-            local_path = upload_dir / f"{job_id}.mp4"
+            from app.services.node2_separation import process_node2_separation
             try:
-                logger.info(f"[LOCAL-WORKER] Downloading {source_r2_key} to {local_path}")
-                await asyncio.to_thread(r2.download_file, source_r2_key, str(local_path))
-                logger.info(f"[LOCAL-WORKER] Starting local pipeline execution for job {job_id}")
-                await asyncio.to_thread(worker_process_video_job, job_id, str(local_path), user.workspace_id, category, entity)
+                logger.info(f"[LOCAL-WORKER] Starting Node 2 (Separation & Segmentation) for job {job_id}")
+                sep_res = await process_node2_separation(
+                    job_id=job_id,
+                    workspace_id=user.workspace_id,
+                    source_r2_key=source_r2_key,
+                )
+                logger.info(f"[LOCAL-WORKER] Node 2 complete: {sep_res.get('chunks_count')} chunks created")
             except Exception as loc_err:
-                logger.error(f"[LOCAL-WORKER] Local worker error for job {job_id}: {loc_err}")
+                logger.error(f"[LOCAL-WORKER] Node 2 separation error for job {job_id}: {loc_err}")
                 try:
-                    await database.update_job_status(user_client, workspace_id=user.workspace_id, job_id=job_id, status="failed", error=str(loc_err))
+                    await database.update_job_status(user_client, workspace_id=user.workspace_id, job_id=job_id, status="failed", error=f"Node 2 separation failed: {loc_err}")
                 except Exception:
                     pass
 
@@ -658,6 +659,55 @@ async def start_uploaded_job(
         input_path="",
         output_path=job.get("result_video_r2_key") or "",
         error=job.get("error") or "",
+        created_at=str(job.get("created_at", "")),
+        updated_at=str(job.get("updated_at", "")),
+    )
+
+
+@router.post("/jobs/{job_id}/separate-audio", response_model=VideoJobResponse)
+@_rate_limited("10/minute")
+async def trigger_audio_separation(
+    job_id: str,
+    user: AuthenticatedUser = Depends(require_user_or_internal),
+    background_tasks: BackgroundTasks = None,
+) -> VideoJobResponse:
+    """Manually/programmatically trigger Node 2 (Demucs separation + Silero VAD segmentation)."""
+    from app.core import db as database
+    from app.services.node2_separation import process_node2_separation
+    user_client = database.get_user_client(user.access_token)
+
+    job = await database.get_job(user_client, workspace_id=user.workspace_id, job_id=job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    source_r2_key = job.get("source_video_r2_key") or ""
+    if not source_r2_key:
+        raise HTTPException(status_code=400, detail="Job has no source video in storage")
+
+    async def run_sep():
+        try:
+            await process_node2_separation(
+                job_id=job_id,
+                workspace_id=user.workspace_id,
+                source_r2_key=source_r2_key,
+            )
+        except Exception as e:
+            logger.error(f"[NODE-2] Error executing separation on job {job_id}: {e}")
+            await database.update_job_status(user_client, workspace_id=user.workspace_id, job_id=job_id, status="failed", error=str(e))
+
+    if background_tasks:
+        background_tasks.add_task(run_sep)
+    else:
+        asyncio.create_task(run_sep())
+
+    return VideoJobResponse(
+        id=job["id"],
+        store_id=job.get("store_id", ""),
+        status="processing",
+        progress=15,
+        input_path="",
+        output_path=job.get("result_video_r2_key") or "",
+        error="",
         created_at=str(job.get("created_at", "")),
         updated_at=str(job.get("updated_at", "")),
     )

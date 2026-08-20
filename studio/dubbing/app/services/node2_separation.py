@@ -1,0 +1,291 @@
+"""
+Node 2: Audio Separation & Segmentation Service
+Zero-download headless audio extraction + Demucs htdemucs isolation + Silero VAD dual-fidelity segmentation.
+"""
+from __future__ import annotations
+
+import logging
+import os
+import shutil
+import subprocess
+import tempfile
+import uuid
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import soundfile as sf
+import torch
+
+from app.core import db as database
+from app.services import r2
+
+logger = logging.getLogger(__name__)
+
+# Cache Silero VAD model globally in worker process
+_SILERO_MODEL = None
+_SILERO_UTILS = None
+
+
+def get_silero_vad():
+    global _SILERO_MODEL, _SILERO_UTILS
+    if _SILERO_MODEL is None:
+        logger.info("[NODE-2] Loading Silero VAD model...")
+        model, utils = torch.hub.load(
+            repo_or_dir="snakers4/silero-vad",
+            model="silero_vad",
+            force_reload=False,
+            onnx=False,
+        )
+        _SILERO_MODEL = model
+        _SILERO_UTILS = utils
+    return _SILERO_MODEL, _SILERO_UTILS
+
+
+def extract_44k_audio_from_url(r2_signed_url: str, output_wav_path: str) -> None:
+    """
+    Step 1: Headless FFmpeg Extraction.
+    Streams audio directly from the remote R2 URL over HTTP without downloading the video.
+    Outputs standardized 44.1kHz stereo 16-bit PCM WAV (native Demucs training spec).
+    """
+    ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+    cmd = [
+        ffmpeg_bin,
+        "-y",
+        "-i", r2_signed_url,
+        "-vn",
+        "-acodec", "pcm_s16le",
+        "-ar", "44100",
+        "-ac", "2",
+        output_wav_path,
+    ]
+    logger.info("[NODE-2] Running headless audio extraction from R2 stream...")
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if proc.returncode != 0:
+        raise RuntimeError(f"FFmpeg headless audio extraction failed: {proc.stderr.decode('utf-8', errors='ignore')}")
+
+
+def run_demucs_isolation(input_audio_path: str, output_dir: str) -> Tuple[str, str]:
+    """
+    Step 2: Demucs Vocal Isolation.
+    Runs Hybrid Transformer Demucs (htdemucs) in --two-stems=vocals mode.
+    Returns paths to (vocals.wav, no_vocals.wav).
+    """
+    demucs_bin = shutil.which("demucs") or "demucs"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    logger.info("[NODE-2] Running Demucs (htdemucs) on device=%s...", device)
+
+    cmd = [
+        demucs_bin,
+        "--two-stems=vocals",
+        "-n", "htdemucs",
+        "-d", device,
+        "-o", output_dir,
+        input_audio_path,
+    ]
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if proc.returncode != 0:
+        raise RuntimeError(f"Demucs separation failed: {proc.stderr.decode('utf-8', errors='ignore')}")
+
+    track_name = Path(input_audio_path).stem
+    demucs_track_dir = Path(output_dir) / "htdemucs" / track_name
+    vocals_path = demucs_track_dir / "vocals.wav"
+    no_vocals_path = demucs_track_dir / "no_vocals.wav"
+
+    if not vocals_path.is_file() or not no_vocals_path.is_file():
+        raise FileNotFoundError(f"Demucs output stems not found at {demucs_track_dir}")
+
+    return str(vocals_path), str(no_vocals_path)
+
+
+def resample_to_16k_mono(input_wav_path: str, output_wav_path: str) -> None:
+    """Resample 44.1kHz stereo audio to 16kHz mono specifically for Silero VAD."""
+    ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+    cmd = [
+        ffmpeg_bin,
+        "-y",
+        "-i", input_wav_path,
+        "-ar", "16000",
+        "-ac", "1",
+        output_wav_path,
+    ]
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if proc.returncode != 0:
+        raise RuntimeError(f"Resampling to 16k mono failed: {proc.stderr.decode('utf-8', errors='ignore')}")
+
+
+def get_speech_segments_silero(wav_16k_mono_path: str, min_speech_duration_ms: int = 250) -> List[Dict[str, float]]:
+    """
+    Step 3: Silero VAD Resampling & Speech Boundary Detection.
+    Returns list of speech segments: [{'start': 0.5, 'end': 4.2}, ...]
+    """
+    model, (get_speech_ts, _, read_audio, *_) = get_silero_vad()
+    wav_tensor = read_audio(wav_16k_mono_path, sampling_rate=16000)
+    speech_timestamps = get_speech_ts(
+        wav_tensor,
+        model,
+        sampling_rate=16000,
+        min_speech_duration_ms=min_speech_duration_ms,
+        min_silence_duration_ms=400,
+        speech_pad_ms=200,
+    )
+
+    segments: List[Dict[str, float]] = []
+    for ts in speech_timestamps:
+        start_sec = round(ts["start"] / 16000.0, 3)
+        end_sec = round(ts["end"] / 16000.0, 3)
+        if end_sec - start_sec >= 0.3:
+            segments.append({"start": start_sec, "end": end_sec})
+
+    if not segments:
+        # Fallback: if no VAD segments triggered, treat whole audio as one segment
+        data, sr = sf.read(wav_16k_mono_path)
+        dur = round(len(data) / float(sr), 3)
+        segments = [{"start": 0.0, "end": dur}]
+
+    # Natural grouping: merge tiny adjacent pauses (< 0.6s) and cap maximum chunk length to 12.0s
+    merged: List[Dict[str, float]] = []
+    curr = segments[0]
+    for nxt in segments[1:]:
+        gap = nxt["start"] - curr["end"]
+        potential_len = nxt["end"] - curr["start"]
+        if gap < 0.6 and potential_len <= 12.0:
+            curr["end"] = nxt["end"]
+        else:
+            merged.append(curr)
+            curr = nxt
+    merged.append(curr)
+
+    return merged
+
+
+def slice_44k_audio(input_44k_path: str, start_sec: float, end_sec: float, output_chunk_path: str) -> None:
+    """
+    Step 4: Dual-Fidelity Slicing.
+    Slices the ORIGINAL high-resolution 44.1kHz stereo vocals using exact timestamps.
+    """
+    ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+    dur = round(end_sec - start_sec, 3)
+    cmd = [
+        ffmpeg_bin,
+        "-y",
+        "-ss", str(start_sec),
+        "-t", str(dur),
+        "-i", input_44k_path,
+        "-acodec", "pcm_s16le",
+        "-ar", "44100",
+        "-ac", "2",
+        output_chunk_path,
+    ]
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if proc.returncode != 0:
+        raise RuntimeError(f"Slicing 44k audio failed: {proc.stderr.decode('utf-8', errors='ignore')}")
+
+
+async def process_node2_separation(
+    job_id: str,
+    workspace_id: str,
+    source_r2_key: str,
+    client: Any = None,
+) -> Dict[str, Any]:
+    """
+    Executes Node 2 end-to-end:
+    1. Headless FFmpeg 44.1kHz audio extraction from R2 streaming URL.
+    2. Demucs htdemucs isolation (vocals.wav + no_vocals.wav).
+    3. Resample vocals to 16kHz mono for Silero VAD.
+    4. Slice original 44.1kHz stereo vocals into high-fidelity chunks.
+    5. Upload stems & chunks to R2.
+    6. Batch insert chunks into Convex dubbingChunks with status PENDING_ASR.
+    7. Ephemeral cleanup of worker disk.
+    """
+    user_client = client or database._get_service_role_client()
+    tmp_dir = Path(tempfile.mkdtemp(prefix=f"node2_{job_id[:8]}_"))
+
+    try:
+        # Step 1: Headless extraction
+        source_audio_44k = str(tmp_dir / "source_44k_stereo.wav")
+        presigned_get_url = r2.signed_url(source_r2_key, ttl_seconds=3600, inline=True)
+        extract_44k_audio_from_url(presigned_get_url, source_audio_44k)
+
+        # Step 2: Demucs Isolation
+        demucs_out_dir = str(tmp_dir / "demucs_out")
+        vocals_path, no_vocals_path = run_demucs_isolation(source_audio_44k, demucs_out_dir)
+
+        # Upload no_vocals.wav (background track stem) and vocals.wav to R2
+        bg_r2_key = f"dubbing/{workspace_id}/{job_id}/stems/no_vocals.wav"
+        vocals_r2_key = f"dubbing/{workspace_id}/{job_id}/stems/vocals.wav"
+        logger.info("[NODE-2] Uploading separated stems to R2...")
+        r2.upload_file(bg_r2_key, no_vocals_path, mime="audio/wav")
+        r2.upload_file(vocals_r2_key, vocals_path, mime="audio/wav")
+
+        # Step 3: Silero VAD 16k mono resampling
+        vocals_16k_mono = str(tmp_dir / "vocals_16k_mono.wav")
+        resample_to_16k_mono(vocals_path, vocals_16k_mono)
+        segments = get_speech_segments_silero(vocals_16k_mono)
+        logger.info("[NODE-2] Silero VAD identified %d speech chunks", len(segments))
+
+        # Step 4 & 5: Slice original 44.1k vocals and upload to R2
+        chunks_for_convex: List[Dict[str, Any]] = []
+        chunks_dir = tmp_dir / "chunks"
+        chunks_dir.mkdir(exist_ok=True)
+
+        for idx, seg in enumerate(segments):
+            chunk_filename = f"chunk_{idx:03d}.wav"
+            local_chunk_path = str(chunks_dir / chunk_filename)
+            slice_44k_audio(vocals_path, seg["start"], seg["end"], local_chunk_path)
+
+            chunk_r2_key = f"dubbing/{workspace_id}/{job_id}/chunks/vocal_chunk_{idx:03d}.wav"
+            r2.upload_file(chunk_r2_key, local_chunk_path, mime="audio/wav")
+
+            duration = round(seg["end"] - seg["start"], 3)
+            chunks_for_convex.append({
+                "legacyId": str(uuid.uuid4()),
+                "chunkIndex": idx,
+                "startTime": seg["start"],
+                "endTime": seg["end"],
+                "speechDuration": duration,
+                "vad_duration_sec": duration,
+                "kurdish_raw_audio_url": chunk_r2_key,
+                "ttsAudioR2Key": "",
+                "status": "PENDING_ASR",
+            })
+
+        # Step 6: Batch insert into Convex
+        logger.info("[NODE-2] Registering %d chunks in Convex state machine...", len(chunks_for_convex))
+        c = database._get_client()
+        await asyncio_to_thread_batch_insert(
+            c,
+            job_id=job_id,
+            bg_audio_r2_key=bg_r2_key,
+            isolated_vocals_r2_key=vocals_r2_key,
+            chunks=chunks_for_convex,
+        )
+
+        logger.info("[NODE-2] Node 2 (Separation & Segmentation) complete for job %s!", job_id)
+        return {
+            "success": True,
+            "chunks_count": len(chunks_for_convex),
+            "bg_audio_r2_key": bg_r2_key,
+            "isolated_vocals_r2_key": vocals_r2_key,
+            "chunks": chunks_for_convex,
+        }
+
+    finally:
+        # Step 7: Ephemeral Disk Cleanup
+        logger.info("[NODE-2] Wiping ephemeral scratch directory %s...", tmp_dir)
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+async def asyncio_to_thread_batch_insert(c: Any, job_id: str, bg_audio_r2_key: str, isolated_vocals_r2_key: str, chunks: List[Dict[str, Any]]):
+    import asyncio
+    def _do():
+        return c.mutation(
+            "dubbingChunks:batchInsertChunksInternal",
+            {
+                "__internalApiKey": os.getenv("INTERNAL_API_KEY", ""),
+                "jobId": job_id,
+                "bgAudioR2Key": bg_audio_r2_key,
+                "isolatedVocalsR2Key": isolated_vocals_r2_key,
+                "chunks": chunks,
+            },
+        )
+    return await asyncio.to_thread(_do)
