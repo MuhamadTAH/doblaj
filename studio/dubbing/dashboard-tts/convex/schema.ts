@@ -85,6 +85,7 @@ export default defineSchema({
 
     total_processing_latency_ms: v.optional(v.number()),
     total_cost_usd: v.optional(v.number()),
+    mediaMetadata: v.optional(v.any()),
   })
     .index("by_legacy_id", ["legacyId"])
     .index("by_workspace_id", ["workspaceId"])

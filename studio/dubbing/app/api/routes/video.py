@@ -449,6 +449,8 @@ async def complete_chunked_job(
 
 
 
+@router.post("/jobs/init", response_model=JobUploadUrlResponse)
+@router.post("/init", response_model=JobUploadUrlResponse, include_in_schema=False)
 @router.post("/jobs/upload-url", response_model=JobUploadUrlResponse)
 @_rate_limited("10/minute")
 async def get_job_upload_url(
@@ -521,6 +523,7 @@ async def get_job_upload_url(
     )
 
 
+@router.post("/jobs/{job_id}/finalize-upload", response_model=VideoJobResponse)
 @router.post("/jobs/{job_id}/start", response_model=VideoJobResponse)
 @_rate_limited("10/minute")
 async def start_uploaded_job(
@@ -532,6 +535,7 @@ async def start_uploaded_job(
 ) -> VideoJobResponse:
     from app.services import r2
     from app.core import db as database
+    from app.services.media_metadata import extract_media_metadata
     user_client = database.get_user_client(user.access_token)
 
     job = await database.get_job(user_client, workspace_id=user.workspace_id, job_id=job_id)
@@ -556,6 +560,25 @@ async def start_uploaded_job(
     except Exception as e:
         logger.warning("Deduct minutes warning on start_uploaded_job: %s", e)
 
+    # 1. Background task to extract FFprobe metadata and patch Convex
+    async def extract_and_patch_metadata():
+        try:
+            probe_url = r2.signed_url(source_r2_key, ttl_seconds=3600)
+            meta = await asyncio.to_thread(extract_media_metadata, probe_url)
+            logger.info(f"[METADATA-EXTRACT] Job {job_id} metadata: {meta}")
+            await database.patch_media_metadata(
+                user_client,
+                job_id=job_id,
+                media_metadata=meta,
+                total_duration_sec=meta.get("durationSec"),
+            )
+        except Exception as meta_err:
+            logger.warning(f"[METADATA-EXTRACT] Failed to extract metadata for job {job_id}: {meta_err}")
+
+    # Kick off metadata extraction immediately
+    asyncio.create_task(extract_and_patch_metadata())
+
+    # 2. Pipeline execution dispatch
     mcp_webhook_url = os.getenv("MCP_WEBHOOK_URL", "")
     runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID", "")
     runpod_api_key = os.getenv("RUNPOD_API_KEY", "")

@@ -358,6 +358,25 @@ async def update_job_status(client: Any = None, *, workspace_id: str = "", job_i
         return True
 
 
+async def patch_media_metadata(client: Any = None, *, job_id: str, media_metadata: Dict[str, Any], total_duration_sec: Optional[float] = None) -> bool:
+    """Patch extracted media metadata into the Convex dubbingJobs document."""
+    try:
+        c = client or _get_client()
+        args: Dict[str, Any] = {
+            "jobId": job_id,
+            "mediaMetadata": media_metadata,
+        }
+        if total_duration_sec is not None:
+            args["totalDurationSec"] = float(total_duration_sec)
+        def _do():
+            return c.mutation("dubbingJobs:patchMediaMetadataInternal", _internal_args(args))
+        await asyncio.to_thread(_do)
+        return True
+    except Exception as e:
+        logger.warning(f"[DATABASE-CONVEX] Patch media metadata failed for {job_id}: {e}")
+        return False
+
+
 async def update_job_cost(client: Any = None, *, workspace_id: str = "", job_id: str = "", total_latency_ms: float = 0.0, total_cost_usd: float = 0.0):
     try:
         c = client or _get_client()

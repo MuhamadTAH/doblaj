@@ -419,6 +419,42 @@ export const reassignOrphansToWorkspaceInternal = mutation({
   },
 });
 
+export const patchMediaMetadataInternal = mutation({
+  args: {
+    __internalApiKey: v.string(),
+    jobId: v.string(),
+    mediaMetadata: v.any(),
+    totalDurationSec: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    requireInternalApiKey(args.__internalApiKey);
+    const jobId = await resolveJobId(ctx, args.jobId);
+    await ctx.db.patch(jobId, {
+      mediaMetadata: args.mediaMetadata,
+      total_duration_sec: args.totalDurationSec,
+      updatedAt: new Date().toISOString(),
+    });
+    return { success: true };
+  },
+});
+
+export const markUploadCompleteInternal = mutation({
+  args: {
+    __internalApiKey: v.string(),
+    jobId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireInternalApiKey(args.__internalApiKey);
+    const jobId = await resolveJobId(ctx, args.jobId);
+    await ctx.db.patch(jobId, {
+      status: "UPLOAD_COMPLETE",
+      progress: 10,
+      updatedAt: new Date().toISOString(),
+    });
+    return { success: true };
+  },
+});
+
 export const getAllForDebug = query({
   handler: async (ctx) => {
     return await ctx.db.query("dubbingJobs").collect();

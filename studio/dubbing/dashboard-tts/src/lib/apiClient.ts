@@ -325,6 +325,50 @@ export async function uploadDirectToPresignedUrl(
   });
 }
 
+export async function postJsonWithAuthRetry(
+  getToken: TokenGetter,
+  url: string,
+  payload: any,
+  signal?: AbortSignal
+): Promise<Response> {
+  let token = await getDubbingApiToken(getToken, false);
+  let res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  if (res.status === 401) {
+    console.warn(`401 on ${url}, attempting synchronized token refresh...`);
+    try {
+      token = await getDubbingApiToken(getToken, true);
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+        signal,
+      });
+    } catch (err) {
+      handleAuthFailure();
+      throw new AuthFailedError();
+    }
+  }
+
+  if (res.status === 401) {
+    handleAuthFailure();
+    throw new AuthFailedError();
+  }
+
+  return res;
+}
+
 export async function uploadInChunksWithProgress<T = any>(
   getToken: TokenGetter,
   apiBase: string,
@@ -333,51 +377,11 @@ export async function uploadInChunksWithProgress<T = any>(
   onProgress?: (data: UploadProgressData) => void,
   signal?: AbortSignal
 ): Promise<T> {
-  let token = await getDubbingApiToken(getToken, false);
   const CHUNK_SIZE = 20 * 1024 * 1024; // 20 MB chunks
   const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
-  // Helper for JSON endpoints in chunked flow with 401 retry
-  const postJsonWithAuthRetry = async (url: string, payload: any): Promise<Response> => {
-    let res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-      signal,
-    });
-
-    if (res.status === 401) {
-      console.warn(`401 on ${url}, attempting synchronized token refresh...`);
-      try {
-        token = await getDubbingApiToken(getToken, true);
-        res = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(payload),
-          signal,
-        });
-      } catch (err) {
-        handleAuthFailure();
-        throw new AuthFailedError();
-      }
-    }
-
-    if (res.status === 401) {
-      handleAuthFailure();
-      throw new AuthFailedError();
-    }
-
-    return res;
-  };
-
   // 1. Initialize Chunked Job
-  const initRes = await postJsonWithAuthRetry(`${apiBase}/video/jobs/chunked/init`, {
+  const initRes = await postJsonWithAuthRetry(getToken, `${apiBase}/video/jobs/chunked/init`, {
     filename: file.name,
     total_bytes: file.size,
     total_chunks: totalChunks,
@@ -536,6 +540,62 @@ export async function uploadInChunksWithProgress<T = any>(
   }
 
   return (await compRes.json()) as T;
+}
+
+/**
+ * Node 1 Direct R2 Ingestion:
+ * Uploads video bytes directly from browser to Cloudflare R2 using a pre-signed PUT URL.
+ * Server load is zero. Full client bandwidth utilized with byte-level progress reporting.
+ */
+export function uploadDirectToR2(
+  uploadUrl: string,
+  file: File,
+  onProgress?: (data: UploadProgressData) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", uploadUrl);
+    xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+
+    const startTime = Date.now();
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        const percent = Math.round((e.loaded / e.total) * 100);
+        const elapsedSec = (Date.now() - startTime) / 1000;
+        const speedMBps = elapsedSec > 0 ? (e.loaded / 1024 / 1024) / elapsedSec : 0;
+        const remainMB = Number(((e.total - e.loaded) / 1024 / 1024).toFixed(1));
+        onProgress({
+          loaded: e.loaded,
+          total: e.total,
+          percent,
+          speedMBps: Number(speedMBps.toFixed(2)),
+          remainMB,
+        });
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(new HttpError(xhr.status, `Direct R2 upload failed with HTTP ${xhr.status}: ${xhr.responseText}`));
+      }
+    };
+
+    xhr.onerror = () => reject(new AuthNetworkError("Network error during direct R2 upload"));
+    xhr.ontimeout = () => reject(new HttpError(408, "Direct R2 upload timed out"));
+
+    if (signal) {
+      signal.addEventListener("abort", () => {
+        xhr.abort();
+        reject(new Error("Upload aborted by user"));
+      });
+    }
+
+    xhr.send(file);
+  });
 }
 
 
