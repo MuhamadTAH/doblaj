@@ -50,10 +50,10 @@ export default function SoraniqLandingPage() {
     en: {
       badge: "🚨 ATTENTION: SULAIMANIYAH & ERBIL RETAIL OWNERS",
       heroHeadlineStart: "The local market is frozen.",
-      heroHeadlineHighlight: "The Arab tourists are spending millions.",
+      heroHeadlineHighlight: "The Arab tourists are spending billions of dinars.",
       heroHeadlineEnd: "Which market is your store talking to?",
       heroSub:
-        "Stop waiting for delayed salaries. Use AI to instantly dub your store's videos into Iraqi Arabic and capture the tourist cash walking past your door today.",
+        "Stop waiting for delayed salaries. With our AI system, instantly dub your store's videos into Iraqi Arabic and turn the tourists walking past your door into real paying customers.",
       inputPlaceholder: "Enter WhatsApp number (+964 7XX...)",
       ctaPrimary: "Link My WhatsApp in 10 Seconds",
       ctaSubtext: "⚡ 100% Free Demo • No credit card required to test",
@@ -140,10 +140,10 @@ export default function SoraniqLandingPage() {
     ckb: {
       badge: "🚨 ئاگاداری: بۆ خاوەن دووکان و پێشانگاکانی سلێمانی و هەولێر",
       heroHeadlineStart: "بازاڕی خۆماڵی سستە و بێ پارەیە.",
-      heroHeadlineHighlight: "گەشتیارە عەرەبەکان ملیۆنان دۆلار خەرج دەکەن.",
+      heroHeadlineHighlight: "گەشتیارە عەرەبەکان ملیاران دینار خەرج دەکەن.",
       heroHeadlineEnd: "دووکانەکەت قسە بۆ کام بازاڕ دەکات؟",
       heroSub:
-        "واز لە چاوەڕوانیی مووچەی دواکەوتوو بهێنە. بە زیرەکی دەستکرد یەکسەر ڤیدیۆکانی دووکانەکەت بکە بە عەرەبی عێراقی و پارەی ئەو گەشتیارانە ڕابکێشە کە بە بەردەم دەرگاکەتدا تێدەپەڕن.",
+        "واز لە چاوەڕوانیی مووچەی دواکەوتوو بهێنە. لە ڕێگەی سیستەمی زیرەکی دەستکردمانەوە، یەکسەر ڤیدیۆکانی دووکانەکەت بکە بە عەرەبی عێراقی و ئەو گەشتیارانەی بە بەردەم دەرگاکەتدا تێدەپەڕن بکە بە کڕیاری ڕاستەقینە.",
       inputPlaceholder: "ژمارەی وەتسئەپ بنووسە (+964 7XX...)",
       ctaPrimary: "لە ١٠ چرکەدا وەتسئەپەکەم ببەستەوە",
       ctaSubtext: "⚡ تاقیکردنەوەی بێبەرامبەر • پێویست بە کارتی بانک ناکات",
@@ -230,10 +230,10 @@ export default function SoraniqLandingPage() {
     ar: {
       badge: "🚨 تنبيه لأصحاب المحلات والمعارض في السليمانية وأربيل",
       heroHeadlineStart: "السوق المحلي راكد وما بيه سيولة.",
-      heroHeadlineHighlight: "السياح العرب د يصرفون ملايين.",
+      heroHeadlineHighlight: "السياح العرب د يصرفون مليارات الدنانير.",
       heroHeadlineEnd: "محلك ديحچي ويّا يا سوق؟",
       heroSub:
-        "لتنتظر رواتب تتأخر. استعمل الذكاء الاصطناعي ودبلج فيديوهات محلك للهجة العراقية بلحظات واسحب كاش السياح اللي يمرون من يم بابك.",
+        "لتنتظر رواتب تتأخر. عن طريق نظام الذكاء الاصطناعي مالتنا، دبلج فيديوهات محلك للهجة العراقية بلحظات وحوّل السياح اللي يمرون من يم بابك إلى زبائن حقيقيين.",
       inputPlaceholder: "اكتب رقم الواتساب (+964 7XX...)",
       ctaPrimary: "اربط رقم الواتساب بـ ١٠ ثواني",
       ctaSubtext: "⚡ تجربة مجانية فورية • بدون الحاجة لبطاقة بنكية",
