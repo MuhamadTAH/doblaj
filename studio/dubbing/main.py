@@ -243,7 +243,9 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    logger.exception(f"[UNHANDLED-EXCEPTION] {request.method} {request.url.path}: {exc}")
+    import traceback
+    tb_str = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    logger.error(f"[UNHANDLED-EXCEPTION] {request.method} {request.url.path}:\n{tb_str}")
     origin = request.headers.get("origin", "")
     headers = {}
     if origin:
@@ -251,7 +253,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         headers["Access-Control-Allow-Credentials"] = "true"
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal Server Error", "error": str(exc)},
+        content={"detail": f"Internal Server Error: {exc}", "error": str(exc), "traceback": tb_str},
         headers=headers,
     )
 

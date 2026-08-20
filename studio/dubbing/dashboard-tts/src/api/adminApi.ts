@@ -40,9 +40,11 @@ export async function setupShieldPin(
     method: "POST",
     body: JSON.stringify({ pin, confirm_pin: confirmPin }),
   });
-  const data = await res.json();
+  const data = await res.json().catch(() => ({ detail: `HTTP ${res.status} non-JSON response` }));
   if (!res.ok) {
-    throw new Error(data.detail || `Setup failed (HTTP ${res.status})`);
+    const errorMsg = data.detail || data.error || (typeof data === "object" ? JSON.stringify(data) : String(data));
+    console.error("[SETUP-PIN-SERVER-ERROR]", res.status, data);
+    throw new Error(`SETUP-PIN failed: ${errorMsg}`);
   }
   return data;
 }

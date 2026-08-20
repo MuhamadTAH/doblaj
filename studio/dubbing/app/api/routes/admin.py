@@ -692,9 +692,13 @@ async def get_shield_status(user: AuthenticatedUser = Depends(require_admin)):
 @router.post("/shield/setup-pin")
 async def setup_admin_pin(req: SetupPinRequest, user: AuthenticatedUser = Depends(require_admin)):
     """Configure a new 6-digit PIN securely hashed with Argon2id on the server."""
+    logger.info(f"[SETUP-PIN-START] Request from User ID: '{user.user_id}', Email: '{user.email}'")
+
     if not user.user_id or not user.user_id.strip():
+        logger.error("[SETUP-PIN-DENIED] Missing subject identity (sub) in token")
         raise HTTPException(401, "Invalid token: missing subject identity (sub)")
     if not user.email or not user.email.strip():
+        logger.error("[SETUP-PIN-DENIED] Missing email claim in Clerk JWT")
         raise HTTPException(401, "Invalid token: missing email identity claim in Clerk JWT")
 
     pin_str = str(req.pin).strip()
@@ -705,23 +709,31 @@ async def setup_admin_pin(req: SetupPinRequest, user: AuthenticatedUser = Depend
     if pin_str != confirm_str:
         raise HTTPException(400, "PIN confirmation does not match.")
 
-    argon2_hash = _argon2_hasher.hash(pin_str)
+    try:
+        argon2_hash = _argon2_hasher.hash(pin_str)
+        logger.info(f"[SETUP-PIN-HASH] Argon2id hash generated successfully (len={len(argon2_hash)})")
+    except Exception as hash_err:
+        logger.error(f"[ARGON2-HASH-ERROR] Failed to hash PIN: {hash_err}")
+        raise HTTPException(500, f"Argon2id hashing failed: {hash_err}")
 
     client = convex_db._get_client()
     try:
-        await asyncio.to_thread(
+        internal_key = os.getenv("INTERNAL_API_KEY", "")
+        logger.info(f"[SETUP-PIN-CONVEX] Executing admin:setupAdminPinInternal (internalKey len={len(internal_key)})")
+        mutation_res = await asyncio.to_thread(
             client.mutation,
             "admin:setupAdminPinInternal",
             {
                 "userId": user.user_id,
                 "email": user.email,
                 "argon2Hash": argon2_hash,
-                "__internalApiKey": os.getenv("INTERNAL_API_KEY", ""),
+                "__internalApiKey": internal_key,
             },
         )
+        logger.info(f"[SETUP-PIN-SUCCESS] Convex mutation succeeded for user '{user.user_id}', record ID: {mutation_res}")
         return {"status": "ok", "message": "Argon2id PIN initialized successfully."}
     except Exception as e:
-        logger.error(f"[SETUP-PIN-ERROR] Convex mutation failed: {e}")
+        logger.exception(f"[SETUP-PIN-ERROR] Convex mutation failed: {e}")
         raise HTTPException(500, f"Database PIN setup failed: {e}")
 
 
