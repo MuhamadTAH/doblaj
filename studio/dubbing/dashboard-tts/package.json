@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run"
   },
@@ -26,6 +26,7 @@
     "@clerk/testing": "^2.2.19",
     "@edge-runtime/vm": "^5.0.0",
     "@playwright/test": "^1.62.1",
+    "@types/node": "^26.2.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",

@@ -9,7 +9,7 @@ export const listForCurrent = query({
     const { workspaceId } = await requireWorkspace(ctx);
     return await ctx.db
       .query("workspaces")
-      .withIndex("by_workspace_id", (q) => q.eq("legacyId", workspaceId))
+      .withIndex("by_legacy_id", (q) => q.eq("legacyId", workspaceId))
       .unique();
   },
 });
@@ -23,7 +23,7 @@ export const upsertForCurrent = mutation({
     const { workspaceId } = await requireWorkspace(ctx);
     const existing = await ctx.db
       .query("workspaces")
-      .withIndex("by_workspace_id", (q) => q.eq("legacyId", workspaceId))
+      .withIndex("by_legacy_id", (q) => q.eq("legacyId", workspaceId))
       .unique();
     if (existing) {
       await ctx.db.patch(existing._id, {
@@ -53,7 +53,7 @@ export const getMinutes = query({
     const ws = args.workspaceId ?? (await requireWorkspace(ctx)).workspaceId;
     const doc = await ctx.db
       .query("workspaces")
-      .withIndex("by_workspace_id", (q) => q.eq("legacyId", ws))
+      .withIndex("by_legacy_id", (q) => q.eq("legacyId", ws))
       .unique();
     return doc?.dubbingMinutes ?? 0;
   },
@@ -69,7 +69,7 @@ export const addMinutes = mutation({
     const { workspaceId } = await requireWorkspace(ctx);
     const doc = await ctx.db
       .query("workspaces")
-      .withIndex("by_workspace_id", (q) => q.eq("legacyId", workspaceId))
+      .withIndex("by_legacy_id", (q) => q.eq("legacyId", workspaceId))
       .unique();
     if (!doc) {
       throw new ConvexError("WORKSPACE_NOT_FOUND");
@@ -92,7 +92,7 @@ export const deductMinutes = mutation({
     const { workspaceId } = await requireWorkspace(ctx);
     const doc = await ctx.db
       .query("workspaces")
-      .withIndex("by_workspace_id", (q) => q.eq("legacyId", workspaceId))
+      .withIndex("by_legacy_id", (q) => q.eq("legacyId", workspaceId))
       .unique();
     if (!doc) {
       throw new ConvexError("WORKSPACE_NOT_FOUND");
@@ -174,7 +174,7 @@ export const getMinutesInternal = query({
     requireInternalApiKey(args.__internalApiKey);
     // Pird: workspaceId IS the Convex document _id (stored as such in prod DB).
     // Direct _id lookup avoids the index-vs-data mismatch on by_legacy_id.
-    const ws = await ctx.db.get(args.workspaceId as any);
+    const ws = (await ctx.db.get(args.workspaceId as any)) as any;
     if (!ws) return 0;
     return ws.dubbingMinutes ?? 0;
   },
@@ -187,7 +187,7 @@ export const addMinutesInternal = mutation({
     requireInternalApiKey(args.__internalApiKey);
     if (args.delta === 0) throw new ConvexError("ZERO_DELTA_NOT_ALLOWED");
     if (args.delta < 0) throw new ConvexError("DELTA_MUST_BE_NON_NEGATIVE");
-    const ws = await ctx.db.get(args.workspaceId as any);
+    const ws = (await ctx.db.get(args.workspaceId as any)) as any;
     if (!ws) throw new ConvexError("WORKSPACE_NOT_FOUND");
     const next = (ws.dubbingMinutes ?? 0) + args.delta;
     if (next < 0) throw new ConvexError("INSUFFICIENT_MINUTES");
@@ -203,7 +203,7 @@ export const deductMinutesInternal = mutation({
     requireInternalApiKey(args.__internalApiKey);
     if (args.amount <= 0) throw new ConvexError("AMOUNT_MUST_BE_POSITIVE");
 
-    const ws = await ctx.db.get(args.workspaceId as any);
+    const ws = (await ctx.db.get(args.workspaceId as any)) as any;
     if (!ws) throw new ConvexError("WORKSPACE_NOT_FOUND");
     
     // Active Kill-Switch & Fraud Lockdown Enforcement
@@ -254,7 +254,7 @@ export const handleRefundKillSwitchInternal = mutation({
   },
   handler: async (ctx, args) => {
     requireInternalApiKey(args.__internalApiKey);
-    const ws = await ctx.db.get(args.workspaceId as any);
+    const ws = (await ctx.db.get(args.workspaceId as any)) as any;
     if (!ws) throw new ConvexError("WORKSPACE_NOT_FOUND");
     
     const current = ws.dubbingMinutes ?? 0;

@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useUser } from "@clerk/clerk-react";
 import { t } from "@/lib/i18n";
 import { useUiStore } from "@/store/ui";
 
@@ -19,6 +20,12 @@ const platform = [
 function Icon({ name }: { name: string }) {
   const cls = "w-4 h-4 shrink-0";
   switch (name) {
+    case "shield":
+      return (
+        <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+      );
     case "wand":
       return (
         <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -83,6 +90,9 @@ export default function Sidebar() {
   const location = useLocation();
   const sidebarOpen = useUiStore((s) => s.sidebarOpen);
   const open = sidebarOpen;
+  const { user } = useUser();
+  const role = (user?.publicMetadata?.role as string) || (user?.organizationMemberships?.[0]?.role as string) || "";
+  const isAdmin = role === "admin" || role === "org:admin" || role === "super_admin";
 
   return (
     <motion.aside
@@ -184,6 +194,42 @@ export default function Sidebar() {
             );
           })}
         </nav>
+
+        {isAdmin && (
+          <>
+            <motion.div
+              initial={false}
+              animate={{ opacity: open ? 1 : 0, height: open ? "auto" : 0 }}
+              transition={{ duration: 0.15 }}
+              className="px-3 pt-5 pb-1 text-[10px] uppercase tracking-wider text-brand-400 font-semibold overflow-hidden"
+            >
+              Admin
+            </motion.div>
+            <nav className="space-y-1">
+              <NavLink
+                to="/admin"
+                className={`nav-item relative ${location.pathname.startsWith("/admin") ? "nav-item-active text-brand-300" : "opacity-80 hover:opacity-100 text-brand-400"} justify-center`}
+              >
+                {location.pathname.startsWith("/admin") && (
+                  <motion.span
+                    layoutId="sidebar-active"
+                    className="absolute start-0 top-1.5 bottom-1.5 w-0.5 rounded-e bg-gradient-to-b from-brand-400 to-accent-500"
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                  />
+                )}
+                <Icon name="shield" />
+                <motion.span
+                  initial={false}
+                  animate={{ opacity: open ? 1 : 0, width: open ? "auto" : 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="overflow-hidden whitespace-nowrap font-bold"
+                >
+                  Admin Portal
+                </motion.span>
+              </NavLink>
+            </nav>
+          </>
+        )}
       </div>
 
       <div className="p-3 border-t border-white/[0.06] dark:border-white/[0.06]">

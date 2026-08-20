@@ -16,6 +16,8 @@ import PrivacyPolicyPage from "@/pages/PrivacyPolicyPage";
 import TermsOfServicePage from "@/pages/TermsOfServicePage";
 import RefundPolicyPage from "@/pages/RefundPolicyPage";
 import SettingsPage from "@/pages/SettingsPage";
+import AdminPage from "@/pages/admin/AdminPage";
+import AdminRoute from "@/components/AdminRoute";
 import { ClerkProvider, SignedIn, SignedOut, SignIn, useAuth } from "@clerk/clerk-react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { ConvexReactClient } from "convex/react";
@@ -99,25 +101,40 @@ export default function App() {
                   </Routes>
                 </SignedOut>
                 <SignedIn>
-                  <div className="flex h-screen overflow-hidden">
-                    <Sidebar />
-                    <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
-                      <TopNav />
-                      <main className="flex-1">
-                        <Routes>
-                          <Route path="/tts" element={<TextToSpeechPage />} />
-                          <Route path="/dubbing" element={<VideoDubbingPage />} />
-                          <Route path="/voices" element={<VoiceLibraryPage />} />
-                          <Route path="/history" element={<HistoryPage />} />
-                          <Route path="/pricing" element={<PricingPage />} />
-                          <Route path="/billing" element={<BillingPage />} />
-                          <Route path="/settings" element={<SettingsPage />} />
-                          <Route path="*" element={<TextToSpeechPage />} />
-                        </Routes>
-                      </main>
-                    </div>
-                    <GlobalPlayer />
-                  </div>
+                  <Routes>
+                    <Route
+                      path="/admin/*"
+                      element={
+                        <AdminRoute>
+                          <AdminPage />
+                        </AdminRoute>
+                      }
+                    />
+                    <Route
+                      path="*"
+                      element={
+                        <div className="flex h-screen overflow-hidden">
+                          <Sidebar />
+                          <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+                            <TopNav />
+                            <main className="flex-1">
+                              <Routes>
+                                <Route path="/tts" element={<TextToSpeechPage />} />
+                                <Route path="/dubbing" element={<VideoDubbingPage />} />
+                                <Route path="/voices" element={<VoiceLibraryPage />} />
+                                <Route path="/history" element={<HistoryPage />} />
+                                <Route path="/pricing" element={<PricingPage />} />
+                                <Route path="/billing" element={<BillingPage />} />
+                                <Route path="/settings" element={<SettingsPage />} />
+                                <Route path="*" element={<TextToSpeechPage />} />
+                              </Routes>
+                            </main>
+                          </div>
+                          <GlobalPlayer />
+                        </div>
+                      }
+                    />
+                  </Routes>
                 </SignedIn>
               </>
             }

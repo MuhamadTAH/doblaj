@@ -479,6 +479,14 @@ try:
     except Exception as e:
         logger.exception("[STARTUP] FastMCP SSE Server failed to mount: %s", e)
 
+    try:
+        from app.api.routes import admin
+        app.include_router(admin.router, prefix="/api", tags=["admin"])
+        app.include_router(admin.router, prefix="", tags=["admin-alias"], include_in_schema=False)
+        logger.info("[STARTUP] Admin router loaded OK")
+    except Exception as e:
+        logger.exception("[STARTUP] Admin router failed to load: %s", e)
+
     logger.info("[STARTUP] Routers loaded OK")
 
 

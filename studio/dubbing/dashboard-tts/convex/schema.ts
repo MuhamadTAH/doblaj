@@ -4,8 +4,9 @@ import { v } from "convex/values";
 export default defineSchema({
   workspaces: defineTable({
     legacyId: v.string(),
-    name: v.string(),
+    name: v.optional(v.string()),
     ownerUserId: v.optional(v.string()),
+    ownerId: v.optional(v.string()),
     plan: v.optional(v.string()),
     dubbingMinutes: v.optional(v.number()),
     status: v.optional(v.string()), // ACTIVE, LOCKED_REFUND, RESTRICTED_VELOCITY
@@ -13,7 +14,8 @@ export default defineSchema({
     totalPurchasedMinutes: v.optional(v.number()),
     createdAt: v.optional(v.string()),
     updatedAt: v.optional(v.string()),
-  }).index("by_legacy_id", ["legacyId"])
+  })
+    .index("by_legacy_id", ["legacyId"])
     .index("by_owner", ["ownerUserId"]),
 
   workspaceMembers: defineTable({
@@ -34,22 +36,26 @@ export default defineSchema({
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
+    deletedAt: v.optional(v.string()),
+    isBanned: v.optional(v.boolean()),
+    isLocked: v.optional(v.boolean()),
+    mfaEnabled: v.optional(v.boolean()),
+    telegramChatId: v.optional(v.string()),
     updatedAt: v.optional(v.string()),
   })
     .index("by_legacy_id", ["legacyId"])
     .index("by_clerk_id", ["clerkId"])
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_deleted_created", ["deletedAt", "updatedAt"]),
 
   dubbingJobs: defineTable({
     legacyId: v.string(),
     workspaceId: v.id("workspaces"),
-    ownerUserId: v.optional(v.string()), // Added for tracking who created the job
-    
-    // Adapted from 'videos' table in user spec
-    user_id: v.optional(v.string()), // Kept matching their spec, usually same as ownerUserId
+    ownerUserId: v.optional(v.string()),
+    user_id: v.optional(v.string()),
     total_duration_sec: v.optional(v.number()),
     
-    status: v.string(), // Kept as string to prevent frontend strict literal breakage
+    status: v.string(), // QUEUED, PROCESSING, COMPLETED, FAILED, DEAD_LETTER, CANCELLED_PURGED
     progress: v.number(),
     sourceVideoR2Key: v.optional(v.string()),
     resultVideoR2Key: v.optional(v.string()),
@@ -63,62 +69,66 @@ export default defineSchema({
     consentVersion: v.optional(v.string()),
     userIpAddress: v.optional(v.string()),
     consentTimestamp: v.optional(v.string()),
+    
+    // --- Hardening & DLQ Fields ---
+    retry_count: v.optional(v.number()),
+    max_retries: v.optional(v.number()),
+    api_cost: v.optional(v.number()),
+    overrideParams: v.optional(v.any()),
+    isPurged: v.optional(v.boolean()),
+    deletedAt: v.optional(v.string()),
+
     createdAt: v.optional(v.string()),
     updatedAt: v.optional(v.string()),
     startedAt: v.optional(v.string()),
     completedAt: v.optional(v.string()),
 
-    // --- Financial & Latency Tracking ---
     total_processing_latency_ms: v.optional(v.number()),
     total_cost_usd: v.optional(v.number()),
   })
     .index("by_legacy_id", ["legacyId"])
     .index("by_workspace_id", ["workspaceId"])
     .index("by_workspace_and_created", ["workspaceId", "createdAt"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_status_created", ["status", "createdAt"])
+    .index("by_created", ["createdAt"]),
 
   dubbingChunks: defineTable({
     legacyId: v.string(),
     workspaceId: v.id("workspaces"),
-    jobId: v.id("dubbingJobs"), // Corresponds to video_id
+    jobId: v.id("dubbingJobs"),
     chunkIndex: v.number(),
     
-    // Physics bounds
-    startTime: v.number(), // start_time_ms
-    endTime: v.number(), // end_time_ms
+    startTime: v.number(),
+    endTime: v.number(),
     vad_duration_sec: v.optional(v.number()),
     speechDuration: v.optional(v.number()),
 
-    // Audio & NLP references
     kurdish_raw_audio_url: v.optional(v.string()),
-    kurdishRaw: v.optional(v.string()), // kurdish_text
+    kurdishRaw: v.optional(v.string()),
     kurdish_word_count: v.optional(v.number()),
     kurdish_wps: v.optional(v.number()),
     
-    // Math Provenance Audit Fields
     baseline_wps_used: v.optional(v.number()),
     speed_multiplier: v.optional(v.number()),
     target_ratio_applied: v.optional(v.number()),
     was_clamped: v.optional(v.boolean()),
 
-    // Arabic translations
-    arabicText: v.optional(v.string()), // final_arabic_text
+    arabicText: v.optional(v.string()),
     final_arabic_word_count: v.optional(v.number()),
     semantic_ratio: v.optional(v.number()),
     
-    // Diagnostic metrics
     kurdish_syllable_count: v.optional(v.number()),
     final_arabic_syllable_count: v.optional(v.number()),
     ffmpeg_warp_factor: v.optional(v.number()),
 
-    // Legacy fields
     kurdishCorrected: v.optional(v.string()),
     arabicLocked: v.optional(v.string()),
     ttsAudioR2Key: v.optional(v.string()),
     assembledAudioR2Key: v.optional(v.string()),
     speaker: v.optional(v.string()),
     
-    status: v.string(), // string for UI compatibility
+    status: v.string(),
     
     pipelineDetails: v.optional(v.any()),
     error: v.optional(v.string()),
@@ -153,14 +163,12 @@ export default defineSchema({
 
   step_telemetry: defineTable({
     chunk_id: v.optional(v.id("dubbingChunks")),
-    step_name: v.string(), // e.g., "VAD", "STT", "LLM", "TTS", "FFMPEG"
-    duration_ms: v.number(), // The exact timing of this step
+    step_name: v.string(),
+    duration_ms: v.number(),
     status_code: v.number(),
-    
-    // --- NEW: Financial & Compute Tracking ---
-    compute_provider: v.string(), // e.g., "gemini_api", "runpod_serverless", "fish_audio"
-    usage_units: v.optional(v.number()), // Tokens, Characters, or GPU Seconds
-    cost_usd: v.number(), // The calculated price of this single step execution
+    compute_provider: v.string(),
+    usage_units: v.optional(v.number()),
+    cost_usd: v.number(),
   }).index("by_chunk", ["chunk_id"]),
 
   user_edits: defineTable({
@@ -197,11 +205,6 @@ export default defineSchema({
     .index("by_legacy_id", ["legacyId"])
     .index("by_workspace_id", ["workspaceId"]),
 
-  // Pird: voice catalog with cached intro audio (Fish Audio public voices).
-  // providerVoiceId = fish audio model id (32-char hex).
-  // introStorageId is set by `ensureIntro` action after the first successful
-  // render. introError is set when the action fails — never a 0-byte blob.
-  // introTextHash guards re-renders: same text+voice → cache hit.
   ttsVoices: defineTable({
     legacyId: v.string(),
     workspaceId: v.id("workspaces"),
@@ -283,11 +286,11 @@ export default defineSchema({
   expectedCharges: defineTable({
     referenceId: v.string(),
     workspaceId: v.id("workspaces"),
-    amount: v.number(),          // integer minor units (IQD dinars / USD cents)
-    currency: v.string(),        // "IQD" | "USD"
+    amount: v.number(),
+    currency: v.string(),
     minutesGranted: v.number(),
     tier: v.string(),
-    status: v.string(),          // "pending" | "complete" | "expired" | "flagged"
+    status: v.string(),
     createdAt: v.string(),
   })
     .index("by_reference_id", ["referenceId"])
@@ -298,17 +301,17 @@ export default defineSchema({
   ledger: defineTable({
     workspaceId: v.id("workspaces"),
     referenceId: v.optional(v.string()),
-    delta: v.number(),           // signed integer (+5, -5)
-    type: v.string(),            // "purchase" | "refund" | "spend" | "manual_adjustment"
+    delta: v.number(),
+    type: v.string(),
     resultingBalance: v.number(),
-    actor: v.string(),           // "webhook" | "sweeper" | "sync-all" | "admin"
+    actor: v.string(),
     createdAt: v.number(),
   })
     .index("by_workspace_id", ["workspaceId"])
     .index("by_reference_id", ["referenceId"]),
 
   securityAlerts: defineTable({
-    type: v.string(),            // "amount_mismatch" | "chargeback_quarantine" | "signature_anomaly"
+    type: v.string(),
     referenceId: v.optional(v.string()),
     details: v.any(),
     createdAt: v.number(),
@@ -323,8 +326,8 @@ export default defineSchema({
     currency: v.string(),
     minutesGranted: v.number(),
     tier: v.string(),
-    reason: v.string(),          // "stale_pending_48h_unverified" | "webhook_after_expiry"
-    status: v.string(),          // "pending_review" | "resolved" | "dismissed"
+    reason: v.string(),
+    status: v.string(),
     lastKnownWaylStatus: v.optional(v.string()),
     createdAt: v.number(),
     resolvedAt: v.optional(v.number()),
@@ -333,15 +336,11 @@ export default defineSchema({
     .index("by_workspace_id", ["workspaceId"])
     .index("by_status", ["status"]),
 
-  // PIRD-013: GDPR consent ledger. Recorded on voice upload, voice clone,
-  // and any other processing of biometric data. Records the policy
-  // version the user consented to so a later policy change can prompt
-  // re-consent rather than silently assume continued agreement.
   consent: defineTable({
     userId: v.string(),
     workspaceId: v.id("workspaces"),
-    consentType: v.string(), // e.g. "voice_recording"
-    consentTextVersion: v.string(), // e.g. "2026-07-26.1"
+    consentType: v.string(),
+    consentTextVersion: v.string(),
     ipAddress: v.optional(v.string()),
     userAgent: v.optional(v.string()),
     timestamp: v.string(),
@@ -351,8 +350,174 @@ export default defineSchema({
     .index("by_user_type", ["userId", "consentType"]),
 
   webhookEvents: defineTable({
-    referenceId: v.string(),
-    rawPayload: v.string(),
-    receivedAt: v.number(),
-  }).index("by_reference_id", ["referenceId"]),
+    referenceId: v.optional(v.string()),
+    eventId: v.optional(v.string()),
+    eventType: v.optional(v.string()),
+    payload: v.optional(v.any()),
+    status: v.optional(v.string()),
+    rawPayload: v.optional(v.string()),
+    receivedAt: v.optional(v.number()),
+    createdAt: v.optional(v.string()),
+  })
+    .index("by_reference_id", ["referenceId"])
+    .index("by_event_id", ["eventId"]),
+
+  // ==========================================
+  // --- ADMIN PORTAL & ZERO-TRUST TABLES ---
+  // ==========================================
+
+  adminRoles: defineTable({
+    legacyId: v.string(),
+    name: v.string(), // "Super Admin", "Tier 1 Support", "Financial Controller", "Pipeline Operator"
+    description: v.optional(v.string()),
+    createdAt: v.string(),
+  }).index("by_name", ["name"]),
+
+  adminPermissions: defineTable({
+    action: v.string(), // "users:impersonate", "billing:refund", "jobs:retry", "jobs:nuke", "admin:all"
+    description: v.optional(v.string()),
+    createdAt: v.string(),
+  }).index("by_action", ["action"]),
+
+  adminRolePermissions: defineTable({
+    roleId: v.id("adminRoles"),
+    permissionId: v.id("adminPermissions"),
+  }).index("by_role", ["roleId"]),
+
+  adminUserRoles: defineTable({
+    userId: v.string(), // Clerk user id (e.g. "user_2...")
+    roleId: v.id("adminRoles"),
+    assignedBy: v.optional(v.string()),
+    assignedAt: v.string(),
+  }).index("by_user", ["userId"]),
+
+  adminSessions: defineTable({
+    sessionToken: v.string(),
+    userId: v.string(),
+    email: v.string(),
+    isValid: v.boolean(),
+    ipAddress: v.optional(v.string()),
+    userAgent: v.optional(v.string()),
+    expiresAt: v.number(),
+    createdAt: v.string(),
+  })
+    .index("by_token", ["sessionToken"])
+    .index("by_user", ["userId"]),
+
+  adminAuditLogs: defineTable({
+    actorId: v.string(),
+    actorEmail: v.string(),
+    action: v.string(),
+    targetResource: v.string(), // "users", "dubbingJobs", "workspaces", "featureFlags", "transactions"
+    targetId: v.optional(v.string()),
+    changedFields: v.optional(v.any()), // e.g. { "dubbingMinutes": { "old": 15, "new": 100 } }
+    metadata: v.optional(v.any()), // { ipAddress, userAgent, reason, impersonatorId }
+    createdAt: v.string(),
+  })
+    .index("by_target_created", ["targetResource", "createdAt"])
+    .index("by_actor_created", ["actorId", "createdAt"])
+    .index("by_created", ["createdAt"]),
+
+  auditOutbox: defineTable({
+    eventId: v.string(),
+    action: v.string(),
+    actorId: v.string(),
+    actorEmail: v.string(),
+    targetResource: v.string(),
+    targetId: v.optional(v.string()),
+    changedFields: v.optional(v.any()),
+    metadata: v.optional(v.any()),
+    status: v.union(v.literal("PENDING"), v.literal("DELIVERED"), v.literal("FAILED")),
+    retryCount: v.number(),
+    lastAttemptAt: v.optional(v.number()),
+    deliveredAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_status", ["status"])
+    .index("by_status_created", ["status", "createdAt"]),
+
+  adminPinSecurity: defineTable({
+    userId: v.string(), // Clerk user ID (e.g. user_2...)
+    email: v.string(),
+    argon2Hash: v.string(), // Memory-hard Argon2id hash
+    failedAttempts: v.number(), // Strike counter 0..5
+    lockedUntil: v.optional(v.number()), // Timestamp ms if temporarily locked
+    isPermanentlyLocked: v.boolean(), // True if >= 5 failed attempts
+    lastVerifiedAt: v.optional(v.number()),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  }).index("by_user", ["userId"]),
+
+  actionApprovals: defineTable({
+    legacyId: v.string(),
+    requestedBy: v.string(), // Clerk User ID
+    requestedByEmail: v.optional(v.string()),
+    actionType: v.string(), // "REFUND", "NUKE_JOB", "USER_PURGE", "CRITICAL_FEATURE_FLAG_TOGGLE"
+    payload: v.any(), // Locked immutable action payload
+    thresholdUsd: v.optional(v.number()),
+    status: v.union(v.literal("PENDING"), v.literal("APPROVED"), v.literal("REJECTED")),
+    approvedBy: v.optional(v.string()),
+    approvedByEmail: v.optional(v.string()),
+    rejectedBy: v.optional(v.string()),
+    reason: v.optional(v.string()),
+    createdAt: v.string(),
+    resolvedAt: v.optional(v.string()),
+  })
+    .index("by_status", ["status"])
+    .index("by_status_created", ["status", "createdAt"]),
+
+  featureFlags: defineTable({
+    keyName: v.string(), // e.g. "RUNPOD_GPU_PROCESSING", "ACCEPT_NEW_JOBS", "ENABLE_FISH_AUDIO"
+    description: v.optional(v.string()),
+    tier: v.union(v.literal("TIER_1_OPERATIONAL"), v.literal("TIER_2_INFRASTRUCTURE")),
+    isActive: v.boolean(),
+    updatedBy: v.string(),
+    updatedAt: v.string(),
+  }).index("by_key", ["keyName"]),
+
+  telegramSessions: defineTable({
+    chatId: v.string(),
+    workspaceId: v.optional(v.id("workspaces")),
+    userId: v.optional(v.string()),
+    isBotPaused: v.boolean(),
+    botPausedUntil: v.optional(v.number()),
+    lastMessage: v.optional(v.string()),
+    updatedAt: v.string(),
+  }).index("by_chat_id", ["chatId"]),
+
+  telegramInteractions: defineTable({
+    chatId: v.string(),
+    sender: v.string(), // "USER" | "BOT" | "OPERATOR"
+    message: v.string(),
+    isHuman: v.boolean(),
+    createdAt: v.string(),
+  }).index("by_chat_id", ["chatId"]),
+
+  migrationState: defineTable({
+    name: v.string(), // e.g. "backfill_job_defaults_v1"
+    lastProcessedCursor: v.optional(v.string()),
+    processedCount: v.number(),
+    totalRecords: v.optional(v.number()),
+    batchSize: v.number(), // 500, 250, 50
+    consecutiveBatchFailures: v.number(),
+    status: v.union(
+      v.literal("PENDING"),
+      v.literal("RUNNING"),
+      v.literal("PAUSED"),
+      v.literal("FAILED_POISON_PILL"),
+      v.literal("COMPLETED")
+    ),
+    errorLog: v.optional(
+      v.array(
+        v.object({
+          recordId: v.string(),
+          error: v.string(),
+          timestamp: v.string(),
+        })
+      )
+    ),
+    startedAt: v.string(),
+    updatedAt: v.string(),
+    completedAt: v.optional(v.string()),
+  }).index("by_name", ["name"]),
 });
