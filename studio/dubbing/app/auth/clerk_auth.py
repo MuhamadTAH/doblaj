@@ -312,7 +312,11 @@ async def require_admin(
         logger.warning(
             f"[RBAC-DENIED] User {user.user_id} ({user.email}) with role '{token_role}' attempted admin endpoint"
         )
-        raise HTTPException(403, "Admin privileges required. Ensure 'role' is configured in Clerk JWT template.")
+        raise HTTPException(
+            403,
+            "ADMIN_PRIVILEGE_REQUIRED",
+            headers={"WWW-Authenticate": 'Bearer error="insufficient_scope", error_description="ADMIN_PRIVILEGE_REQUIRED"'}
+        )
     
     return user
 
