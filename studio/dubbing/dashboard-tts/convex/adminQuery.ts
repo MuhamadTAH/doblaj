@@ -81,14 +81,13 @@ export const listJobsPaginated = query({
       if (args.statusFilter && args.statusFilter !== "ALL") {
         return await ctx.db
           .query("dubbingJobs")
-          .withIndex("by_status_created", (q) => q.eq("status", args.statusFilter!))
+          .filter((q) => q.eq(q.field("status"), args.statusFilter))
           .order("desc")
           .paginate(args.paginationOpts);
       }
 
       return await ctx.db
         .query("dubbingJobs")
-        .withIndex("by_created")
         .order("desc")
         .paginate(args.paginationOpts);
     } catch (err: any) {
@@ -108,7 +107,6 @@ export const listUsersPaginated = query({
 
       const page = await ctx.db
         .query("users")
-        .withIndex("by_deleted_created")
         .order("desc")
         .paginate(args.paginationOpts);
 
@@ -160,14 +158,13 @@ export const listAuditLogsPaginated = query({
       if (args.targetFilter && args.targetFilter !== "ALL") {
         return await ctx.db
           .query("adminAuditLogs")
-          .withIndex("by_target_created", (q) => q.eq("targetResource", args.targetFilter!))
+          .filter((q) => q.eq(q.field("targetResource"), args.targetFilter))
           .order("desc")
           .paginate(args.paginationOpts);
       }
 
       return await ctx.db
         .query("adminAuditLogs")
-        .withIndex("by_created")
         .order("desc")
         .paginate(args.paginationOpts);
     } catch (err: any) {
