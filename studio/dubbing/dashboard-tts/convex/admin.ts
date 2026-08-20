@@ -854,8 +854,7 @@ export const recordPinVerificationResultInternal = mutation({
     }
 
     if (isPermanentlyLocked) {
-      await emitAuditOutbox(ctx, {
-        eventId: `pin_lockout_${args.userId}_${Date.now()}`,
+      await logAuditWithOutbox(ctx, {
         action: "ADMIN_SHIELD_MAX_ATTEMPTS_LOCKOUT",
         actorId: args.userId,
         actorEmail: args.email,
