@@ -224,13 +224,19 @@ async def require_user(
     token = _bearer_token(auth_header)
 
     claims = _decode_clerk_jwt(token)
-    workspace_id = claims.get("workspace_id") or claims.get("org_id") or claims.get("sub")
+    user_id = claims.get("sub")
+    if not user_id or not isinstance(user_id, str) or not user_id.strip():
+        raise HTTPException(401, "Invalid token: missing subject identity (sub)")
+
+    workspace_id = claims.get("workspace_id") or claims.get("org_id") or user_id
     if not workspace_id:
         raise HTTPException(403, "Select or create a Clerk organization before using Dubbing Studio")
-    user_id = claims["sub"]
+    
     workspace_id = await _resolve_legacy_workspace_id(workspace_id, user_id)
     if not workspace_id:
         raise HTTPException(403, "Workspace could not be resolved. Please contact support.")
+
+    email = claims.get("email") or claims.get("primary_email_address") or ""
 
     is_impersonated = bool(claims.get("is_impersonated", False))
     impersonator_id = claims.get("impersonator_id")
@@ -243,7 +249,7 @@ async def require_user(
 
     return AuthenticatedUser(
         user_id=user_id,
-        email=claims.get("email", ""),
+        email=email,
         workspace_id=workspace_id,
         role=claims.get("app_role", "org:member"),
         raw_claims=claims,

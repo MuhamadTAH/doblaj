@@ -13,7 +13,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.auth.clerk_auth import (
     AuthenticatedUser,
@@ -37,16 +37,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-# -------------------------------------------------------------
-# Request & Response Schemas
-# -------------------------------------------------------------
 class SetupPinRequest(BaseModel):
     pin: str
     confirm_pin: str
 
+    @field_validator("pin", "confirm_pin", mode="before")
+    @classmethod
+    def coerce_pin_to_string(cls, v: Any) -> str:
+        if v is None:
+            raise ValueError("PIN cannot be null")
+        return str(v).strip()
+
 
 class VerifyPinRequest(BaseModel):
     pin: str
+
+    @field_validator("pin", mode="before")
+    @classmethod
+    def coerce_pin_to_string(cls, v: Any) -> str:
+        if v is None:
+            raise ValueError("PIN cannot be null")
+        return str(v).strip()
 
 
 class RetryJobRequest(BaseModel):
@@ -660,13 +671,15 @@ async def get_env_status(user: AuthenticatedUser = Depends(require_admin)):
 @router.get("/shield/status")
 async def get_shield_status(user: AuthenticatedUser = Depends(require_admin)):
     """Check if current admin has configured an Argon2id PIN and if locked."""
+    if not user.user_id or not user.user_id.strip():
+        raise HTTPException(401, "Invalid token: missing subject identity (sub)")
     client = convex_db._get_client()
     try:
         status_info = await asyncio.to_thread(
             client.query,
             "admin:getAdminPinStatusInternal",
             {
-                "userId": user.user_id or "",
+                "userId": user.user_id,
                 "__internalApiKey": os.getenv("INTERNAL_API_KEY", ""),
             },
         )
@@ -679,12 +692,20 @@ async def get_shield_status(user: AuthenticatedUser = Depends(require_admin)):
 @router.post("/shield/setup-pin")
 async def setup_admin_pin(req: SetupPinRequest, user: AuthenticatedUser = Depends(require_admin)):
     """Configure a new 6-digit PIN securely hashed with Argon2id on the server."""
-    if len(req.pin) != 6 or not req.pin.isdigit():
+    if not user.user_id or not user.user_id.strip():
+        raise HTTPException(401, "Invalid token: missing subject identity (sub)")
+    if not user.email or not user.email.strip():
+        raise HTTPException(401, "Invalid token: missing email identity claim in Clerk JWT")
+
+    pin_str = str(req.pin).strip()
+    confirm_str = str(req.confirm_pin).strip()
+
+    if len(pin_str) != 6 or not pin_str.isdigit():
         raise HTTPException(400, "PIN must be exactly 6 numeric digits.")
-    if req.pin != req.confirm_pin:
+    if pin_str != confirm_str:
         raise HTTPException(400, "PIN confirmation does not match.")
 
-    argon2_hash = _argon2_hasher.hash(req.pin)
+    argon2_hash = _argon2_hasher.hash(pin_str)
 
     client = convex_db._get_client()
     try:
@@ -692,8 +713,8 @@ async def setup_admin_pin(req: SetupPinRequest, user: AuthenticatedUser = Depend
             client.mutation,
             "admin:setupAdminPinInternal",
             {
-                "userId": user.user_id or "",
-                "email": user.email or "",
+                "userId": user.user_id,
+                "email": user.email,
                 "argon2Hash": argon2_hash,
                 "__internalApiKey": os.getenv("INTERNAL_API_KEY", ""),
             },
@@ -707,12 +728,17 @@ async def setup_admin_pin(req: SetupPinRequest, user: AuthenticatedUser = Depend
 @router.post("/shield/verify-pin")
 async def verify_admin_pin(req: VerifyPinRequest, request: Request, user: AuthenticatedUser = Depends(require_admin)):
     """Verify admin PIN against server-side Argon2id hash with 5-strike database lockout."""
+    if not user.user_id or not user.user_id.strip():
+        raise HTTPException(401, "Invalid token: missing subject identity (sub)")
+
+    pin_str = str(req.pin).strip()
+
     client = convex_db._get_client()
     pin_doc = await asyncio.to_thread(
         client.query,
         "admin:getAdminPinHashInternal",
         {
-            "userId": user.user_id or "",
+            "userId": user.user_id,
             "__internalApiKey": os.getenv("INTERNAL_API_KEY", ""),
         },
     )
@@ -721,7 +747,7 @@ async def verify_admin_pin(req: VerifyPinRequest, request: Request, user: Authen
         raise HTTPException(400, "PIN not configured for this account. Run setup first.")
 
     if pin_doc.get("isPermanentlyLocked"):
-        revoke_all_user_sessions(user.user_id or "")
+        revoke_all_user_sessions(user.user_id)
         raise HTTPException(
             423,
             "Account is permanently locked due to excessive failed PIN attempts. Contact Super Admin to unlock.",
@@ -730,7 +756,7 @@ async def verify_admin_pin(req: VerifyPinRequest, request: Request, user: Authen
     stored_hash = pin_doc["argon2Hash"]
     is_valid = False
     try:
-        is_valid = _argon2_hasher.verify(stored_hash, req.pin)
+        is_valid = _argon2_hasher.verify(stored_hash, pin_str)
     except VerifyMismatchError:
         is_valid = False
     except Exception as e:
@@ -743,7 +769,7 @@ async def verify_admin_pin(req: VerifyPinRequest, request: Request, user: Authen
         client.mutation,
         "admin:recordPinVerificationResultInternal",
         {
-            "userId": user.user_id or "",
+            "userId": user.user_id,
             "email": user.email or "",
             "success": is_valid,
             "ipAddress": client_ip,
