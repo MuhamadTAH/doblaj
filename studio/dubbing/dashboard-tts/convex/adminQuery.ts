@@ -49,11 +49,11 @@ export const getAdminMetrics = query({
 
     // Compute estimated 24h burn rate
     const recentTelemetry = await ctx.db
-      .query("step_telemetry")
+      .query("aiUsageLogs")
       .order("desc")
       .take(50);
 
-    const totalCost24h = recentTelemetry.reduce((sum, item) => sum + (item.cost_usd || 0), 0);
+    const totalCost24h = recentTelemetry.reduce((sum, item) => sum + (item.estimatedCostUsd || 0), 0);
 
     return {
       activeJobs: processingJobs.length,
