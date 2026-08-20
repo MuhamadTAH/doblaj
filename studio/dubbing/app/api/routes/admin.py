@@ -666,7 +666,7 @@ async def get_shield_status(user: AuthenticatedUser = Depends(require_admin)):
             client.query,
             "admin:getAdminPinStatusInternal",
             {
-                "userId": user.user_id,
+                "userId": user.user_id or "",
                 "__internalApiKey": os.getenv("INTERNAL_API_KEY", ""),
             },
         )
@@ -692,8 +692,8 @@ async def setup_admin_pin(req: SetupPinRequest, user: AuthenticatedUser = Depend
             client.mutation,
             "admin:setupAdminPinInternal",
             {
-                "userId": user.user_id,
-                "email": user.email,
+                "userId": user.user_id or "",
+                "email": user.email or "",
                 "argon2Hash": argon2_hash,
                 "__internalApiKey": os.getenv("INTERNAL_API_KEY", ""),
             },
@@ -712,7 +712,7 @@ async def verify_admin_pin(req: VerifyPinRequest, request: Request, user: Authen
         client.query,
         "admin:getAdminPinHashInternal",
         {
-            "userId": user.user_id,
+            "userId": user.user_id or "",
             "__internalApiKey": os.getenv("INTERNAL_API_KEY", ""),
         },
     )
@@ -721,7 +721,7 @@ async def verify_admin_pin(req: VerifyPinRequest, request: Request, user: Authen
         raise HTTPException(400, "PIN not configured for this account. Run setup first.")
 
     if pin_doc.get("isPermanentlyLocked"):
-        revoke_all_user_sessions(user.user_id)
+        revoke_all_user_sessions(user.user_id or "")
         raise HTTPException(
             423,
             "Account is permanently locked due to excessive failed PIN attempts. Contact Super Admin to unlock.",
@@ -743,8 +743,8 @@ async def verify_admin_pin(req: VerifyPinRequest, request: Request, user: Authen
         client.mutation,
         "admin:recordPinVerificationResultInternal",
         {
-            "userId": user.user_id,
-            "email": user.email,
+            "userId": user.user_id or "",
+            "email": user.email or "",
             "success": is_valid,
             "ipAddress": client_ip,
             "__internalApiKey": os.getenv("INTERNAL_API_KEY", ""),
