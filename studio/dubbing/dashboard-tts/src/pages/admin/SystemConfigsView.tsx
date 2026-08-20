@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { useAuth } from "@clerk/clerk-react";
+import { adminFetch } from "../../api/adminApi";
 
 export const SystemConfigsView: React.FC = () => {
   const flags = useQuery(api.adminQuery.listFeatureFlags);
+  const { getToken } = useAuth();
   const [envStatus, setEnvStatus] = useState<any>(null);
   const [loadingFlag, setLoadingFlag] = useState<string | null>(null);
 
   const fetchEnvStatus = async () => {
     try {
-      const token = localStorage.getItem("clerk-db-jwt") || "";
-      const res = await fetch("/api/admin/env-status", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await adminFetch(getToken, "/api/admin/env-status", { method: "GET" });
       const data = await res.json();
       setEnvStatus(data);
     } catch (e) {
@@ -26,12 +26,10 @@ export const SystemConfigsView: React.FC = () => {
 
   const handleToggleFlag = async (flag: any) => {
     setLoadingFlag(flag.keyName);
-    const token = localStorage.getItem("clerk-db-jwt") || "";
 
     try {
-      const res = await fetch(`/api/admin/flags/${flag.keyName}`, {
+      const res = await adminFetch(getToken, `/api/admin/flags/${flag.keyName}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ is_active: !flag.isActive, reason: "Admin toggle" }),
       });
       const data = await res.json();

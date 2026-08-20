@@ -1,9 +1,12 @@
 import React, { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { useAuth } from "@clerk/clerk-react";
+import { adminFetch } from "../../api/adminApi";
 
 export const SecurityAccessView: React.FC = () => {
   const rbacData = useQuery(api.adminQuery.listAdminRoles);
+  const { getToken } = useAuth();
   const [targetUserId, setTargetUserId] = useState("");
   const [selectedRole, setSelectedRole] = useState("Pipeline Operator");
   const [loading, setLoading] = useState(false);
@@ -12,12 +15,10 @@ export const SecurityAccessView: React.FC = () => {
     e.preventDefault();
     if (!targetUserId) return;
     setLoading(true);
-    const token = localStorage.getItem("clerk-db-jwt") || "";
 
     try {
-      await fetch("/api/admin/rbac/user-roles", {
+      await adminFetch(getToken, "/api/admin/roles/assign", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           user_id: targetUserId,
           role_name: selectedRole,
@@ -35,12 +36,11 @@ export const SecurityAccessView: React.FC = () => {
 
   const handleRevokeSessions = async (userId: string) => {
     if (!confirm(`Revoke all active Clerk sessions for user ${userId}?`)) return;
-    const token = localStorage.getItem("clerk-db-jwt") || "";
 
     try {
-      await fetch(`/api/admin/sessions/${userId}/revoke`, {
+      await adminFetch(getToken, `/api/admin/users/${userId}/ban`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reason: "Manual admin session revocation and ban" }),
       });
       alert(`All active sessions revoked for ${userId}.`);
     } catch (e: any) {

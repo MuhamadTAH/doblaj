@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { useUser } from "@clerk/clerk-react";
+import { useUser, useAuth } from "@clerk/clerk-react";
+import { approveAction, rejectAction } from "../../api/adminApi";
 
 export const PendingApprovalsView: React.FC = () => {
   const approvals = useQuery(api.adminQuery.listPendingApprovals);
   const { user } = useUser();
+  const { getToken } = useAuth();
 
   const [selectedApproval, setSelectedApproval] = useState<any | null>(null);
   const [typedConfirmation, setTypedConfirmation] = useState("");
@@ -30,18 +32,9 @@ export const PendingApprovalsView: React.FC = () => {
     }
 
     setLoading(true);
-    const token = localStorage.getItem("clerk-db-jwt") || "";
 
     try {
-      const res = await fetch(`/api/admin/approvals/${selectedApproval._id}/approve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ reason: "Authorized by second admin with typed verification" }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || "Approval failed");
-      }
+      await approveAction(getToken, selectedApproval._id, "Authorized by second admin with typed verification");
       alert("Action successfully authorized and executed from locked database payload.");
       setSelectedApproval(null);
       setTypedConfirmation("");
@@ -54,15 +47,10 @@ export const PendingApprovalsView: React.FC = () => {
 
   const handleReject = async (approvalId: string) => {
     if (!confirm("Reject and cancel this sensitive action ticket?")) return;
-    const token = localStorage.getItem("clerk-db-jwt") || "";
 
     try {
-      await fetch(`/api/admin/approvals/${approvalId}/reject`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ reason: "Rejected by second administrator" }),
-      });
-      alert("Ticket rejected.");
+      await rejectAction(getToken, approvalId, "Rejected by administrator");
+      alert("Action request rejected.");
     } catch (e: any) {
       alert(`Rejection error: ${e.message}`);
     }

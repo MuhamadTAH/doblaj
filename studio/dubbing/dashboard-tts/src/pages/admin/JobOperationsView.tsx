@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { usePaginatedQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { useApi } from "../../hooks/useApi";
+import { useAuth } from "@clerk/clerk-react";
+import { downloadJobSource, retryJob, failJob, nukeJob } from "../../api/adminApi";
 
 export const JobOperationsView: React.FC = () => {
+  const { getToken } = useAuth();
   const [statusFilter, setStatusFilter] = useState("ALL");
   const { results: jobs, status, loadMore, isLoading } = usePaginatedQuery(
     api.adminQuery.listJobsPaginated,
@@ -20,11 +22,7 @@ export const JobOperationsView: React.FC = () => {
 
   const handleSourceDownload = async (jobId: string) => {
     try {
-      const token = localStorage.getItem("clerk-db-jwt") || "";
-      const res = await fetch(`/api/admin/jobs/${jobId}/source-download`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+      const data = await downloadJobSource(getToken, jobId);
       if (data.download_url) {
         window.open(data.download_url, "_blank");
       } else {
@@ -38,32 +36,19 @@ export const JobOperationsView: React.FC = () => {
   const executeAction = async () => {
     if (!selectedJob) return;
     setActionLoading(true);
-    const token = localStorage.getItem("clerk-db-jwt") || "";
 
     try {
       if (actionType === "RETRY") {
-        await fetch(`/api/admin/jobs/${selectedJob._id}/retry`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ override_params: { force_provider: overrideProvider } }),
-        });
+        await retryJob(getToken, selectedJob._id, { force_provider: overrideProvider });
       } else if (actionType === "FAIL") {
-        await fetch(`/api/admin/jobs/${selectedJob._id}/fail`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ reason: failReason || "Marked failed by administrator", refund_minutes: 5 }),
-        });
+        await failJob(getToken, selectedJob._id, failReason || "Marked failed by administrator");
       } else if (actionType === "NUKE") {
         if (nukeConfirmText !== `NUKE ${selectedJob._id}`) {
           alert(`Type confirmation "NUKE ${selectedJob._id}" exactly to unlock.`);
           setActionLoading(false);
           return;
         }
-        await fetch(`/api/admin/jobs/${selectedJob._id}/nuke`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ reason: "Purged & banned by administrator" }),
-        });
+        await nukeJob(getToken, selectedJob._id, nukeConfirmText);
       }
 
       setActionType(null);

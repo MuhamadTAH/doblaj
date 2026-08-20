@@ -1,9 +1,12 @@
 import React, { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { useAuth } from "@clerk/clerk-react";
+import { adminFetch } from "../../api/adminApi";
 
 export const TelegramCommandView: React.FC = () => {
   const sessions = useQuery(api.adminQuery.listTelegramSessions);
+  const { getToken } = useAuth();
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
 
   const messages = useQuery(
@@ -18,12 +21,10 @@ export const TelegramCommandView: React.FC = () => {
 
   const handleTakeover = async () => {
     if (!selectedChatId) return;
-    const token = localStorage.getItem("clerk-db-jwt") || "";
 
     try {
-      await fetch(`/api/admin/telegram/${selectedChatId}/takeover`, {
+      await adminFetch(getToken, `/api/admin/telegram/${selectedChatId}/takeover`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ pause_duration_minutes: 60 }),
       });
     } catch (e: any) {
@@ -33,12 +34,10 @@ export const TelegramCommandView: React.FC = () => {
 
   const handleRelease = async () => {
     if (!selectedChatId) return;
-    const token = localStorage.getItem("clerk-db-jwt") || "";
 
     try {
-      await fetch(`/api/admin/telegram/${selectedChatId}/release`, {
+      await adminFetch(getToken, `/api/admin/telegram/${selectedChatId}/release`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
       });
     } catch (e: any) {
       alert(`Release failed: ${e.message}`);
@@ -48,18 +47,17 @@ export const TelegramCommandView: React.FC = () => {
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedChatId || !inputMsg.trim()) return;
+
     setSending(true);
-    const token = localStorage.getItem("clerk-db-jwt") || "";
 
     try {
-      await fetch(`/api/admin/telegram/${selectedChatId}/send`, {
+      await adminFetch(getToken, `/api/admin/telegram/${selectedChatId}/message`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ message: inputMsg }),
+        body: JSON.stringify({ message: inputMsg.trim() }),
       });
       setInputMsg("");
     } catch (e: any) {
-      alert(`Send failed: ${e.message}`);
+      alert(`Send message failed: ${e.message}`);
     } finally {
       setSending(false);
     }

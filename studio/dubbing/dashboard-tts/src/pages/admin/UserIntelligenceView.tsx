@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { usePaginatedQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { useAuth } from "@clerk/clerk-react";
+import { adminFetch } from "../../api/adminApi";
 
 export const UserIntelligenceView: React.FC = () => {
   const { results: users, status, loadMore, isLoading } = usePaginatedQuery(
@@ -9,6 +11,7 @@ export const UserIntelligenceView: React.FC = () => {
     { initialNumItems: 50 }
   );
 
+  const { getToken } = useAuth();
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
   const [balanceDelta, setBalanceDelta] = useState<number>(10);
   const [adjustReason, setAdjustReason] = useState("");
@@ -18,12 +21,10 @@ export const UserIntelligenceView: React.FC = () => {
   const handleAdjustBalance = async () => {
     if (!selectedUser) return;
     setLoading(true);
-    const token = localStorage.getItem("clerk-db-jwt") || "";
 
     try {
-      await fetch(`/api/admin/users/${selectedUser.clerkId}/balance`, {
+      await adminFetch(getToken, `/api/admin/users/${selectedUser.clerkId}/balance`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           delta_minutes: balanceDelta,
           reason: adjustReason || "Support credit grant",
@@ -43,12 +44,10 @@ export const UserIntelligenceView: React.FC = () => {
     if (!confirm(`Generate impersonation session for ${user.email}? All actions will be signed with your admin audit ID.`)) {
       return;
     }
-    const token = localStorage.getItem("clerk-db-jwt") || "";
 
     try {
-      const res = await fetch(`/api/admin/users/${user.clerkId}/impersonate`, {
+      const res = await adminFetch(getToken, `/api/admin/users/${user.clerkId}/impersonate`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       if (data.impersonation_token) {

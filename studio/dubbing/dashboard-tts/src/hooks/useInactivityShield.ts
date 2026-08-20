@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useUser, useClerk } from "@clerk/clerk-react";
+import { useUser, useClerk, useAuth } from "@clerk/clerk-react";
+import { getShieldStatus, setupShieldPin, verifyShieldPin } from "../api/adminApi";
 
 const IDLE_TIMEOUT_MS = 60 * 1000; // 60 seconds
 
 export function useInactivityShield() {
   const { user } = useUser();
   const { signOut } = useClerk();
+  const { getToken } = useAuth();
   const userId = user?.id || "";
 
   const [isLocked, setIsLocked] = useState<boolean>(true);
@@ -17,23 +19,17 @@ export function useInactivityShield() {
   const fetchShieldStatus = useCallback(async () => {
     if (!userId) return;
     try {
-      const token = localStorage.getItem("clerk-db-jwt") || "";
-      const res = await fetch("/api/admin/shield/status", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setHasConfiguredPin(Boolean(data.hasPin));
-        setIsPermanentlyLocked(Boolean(data.isPermanentlyLocked));
-        setAttemptsRemaining(data.attemptsRemaining ?? 5);
-        if (!data.hasPin) {
-          setIsLocked(true);
-        }
+      const data = await getShieldStatus(getToken);
+      setHasConfiguredPin(Boolean(data.hasPin));
+      setIsPermanentlyLocked(Boolean(data.isPermanentlyLocked));
+      setAttemptsRemaining(data.attemptsRemaining ?? 5);
+      if (!data.hasPin) {
+        setIsLocked(true);
       }
     } catch (e) {
       console.error("Shield status check failed", e);
     }
-  }, [userId]);
+  }, [userId, getToken]);
 
   useEffect(() => {
     fetchShieldStatus();
@@ -49,22 +45,13 @@ export function useInactivityShield() {
   const unlockWithPin = useCallback(
     async (pin: string): Promise<{ success: boolean; error?: string }> => {
       try {
-        const token = localStorage.getItem("clerk-db-jwt") || "";
-        const res = await fetch("/api/admin/shield/verify-pin", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ pin }),
-        });
-
-        if (res.ok) {
-          setIsLocked(false);
-          setAttemptsRemaining(5);
-          resetTimer();
-          return { success: true };
-        }
-
-        const data = await res.json();
-        if (res.status === 423) {
+        await verifyShieldPin(getToken, pin);
+        setIsLocked(false);
+        setAttemptsRemaining(5);
+        resetTimer();
+        return { success: true };
+      } catch (e: any) {
+        if (e.status === 423) {
           setIsPermanentlyLocked(true);
           setTimeout(async () => {
             await signOut();
@@ -72,48 +59,34 @@ export function useInactivityShield() {
           }, 1500);
           return {
             success: false,
-            error: data.detail || "Account permanently locked. Session terminating...",
+            error: e.detail || "Account permanently locked. Terminating session...",
           };
         }
-
         return {
           success: false,
-          error: data.detail || "Invalid PIN.",
-        };
-      } catch (e: any) {
-        return {
-          success: false,
-          error: `Network error: ${e.message}. Screen remains locked.`,
+          error: e.detail || e.message || "Invalid PIN.",
         };
       }
     },
-    [resetTimer, signOut]
+    [getToken, resetTimer, signOut]
   );
 
   const setupAndUnlock = useCallback(
     async (pin: string, confirmPin: string): Promise<{ success: boolean; error?: string }> => {
       try {
-        const token = localStorage.getItem("clerk-db-jwt") || "";
-        const res = await fetch("/api/admin/shield/setup-pin", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ pin, confirm_pin: confirmPin }),
-        });
-
-        if (res.ok) {
-          setHasConfiguredPin(true);
-          setIsLocked(false);
-          resetTimer();
-          return { success: true };
-        }
-
-        const data = await res.json();
-        return { success: false, error: data.detail || "Setup failed" };
+        await setupShieldPin(getToken, pin, confirmPin);
+        setHasConfiguredPin(true);
+        setIsLocked(false);
+        resetTimer();
+        return { success: true };
       } catch (e: any) {
-        return { success: false, error: `Network error: ${e.message}` };
+        return {
+          success: false,
+          error: e.detail || e.message || "Setup failed.",
+        };
       }
     },
-    [resetTimer]
+    [getToken, resetTimer]
   );
 
   useEffect(() => {

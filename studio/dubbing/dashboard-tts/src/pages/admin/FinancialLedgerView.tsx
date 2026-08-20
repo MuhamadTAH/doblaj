@@ -1,8 +1,11 @@
 import React, { useState } from "react";
 import { usePaginatedQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { useAuth } from "@clerk/clerk-react";
+import { adminFetch } from "../../api/adminApi";
 
 export const FinancialLedgerView: React.FC = () => {
+  const { getToken } = useAuth();
   const { results: transactions, status, loadMore, isLoading } = usePaginatedQuery(
     api.adminQuery.listTransactionsPaginated,
     {},
@@ -19,12 +22,10 @@ export const FinancialLedgerView: React.FC = () => {
     if (!refundTx) return;
     setLoading(true);
     setFeedback(null);
-    const token = localStorage.getItem("clerk-db-jwt") || "";
 
     try {
-      const res = await fetch(`/api/admin/transactions/${refundTx._id}/refund`, {
+      const res = await adminFetch(getToken, `/api/admin/transactions/${refundTx._id}/refund`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           amount_usd: refundAmount,
           reason: refundReason || "Customer support refund",
