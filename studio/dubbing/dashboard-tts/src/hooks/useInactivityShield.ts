@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useUser, useClerk, useAuth } from "@clerk/clerk-react";
 import { getShieldStatus, setupShieldPin, verifyShieldPin } from "../api/adminApi";
 
-const IDLE_TIMEOUT_MS = 60 * 1000; // 60 seconds
+const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
 export function useInactivityShield() {
   const { user } = useUser();

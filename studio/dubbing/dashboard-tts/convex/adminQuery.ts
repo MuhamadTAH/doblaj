@@ -17,39 +17,16 @@ export const getAdminMetrics = query({
     }
 
     try {
-      const queuedJobs = await ctx.db
-        .query("dubbingJobs")
-        .withIndex("by_status", (q) => q.eq("status", "QUEUED"))
-        .take(100)
-        .catch(() => []);
+      const allJobs = await ctx.db.query("dubbingJobs").take(500).catch(() => []);
 
-      const processingJobs = await ctx.db
-        .query("dubbingJobs")
-        .withIndex("by_status", (q) => q.eq("status", "PROCESSING"))
-        .take(100)
-        .catch(() => []);
-
-      const deadLetterJobs = await ctx.db
-        .query("dubbingJobs")
-        .withIndex("by_status", (q) => q.eq("status", "DEAD_LETTER"))
-        .take(100)
-        .catch(() => []);
-
-      const failedJobs = await ctx.db
-        .query("dubbingJobs")
-        .withIndex("by_status", (q) => q.eq("status", "FAILED"))
-        .take(100)
-        .catch(() => []);
-
-      const completedJobs = await ctx.db
-        .query("dubbingJobs")
-        .withIndex("by_status", (q) => q.eq("status", "COMPLETED"))
-        .take(100)
-        .catch(() => []);
+      const queuedJobs = allJobs.filter((j) => (j.status || "").toUpperCase() === "QUEUED");
+      const processingJobs = allJobs.filter((j) => (j.status || "").toUpperCase() === "PROCESSING");
+      const deadLetterJobs = allJobs.filter((j) => (j.status || "").toUpperCase() === "DEAD_LETTER");
+      const failedJobs = allJobs.filter((j) => (j.status || "").toUpperCase() === "FAILED");
+      const completedJobs = allJobs.filter((j) => (j.status || "").toUpperCase() === "COMPLETED");
 
       const pendingApprovals = await ctx.db
         .query("actionApprovals")
-        .withIndex("by_status", (q) => q.eq("status", "PENDING"))
         .take(50)
         .catch(() => []);
 
