@@ -316,17 +316,18 @@ export const JobOperationsView: React.FC = () => {
 
               {/* Video Player */}
               {inspectVideoUrl ? (
-                <div className="rounded-xl overflow-hidden border border-white/10 bg-black aspect-video max-h-[280px] w-full flex items-center justify-center">
+                <div className="rounded-xl overflow-hidden border border-white/10 bg-black aspect-video max-h-[320px] w-full flex items-center justify-center relative">
                   <video
                     src={inspectVideoUrl}
                     controls
+                    playsInline
                     className="w-full h-full object-contain"
-                    preload="metadata"
+                    preload="auto"
                   />
                 </div>
               ) : (
                 <div className="rounded-xl border border-white/[0.06] bg-black/40 p-6 text-center text-xs text-ink-400 font-mono">
-                  Loading source video stream from Cloudflare R2...
+                  Loading signed streaming URL from Cloudflare R2...
                 </div>
               )}
 

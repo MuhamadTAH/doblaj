@@ -192,15 +192,20 @@ async def list_jobs(
 
 @router.get("/jobs/{job_id}/source-download")
 async def get_job_source_download(job_id: str, user: AuthenticatedUser = Depends(require_permission("dubbing:read"))):
-    """Generate a presigned R2 download URL for DLQ input inspection."""
+    """Generate a presigned R2 streaming/download URL for Node 1 video inspection."""
     client = convex_db._get_client()
     job = await asyncio.to_thread(client.query, "dubbingJobs:getInternal", {"jobId": job_id, "__internalApiKey": os.getenv("INTERNAL_API_KEY", "")})
     if not job or not job.get("sourceVideoR2Key"):
         raise HTTPException(404, "Source video not found on storage")
 
-    # Construct direct presigned download URL
-    r2_public_domain = os.getenv("R2_PUBLIC_DOMAIN", "https://r2.doblaj.com")
-    download_url = f"{r2_public_domain}/{job['sourceVideoR2Key']}"
+    from app.services import r2
+    try:
+        download_url = r2.signed_url(job["sourceVideoR2Key"], ttl_seconds=86400, inline=True)
+    except Exception as e:
+        logger.warning("[ADMIN] Could not sign R2 URL for %s: %s", job["sourceVideoR2Key"], e)
+        r2_public_domain = os.getenv("R2_PUBLIC_DOMAIN", "https://r2.doblaj.com")
+        download_url = f"{r2_public_domain}/{job['sourceVideoR2Key']}"
+
     return {"download_url": download_url, "source_key": job["sourceVideoR2Key"]}
 
 
