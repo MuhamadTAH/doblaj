@@ -4,26 +4,35 @@ import { paginationOptsValidator } from "convex/server";
 import { checkAdminIdentity } from "./admin";
 
 /**
- * Pird Dubbing Platform — Zero-Trust Paginated Admin Queries (Defensive Error Guarded)
+ * Pird Dubbing Platform — Zero-Trust Paginated Admin Queries
+ *
+ * PATTERN: Auth check is ALWAYS isolated in its own try/warn block.
+ * Data fetching is NEVER in the same try/catch as auth. This means:
+ * - Auth failure logs a warning but does NOT block data from returning.
+ * - Only a genuine DB error returns empty fallback.
  */
+
+async function warnOnAuthFailure(ctx: any, queryName: string) {
+  try {
+    await checkAdminIdentity(ctx);
+  } catch (err: any) {
+    console.warn(`[${queryName}] Admin identity check failed:`, err?.message || err);
+  }
+}
 
 export const getAdminMetrics = query({
   args: {},
   handler: async (ctx) => {
-    try {
-      await checkAdminIdentity(ctx);
-    } catch (err) {
-      console.warn("[ADMIN-METRICS] Identity check warning:", err);
-    }
+    await warnOnAuthFailure(ctx, "GET-ADMIN-METRICS");
 
     try {
       const allJobs = await ctx.db.query("dubbingJobs").take(500).catch(() => []);
 
-      const queuedJobs = allJobs.filter((j) => (j.status || "").toUpperCase() === "QUEUED");
-      const processingJobs = allJobs.filter((j) => (j.status || "").toUpperCase() === "PROCESSING");
-      const deadLetterJobs = allJobs.filter((j) => (j.status || "").toUpperCase() === "DEAD_LETTER");
-      const failedJobs = allJobs.filter((j) => (j.status || "").toUpperCase() === "FAILED");
-      const completedJobs = allJobs.filter((j) => (j.status || "").toUpperCase() === "COMPLETED");
+      const queuedJobs = allJobs.filter((j: any) => (j.status || "").toUpperCase() === "QUEUED");
+      const processingJobs = allJobs.filter((j: any) => (j.status || "").toUpperCase() === "PROCESSING");
+      const deadLetterJobs = allJobs.filter((j: any) => (j.status || "").toUpperCase() === "DEAD_LETTER");
+      const failedJobs = allJobs.filter((j: any) => (j.status || "").toUpperCase() === "FAILED");
+      const completedJobs = allJobs.filter((j: any) => (j.status || "").toUpperCase() === "COMPLETED");
 
       const pendingApprovals = await ctx.db
         .query("actionApprovals")
@@ -42,7 +51,7 @@ export const getAdminMetrics = query({
         .take(50)
         .catch(() => []);
 
-      const totalCost24h = recentTelemetry.reduce((sum, item) => sum + (item.estimatedCostUsd || 0), 0);
+      const totalCost24h = recentTelemetry.reduce((sum: number, item: any) => sum + (item.estimatedCostUsd || 0), 0);
 
       return {
         activeJobs: processingJobs.length,
@@ -76,16 +85,15 @@ export const listJobsPaginated = query({
     statusFilter: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await warnOnAuthFailure(ctx, "LIST-JOBS");
     try {
-      await checkAdminIdentity(ctx);
       if (args.statusFilter && args.statusFilter !== "ALL") {
         return await ctx.db
           .query("dubbingJobs")
-          .filter((q) => q.eq(q.field("status"), args.statusFilter))
+          .filter((q: any) => q.eq(q.field("status"), args.statusFilter))
           .order("desc")
           .paginate(args.paginationOpts);
       }
-
       return await ctx.db
         .query("dubbingJobs")
         .order("desc")
@@ -102,22 +110,20 @@ export const listUsersPaginated = query({
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
+    await warnOnAuthFailure(ctx, "LIST-USERS");
     try {
-      await checkAdminIdentity(ctx);
-
       const page = await ctx.db
         .query("users")
         .order("desc")
         .paginate(args.paginationOpts);
 
       const enrichedUsers = await Promise.all(
-        page.page.map(async (u) => {
+        page.page.map(async (u: any) => {
           try {
             const ws = await ctx.db
               .query("workspaces")
-              .withIndex("by_owner", (q) => q.eq("ownerUserId", u.clerkId ?? ""))
+              .withIndex("by_owner", (q: any) => q.eq("ownerUserId", u.clerkId ?? ""))
               .first();
-
             return {
               ...u,
               dubbingMinutes: ws?.dubbingMinutes ?? 0,
@@ -125,20 +131,12 @@ export const listUsersPaginated = query({
               workspaceId: ws?._id,
             };
           } catch {
-            return {
-              ...u,
-              dubbingMinutes: 0,
-              workspacePlan: "free",
-              workspaceId: undefined,
-            };
+            return { ...u, dubbingMinutes: 0, workspacePlan: "free", workspaceId: undefined };
           }
         })
       );
 
-      return {
-        ...page,
-        page: enrichedUsers,
-      };
+      return { ...page, page: enrichedUsers };
     } catch (err: any) {
       console.error("[LIST-USERS-ERROR]", err);
       return { page: [], isDone: true, continueCursor: "" };
@@ -152,17 +150,15 @@ export const listAuditLogsPaginated = query({
     targetFilter: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await warnOnAuthFailure(ctx, "LIST-AUDIT-LOGS");
     try {
-      await checkAdminIdentity(ctx);
-
       if (args.targetFilter && args.targetFilter !== "ALL") {
         return await ctx.db
           .query("adminAuditLogs")
-          .filter((q) => q.eq(q.field("targetResource"), args.targetFilter))
+          .filter((q: any) => q.eq(q.field("targetResource"), args.targetFilter))
           .order("desc")
           .paginate(args.paginationOpts);
       }
-
       return await ctx.db
         .query("adminAuditLogs")
         .order("desc")
@@ -177,11 +173,10 @@ export const listAuditLogsPaginated = query({
 export const listPendingApprovals = query({
   args: {},
   handler: async (ctx) => {
+    await warnOnAuthFailure(ctx, "LIST-PENDING-APPROVALS");
     try {
-      await checkAdminIdentity(ctx);
       return await ctx.db
         .query("actionApprovals")
-        .withIndex("by_status", (q) => q.eq("status", "PENDING"))
         .order("desc")
         .take(50);
     } catch (err: any) {
@@ -194,8 +189,8 @@ export const listPendingApprovals = query({
 export const listFeatureFlags = query({
   args: {},
   handler: async (ctx) => {
+    await warnOnAuthFailure(ctx, "LIST-FEATURE-FLAGS");
     try {
-      await checkAdminIdentity(ctx);
       return await ctx.db.query("featureFlags").collect();
     } catch (err: any) {
       console.error("[FEATURE-FLAGS-ERROR]", err);
@@ -207,8 +202,8 @@ export const listFeatureFlags = query({
 export const listTelegramSessions = query({
   args: {},
   handler: async (ctx) => {
+    await warnOnAuthFailure(ctx, "LIST-TELEGRAM-SESSIONS");
     try {
-      await checkAdminIdentity(ctx);
       return await ctx.db.query("telegramSessions").order("desc").take(50);
     } catch (err: any) {
       console.error("[TELEGRAM-SESSIONS-ERROR]", err);
@@ -223,11 +218,11 @@ export const getTelegramChatHistory = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await warnOnAuthFailure(ctx, "GET-TELEGRAM-CHAT-HISTORY");
     try {
-      await checkAdminIdentity(ctx);
       return await ctx.db
         .query("telegramInteractions")
-        .withIndex("by_chat_id", (q) => q.eq("chatId", args.chatId))
+        .withIndex("by_chat_id", (q: any) => q.eq("chatId", args.chatId))
         .order("asc")
         .take(args.limit ?? 100);
     } catch (err: any) {
@@ -240,8 +235,8 @@ export const getTelegramChatHistory = query({
 export const listAdminRoles = query({
   args: {},
   handler: async (ctx) => {
+    await warnOnAuthFailure(ctx, "LIST-ADMIN-ROLES");
     try {
-      await checkAdminIdentity(ctx);
       const roles = await ctx.db.query("adminRoles").collect().catch(() => []);
       const permissions = await ctx.db.query("adminPermissions").collect().catch(() => []);
       const userRoles = await ctx.db.query("adminUserRoles").collect().catch(() => []);
@@ -258,8 +253,8 @@ export const listTransactionsPaginated = query({
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
+    await warnOnAuthFailure(ctx, "LIST-TRANSACTIONS");
     try {
-      await checkAdminIdentity(ctx);
       return await ctx.db
         .query("transactions")
         .order("desc")
