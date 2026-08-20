@@ -468,10 +468,14 @@ try:
     except Exception as e:
         logger.exception("[STARTUP] TTS dashboard router failed to load: %s", e)
     app.include_router(video.router, prefix="/video", tags=["video"])
+    app.include_router(video.router, prefix="/api/video", tags=["api_video"], include_in_schema=False)
+    app.include_router(video.router, prefix="/api", tags=["api_root_video"], include_in_schema=False)
     app.include_router(manual_video.router, prefix="/video/manual", tags=["manual_video"])
+    app.include_router(manual_video.router, prefix="/api/video/manual", tags=["api_manual_video"], include_in_schema=False)
     # ponytail: /video/internal/* lives under the same prefix so it sits
     # next to the user-facing routes. No Supabase auth, gated by INTERNAL_API_KEY.
     app.include_router(internal_jobs.router, prefix="/video", tags=["internal_jobs"])
+    app.include_router(internal_jobs.router, prefix="/api/video", tags=["api_internal_jobs"], include_in_schema=False)
     
     try:
         from app.api.routes import user_delete
