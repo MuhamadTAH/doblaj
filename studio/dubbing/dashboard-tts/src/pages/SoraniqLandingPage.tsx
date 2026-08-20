@@ -58,19 +58,20 @@ export default function SoraniqLandingPage() {
       ctaPrimary: "Link My WhatsApp in 10 Seconds",
       ctaSubtext: "⚡ 100% Free Demo • No credit card required to test",
       
-      splitLeftTitle: "Your Store Right Now",
+      splitLeftTitle: "(Your Store Right Now)",
       splitLeftStatus: "Cold & Silent",
       splitLeftItem1: "❌ Waiting for delayed local government salaries",
-      splitLeftItem2: "❌ $10,000+ of unsold seasonal inventory piling up",
-      splitLeftItem3: "❌ Arab tourists walk by your door without understanding",
+      splitLeftItem2: "❌ Over $10,000+ in unsold seasonal inventory piling up",
+      splitLeftItem3: "❌ Arab tourists walk right past your door without noticing you",
       splitLeftMetric: "$0 Tourist Revenue",
 
-      splitRightTitle: "Your Store With Doblaj AI",
-      splitRightStatus: "Cash Flow Active",
-      splitRightItem1: "✅ Kurdish videos auto-dubbed into warm Iraqi dialect",
-      splitRightItem2: "✅ Tourists see your TikTok/Instagram and come directly to buy",
-      splitRightItem3: "✅ Daily sales from Baghdad, Basra & Erbil tourists",
-      splitRightMetric: "+$1,450 Avg. Weekend Lift",
+      splitRightTitle: "(Your Store With Doblaj AI)",
+      splitRightStatus: "Continuous Cash Flow",
+      splitRightItem1: "✅ Kurdish videos instantly dubbed into fluent Iraqi dialect",
+      splitRightItem2: "✅ Tourists see you on TikTok and come directly to your store",
+      splitRightItem3: "✅ Daily sales to tourists from Baghdad and Basra",
+      splitRightMetric: "+1,500,000 IQD Avg. Weekend Profit",
+      splitBottomNote: "(Note: Just ONE sale to an Arab tourist covers the entire monthly cost of this system. The remaining 29 days are 100% pure profit for you).",
 
       painSectionTag: "TERRITORIAL ALERT",
       painHeadline: "While you sit on unsold inventory, your competitors are taking the tourist cash.",
@@ -148,19 +149,20 @@ export default function SoraniqLandingPage() {
       ctaPrimary: "لە ١٠ چرکەدا وەتسئەپەکەم ببەستەوە",
       ctaSubtext: "⚡ تاقیکردنەوەی بێبەرامبەر • پێویست بە کارتی بانک ناکات",
 
-      splitLeftTitle: "دووکانەکەت لە ئێستادا",
+      splitLeftTitle: "(دووکانەکەت لە ئێستادا)",
       splitLeftStatus: "سارد و بێ کڕیار",
       splitLeftItem1: "❌ چاوەڕوانی مووچەی حکومیی دواکەوتوو",
-      splitLeftItem2: "❌ کەڵەکەبوونی زیاتر لە $10,000 کەلوپەلی نەفرۆشراو",
-      splitLeftItem3: "❌ گەشتیاری عەرەب بە بەردەمتدا تێدەپەڕێت و تێناگات",
+      splitLeftItem2: "❌ کەڵەکەبوونی زیاتر لە دەفتەرێک بەهای کەلوپەلی نەفرۆشراو",
+      splitLeftItem3: "❌ گەشتیاری عەرەب بە بەردەمتدا تێدەپەڕێت و ناتبینێت",
       splitLeftMetric: "$0 داهات لە گەشتیار",
 
-      splitRightTitle: "دووکانەکەت بە Doblaj AI",
+      splitRightTitle: "(دووکانەکەت بە Doblaj AI)",
       splitRightStatus: "کاش و فرۆشی بەردەوام",
       splitRightItem1: "✅ ڤیدیۆی سۆرانی یەکسەر دەبێتە عەرەبی عێراقی پاراو",
-      splitRightItem2: "✅ گەشتیار لە تیکتۆک و ئینستاگرام دەتبینێت و یەکسەر دێتە لای خۆت",
-      splitRightItem3: "✅ فرۆشی ڕۆژانە لە گەشتیارانی بەغدا و بەسرە",
-      splitRightMetric: "+$1,450 تێکڕای قازانجی کۆتایی هەفتە",
+      splitRightItem2: "✅ گەشتیار لە تیکتۆک دەتبینێت و ڕاستەوخۆ دێتە دووکانەکەت",
+      splitRightItem3: "✅ فرۆشی ڕۆژانە بە گەشتیارانی بەغدا و بەسرە",
+      splitRightMetric: "+١,٥٠٠,٠٠٠ دینار تێکڕای قازانجی کۆتایی هەفتە",
+      splitBottomNote: "(تێبینی: تەنها یەک فرۆش بە گەشتیارێکی عەرەب، تێچووی تەواوی مانگێکی ئەم سیستەمە دەردێنێتەوە. باقی ٢٩ ڕۆژەکەی تر ١٠٠٪ قازانجی ساغە بۆ خۆت).",
 
       painSectionTag: "زەنگی مەترسیی ناوچەیی",
       painHeadline: "کەلوپەلەکەت بێ کڕیار ماوەتەوە، لە کاتێکدا ڕکابەرەکانت پارەی گەشتیاران دەبەن.",
@@ -238,19 +240,20 @@ export default function SoraniqLandingPage() {
       ctaPrimary: "اربط رقم الواتساب بـ ١٠ ثواني",
       ctaSubtext: "⚡ تجربة مجانية فورية • بدون الحاجة لبطاقة بنكية",
 
-      splitLeftTitle: "محلك بالوضع الحالي",
+      splitLeftTitle: "(محلك بالوضع الحالي)",
       splitLeftStatus: "سوق بارد وهادئ",
       splitLeftItem1: "❌ انتظار رواتب الموظفين المتأخرة",
-      splitLeftItem2: "❌ بضاعة مكدسة بالمحل بأكثر من $10,000",
-      splitLeftItem3: "❌ السائح العربي يمر من يم بابك وميفهم شدا تبيع",
+      splitLeftItem2: "❌ بضاعة مكدسة بالمحل بأكثر من دفتر (١٠,٠٠٠$)",
+      splitLeftItem3: "❌ السائح العربي يمر من يم بابك وميشوفك أصلاً",
       splitLeftMetric: "$0 مبيعات من السياح",
 
-      splitRightTitle: "محلك مع Doblaj AI",
+      splitRightTitle: "(محلك مع Doblaj AI)",
       splitRightStatus: "كاش وسياح يومياً",
       splitRightItem1: "✅ فيديوهاتك الكردية تدبلج فوراً للهجة عراقية بغدادية",
-      splitRightItem2: "✅ السائح يشوف ريلز التيك توك والانستغرام ويجيك مباشرة",
-      splitRightItem3: "✅ كاش يومي من سياح بغداد والبصرة والوسط والجنوب",
-      splitRightMetric: "+$1,450 مبيعات إضافية بالويكند",
+      splitRightItem2: "✅ السائح يشوفك بالتيك توك ويجيك مباشرة للمحل",
+      splitRightItem3: "✅ مبيعات يومية لسياح بغداد والبصرة",
+      splitRightMetric: "+١,٥٠٠,٠٠٠ دينار تێکڕای أرباح الويكند",
+      splitBottomNote: "(ملاحظة: بيعة واحدة لسائح عربي تطلع تكلفة اشتراك شهر كامل من هذا النظام. باقي الـ ٢٩ يوم أرباح صافية ١٠٠٪ لجيبك).",
 
       painSectionTag: "جرس إنذار محلي",
       painHeadline: "بينما بضاعتك نايمة بالمحل، منافسينك د ياخذون فلوس السياح.",
@@ -521,35 +524,29 @@ export default function SoraniqLandingPage() {
           <div className="bg-[#0f0f14] border border-rose-900/30 rounded-3xl p-8 sm:p-10 flex flex-col justify-between relative overflow-hidden shadow-2xl group hover:border-rose-700/50 transition-colors">
             <div className="absolute top-0 right-0 left-0 h-1.5 bg-rose-600"></div>
             <div>
-              <div className="flex justify-between items-center mb-6">
-                <span className="px-3.5 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30">
-                  {t.splitLeftStatus}
+              <div className="flex justify-between items-center mb-4">
+                <span className="px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-black uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-1.5">
+                  <span>{t.splitLeftStatus}</span>
+                  <span>🥀</span>
                 </span>
-                <span className="text-2xl">🥀</span>
               </div>
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-[#fafafa] mb-6">
+              <h3 className="text-lg sm:text-xl font-bold text-[#a1a1aa] mb-6">
                 {t.splitLeftTitle}
               </h3>
-              <ul className="space-y-4 text-sm sm:text-base text-[#a1a1aa] mb-8 font-medium">
-                <li className="flex items-start gap-3">
-                  <span className="text-rose-500 font-bold">✕</span>
+              <ul className="space-y-4 text-sm sm:text-base text-[#d4d4d8] mb-8 font-medium">
+                <li className="flex items-start gap-2">
                   <span>{t.splitLeftItem1}</span>
                 </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-rose-500 font-bold">✕</span>
+                <li className="flex items-start gap-2">
                   <span>{t.splitLeftItem2}</span>
                 </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-rose-500 font-bold">✕</span>
+                <li className="flex items-start gap-2">
                   <span>{t.splitLeftItem3}</span>
                 </li>
               </ul>
             </div>
-            <div className="p-4 rounded-2xl bg-black/50 border border-rose-900/40 text-center">
-              <div className="text-xs uppercase font-bold text-rose-400 tracking-wider mb-1">
-                Weekend Revenue Result
-              </div>
-              <div className="text-3xl font-black text-rose-500 font-mono">
+            <div className="p-4 rounded-2xl bg-black/60 border border-rose-900/40 text-center">
+              <div className="text-2xl sm:text-3xl font-black text-rose-500 font-mono">
                 {t.splitLeftMetric}
               </div>
             </div>
@@ -559,39 +556,40 @@ export default function SoraniqLandingPage() {
           <div className="bg-gradient-to-b from-[#121b15] to-[#0d1410] border-2 border-[#22c55e] rounded-3xl p-8 sm:p-10 flex flex-col justify-between relative overflow-hidden shadow-[0_0_50px_rgba(34,197,94,0.15)] group hover:border-[#22c55e] transition-all">
             <div className="absolute top-0 right-0 left-0 h-2 bg-[#22c55e] shadow-[0_0_15px_rgba(34,197,94,0.8)]"></div>
             <div>
-              <div className="flex justify-between items-center mb-6">
-                <span className="px-3.5 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-[#22c55e]/20 text-[#22c55e] border border-[#22c55e]/40 shadow-[0_0_10px_rgba(34,197,94,0.3)]">
-                  {t.splitRightStatus}
+              <div className="flex justify-between items-center mb-4">
+                <span className="px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-black uppercase tracking-wider bg-[#22c55e]/20 text-[#22c55e] border border-[#22c55e]/40 shadow-[0_0_10px_rgba(34,197,94,0.3)] flex items-center gap-1.5">
+                  <span>{t.splitRightStatus}</span>
+                  <span>💰</span>
                 </span>
-                <span className="text-2xl">💰</span>
               </div>
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-[#fafafa] mb-6">
+              <h3 className="text-lg sm:text-xl font-bold text-[#86efac] mb-6">
                 {t.splitRightTitle}
               </h3>
-              <ul className="space-y-4 text-sm sm:text-base text-[#e4e4e7] mb-8 font-medium">
-                <li className="flex items-start gap-3">
-                  <span className="text-[#22c55e] font-black">✓</span>
+              <ul className="space-y-4 text-sm sm:text-base text-[#fafafa] mb-8 font-medium">
+                <li className="flex items-start gap-2">
                   <span>{t.splitRightItem1}</span>
                 </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-[#22c55e] font-black">✓</span>
+                <li className="flex items-start gap-2">
                   <span>{t.splitRightItem2}</span>
                 </li>
-                <li className="flex items-start gap-3">
-                  <span className="text-[#22c55e] font-black">✓</span>
+                <li className="flex items-start gap-2">
                   <span>{t.splitRightItem3}</span>
                 </li>
               </ul>
             </div>
-            <div className="p-4 rounded-2xl bg-[#070709]/80 border border-[#22c55e]/50 text-center shadow-lg">
-              <div className="text-xs uppercase font-bold text-[#22c55e] tracking-wider mb-1">
-                Tourist Revenue Added
-              </div>
-              <div className="text-3xl font-black text-[#22c55e] font-mono drop-shadow-[0_0_15px_rgba(34,197,94,0.4)]">
+            <div className="p-4 rounded-2xl bg-[#070709]/90 border border-[#22c55e]/50 text-center shadow-lg">
+              <div className="text-2xl sm:text-3xl font-black text-[#22c55e] font-mono drop-shadow-[0_0_15px_rgba(34,197,94,0.4)]">
                 {t.splitRightMetric}
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Psychological ROI Note */}
+        <div className="mt-8 text-center max-w-3xl mx-auto">
+          <p className="text-xs sm:text-sm md:text-base font-bold text-[#22c55e] bg-[#22c55e]/10 border border-[#22c55e]/30 rounded-2xl py-3.5 px-6 shadow-[0_0_25px_rgba(34,197,94,0.15)] leading-relaxed">
+            {t.splitBottomNote}
+          </p>
         </div>
       </section>
 
