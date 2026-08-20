@@ -65,19 +65,26 @@ export default function HistoryPage() {
   };
 
   // Video jobs calculations
+  const isFailedStatus = (status?: string) => {
+    const s = (status || "").toLowerCase();
+    return s === "failed" || s === "dead_letter" || s === "cancelled" || s === "nuked";
+  };
+
+  const isCompletedStatus = (status?: string) => (status || "").toLowerCase() === "completed";
+
   const totalVideoCount = videoJobs.length;
-  const completedCount = videoJobs.filter((j) => j.status === "completed").length;
-  const processingCount = videoJobs.filter((j) => j.status === "pending" || j.status === "processing").length;
-  const failedCount = videoJobs.filter((j) => j.status === "failed").length;
+  const completedCount = videoJobs.filter((j) => isCompletedStatus(j.status)).length;
+  const processingCount = videoJobs.filter((j) => !isCompletedStatus(j.status) && !isFailedStatus(j.status)).length;
+  const failedCount = videoJobs.filter((j) => isFailedStatus(j.status)).length;
 
   const filteredVideoJobs = videoJobs.filter((job) => {
     const matchesSearch = job.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           (job.error && job.error.toLowerCase().includes(searchQuery.toLowerCase()));
     
     if (statusFilter === "all") return matchesSearch;
-    if (statusFilter === "completed") return matchesSearch && job.status === "completed";
-    if (statusFilter === "processing") return matchesSearch && (job.status === "processing" || job.status === "pending");
-    if (statusFilter === "failed") return matchesSearch && job.status === "failed";
+    if (statusFilter === "completed") return matchesSearch && isCompletedStatus(job.status);
+    if (statusFilter === "processing") return matchesSearch && !isCompletedStatus(job.status) && !isFailedStatus(job.status);
+    if (statusFilter === "failed") return matchesSearch && isFailedStatus(job.status);
     return matchesSearch;
   });
 

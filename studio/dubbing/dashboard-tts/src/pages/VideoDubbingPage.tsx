@@ -228,8 +228,9 @@ export default function VideoDubbingPage() {
       pollRef.current = window.setInterval(async () => {
         try {
           const s: DubJob = await api.getDubStatus(job.id);
+          const rawStatus = (s.status || "").toLowerCase();
           setProgress((p) => Math.max(p, s.progress));
-          if (s.status === "completed") {
+          if (rawStatus === "completed") {
             setProgress(100);
             setPhase("completed");
             const rawPath = s.output_path ?? null;
@@ -263,9 +264,14 @@ export default function VideoDubbingPage() {
                 notif.close();
               };
             }
-          } else if (s.status === "failed") {
+          } else if (
+            rawStatus === "failed" ||
+            rawStatus === "dead_letter" ||
+            rawStatus === "cancelled" ||
+            rawStatus === "nuked"
+          ) {
             setPhase("failed");
-            setError(s.error ?? "Processing failed.");
+            setError(s.error ?? "Processing failed or terminated by administrator.");
             if (pollRef.current) {
               window.clearInterval(pollRef.current);
               pollRef.current = null;
