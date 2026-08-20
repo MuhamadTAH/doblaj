@@ -15,7 +15,7 @@ export async function checkAdminIdentity(ctx: { auth: { getUserIdentity: () => P
   const user = await ctx.db
     .query("users")
     .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", identity.subject))
-    .unique();
+    .first();
 
   // Check if user has an active adminUserRoles record or clerkId in admin list
   const adminRole = await ctx.db
@@ -23,7 +23,8 @@ export async function checkAdminIdentity(ctx: { auth: { getUserIdentity: () => P
     .withIndex("by_user", (q: any) => q.eq("userId", identity.subject))
     .first();
 
-  const isRoleAdmin = identity.app_role === "admin" || identity.app_role === "org:admin";
+  const userRole = (identity as any).role || (identity as any).app_role || (identity as any).org_role || (identity as any).public_metadata?.role;
+  const isRoleAdmin = ["admin", "org:admin", "super_admin", "org:service"].includes(userRole);
   const allowed = (process.env.ADMIN_CLERK_IDS ?? "").split(",").map((s: string) => s.trim()).filter(Boolean);
   const isEnvAdmin = allowed.includes(identity.subject);
 
