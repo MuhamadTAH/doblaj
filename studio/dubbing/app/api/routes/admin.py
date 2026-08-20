@@ -687,17 +687,21 @@ async def setup_admin_pin(req: SetupPinRequest, user: AuthenticatedUser = Depend
     argon2_hash = _argon2_hasher.hash(req.pin)
 
     client = convex_db._get_client()
-    await asyncio.to_thread(
-        client.mutation,
-        "admin:setupAdminPinInternal",
-        {
-            "userId": user.user_id,
-            "email": user.email,
-            "argon2Hash": argon2_hash,
-            "__internalApiKey": os.getenv("INTERNAL_API_KEY", ""),
-        },
-    )
-    return {"status": "ok", "message": "Argon2id PIN initialized successfully."}
+    try:
+        await asyncio.to_thread(
+            client.mutation,
+            "admin:setupAdminPinInternal",
+            {
+                "userId": user.user_id,
+                "email": user.email,
+                "argon2Hash": argon2_hash,
+                "__internalApiKey": os.getenv("INTERNAL_API_KEY", ""),
+            },
+        )
+        return {"status": "ok", "message": "Argon2id PIN initialized successfully."}
+    except Exception as e:
+        logger.error(f"[SETUP-PIN-ERROR] Convex mutation failed: {e}")
+        raise HTTPException(500, f"Database PIN setup failed: {e}")
 
 
 @router.post("/shield/verify-pin")
