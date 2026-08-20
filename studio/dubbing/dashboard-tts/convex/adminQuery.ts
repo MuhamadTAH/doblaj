@@ -88,9 +88,16 @@ export const listJobsPaginated = query({
     await warnOnAuthFailure(ctx, "LIST-JOBS");
     try {
       if (args.statusFilter && args.statusFilter !== "ALL") {
+        const targetLower = args.statusFilter.toLowerCase();
+        const targetUpper = args.statusFilter.toUpperCase();
         return await ctx.db
           .query("dubbingJobs")
-          .filter((q: any) => q.eq(q.field("status"), args.statusFilter))
+          .filter((q: any) =>
+            q.or(
+              q.eq(q.field("status"), targetLower),
+              q.eq(q.field("status"), targetUpper)
+            )
+          )
           .order("desc")
           .paginate(args.paginationOpts);
       }
