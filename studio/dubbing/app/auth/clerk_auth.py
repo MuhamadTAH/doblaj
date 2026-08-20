@@ -1,12 +1,17 @@
 """Clerk JWT authentication and Zero-Trust RBAC for the dubbing service."""
+import asyncio
 from dataclasses import dataclass
+import logging
 import os
 import time
 from typing import Any, Dict, Optional, Set
 
+import httpx
 import jwt
 from fastapi import Cookie, Header, HTTPException, Request
 from jwt import PyJWKClient
+
+logger = logging.getLogger(__name__)
 
 CLERK_FRONTEND_API = os.getenv("CLERK_FRONTEND_API")
 CLERK_ISSUER_URL = (
@@ -204,10 +209,9 @@ async def _resolve_legacy_workspace_id(org_or_workspace_id: str, user_id: str) -
         if created and created.get("legacyId"):
             return created["legacyId"]
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"[WORKSPACE_RESOLVE] failed: {e}")
+        logger.warning(f"[WORKSPACE_RESOLVE] failed: {e}")
 
-    return ""
+    return org_or_workspace_id or user_id
 
 
 async def require_user(
