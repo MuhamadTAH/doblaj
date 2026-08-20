@@ -287,7 +287,16 @@ export default function VideoDubbingPage() {
             }
             return;
           }
-          // Silent — keep polling; transient errors shouldn't kill the job.
+          if (e?.status === 404 || (e?.message && e.message.includes("404")) || (e?.detail && e.detail.toLowerCase().includes("not found"))) {
+            setPhase("failed");
+            setError("Job was terminated or not found.");
+            if (pollRef.current) {
+              window.clearInterval(pollRef.current);
+              pollRef.current = null;
+            }
+            return;
+          }
+          // Silent — keep polling for transient network blips; permanent errors stop above.
           console.warn("poll err", e);
         }
       }, 1500);
