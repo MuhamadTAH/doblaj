@@ -162,33 +162,48 @@ async def assemble_final_video(
         
     logger.info("[ASSEMBLER] Arabic voice track created (absolute anchors): %s", arabic_voice_wav)
     
-    # Mix Arabic dialogue with background SFX/music
+    # Mix Arabic dialogue with background SFX/music via Broadcast DialogueDucker
     final_output_path = str(work / "assembled" / "final_dubbed.mp4")
     Path(final_output_path).parent.mkdir(parents=True, exist_ok=True)
     
-    if reference_profile:
-        from app.services.vcta.reference_mastering import compile_with_reference_mastering
-        logger.info("[ASSEMBLER] Generating final video mix via Reference Mastering (LUFS matching)...")
-        await asyncio.to_thread(
-            compile_with_reference_mastering,
-            video_source_path=video_path,
-            arabic_vocal_track_path=arabic_voice_wav,
-            background_stem_path=background_wav,
-            output_path=final_output_path,
-            reference_profile=reference_profile
-        )
-    else:
-        from app.services.vcta.audio_pipeline import compile_final_video
-        logger.info("[ASSEMBLER] Missing reference profile! Falling back to unmastered compile_final_video...")
-        await asyncio.to_thread(
-            compile_final_video,
-            video_source_path=video_path,
-            arabic_vocal_track_path=arabic_voice_wav,
-            background_stem_path=background_wav,
-            output_path=final_output_path,
-            background_duck_db=-8.0,
-            audio_bitrate="192k",
-            sample_rate=44100
-        )
+    mastered_audio_wav = str(work / "assembled" / "mastered_audio_track.wav")
+    from app.services.vcta.dialogue_ducker import stream_mix_dialogue
     
+    logger.info("[ASSEMBLER] Stage 5: Fusing Dialogue and Background stems via Broadcast DialogueDucker...")
+    await asyncio.to_thread(
+        stream_mix_dialogue,
+        track_a_path=arabic_voice_wav,
+        track_b_path=background_wav,
+        output_path=mastered_audio_wav,
+        ducking_db=-4.5,
+        target_ceiling_db=-1.0,
+    )
+
+    # Multiplex the EBU R128 True-Peak mastered audio track with the video
+    logger.info("[ASSEMBLER] Muxing mastered audio with video stream...")
+    mux_cmd = [
+        "ffmpeg", "-y",
+        "-i", video_path,
+        "-i", mastered_audio_wav,
+        "-map", "0:v:0",
+        "-map", "1:a:0",
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-ar", "48000",
+        "-movflags", "+faststart",
+        final_output_path
+    ]
+    
+    mux_result = await asyncio.to_thread(
+        subprocess.run, mux_cmd,
+        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
+    )
+    
+    if mux_result.returncode != 0:
+        logger.error("[ASSEMBLER] Video multiplexing failed: %s", mux_result.stderr[-1000:])
+        raise RuntimeError("FFmpeg failed to mux final video with mastered audio")
+        
+    logger.info("[ASSEMBLER] Final dubbed video successfully produced at: %s", final_output_path)
     return final_output_path
+
