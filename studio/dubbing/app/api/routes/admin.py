@@ -27,50 +27,14 @@ from app.core import database_convex as convex_db
 from app.core.admin_velocity import check_and_record_velocity
 from app.core.audit_streamer import ship_event_to_external_siem
 
-import hashlib
-import hmac
-import secrets
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 
-try:
-    from argon2 import PasswordHasher
-    from argon2.exceptions import VerifyMismatchError
-    _argon2_hasher = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)
-except Exception:
-    _argon2_hasher = None
+_argon2_hasher = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-
-def hash_pin_secure(pin: str) -> str:
-    if _argon2_hasher:
-        return _argon2_hasher.hash(pin)
-    salt = secrets.token_hex(16)
-    key = hashlib.scrypt(pin.encode(), salt=salt.encode(), n=16384, r=8, p=1, maxmem=32*1024*1024)
-    return f"scrypt${salt}${key.hex()}"
-
-def verify_pin_secure(stored_hash: str, pin: str) -> bool:
-    if stored_hash.startswith("$argon2"):
-        if _argon2_hasher:
-            try:
-                return _argon2_hasher.verify(stored_hash, pin)
-            except Exception:
-                return False
-        return False
-    elif stored_hash.startswith("scrypt$"):
-        parts = stored_hash.split("$")
-        if len(parts) != 3:
-            return False
-        salt = parts[1]
-        expected_hex = parts[2]
-        key = hashlib.scrypt(pin.encode(), salt=salt.encode(), n=16384, r=8, p=1, maxmem=32*1024*1024)
-        return hmac.compare_digest(key.hex(), expected_hex)
-    elif _argon2_hasher:
-        try:
-            return _argon2_hasher.verify(stored_hash, pin)
-        except Exception:
-            return False
-    return False
 
 
 # -------------------------------------------------------------
@@ -720,7 +684,7 @@ async def setup_admin_pin(req: SetupPinRequest, user: AuthenticatedUser = Depend
     if req.pin != req.confirm_pin:
         raise HTTPException(400, "PIN confirmation does not match.")
 
-    argon2_hash = hash_pin_secure(req.pin)
+    argon2_hash = _argon2_hasher.hash(req.pin)
 
     client = convex_db._get_client()
     await asyncio.to_thread(
@@ -760,7 +724,14 @@ async def verify_admin_pin(req: VerifyPinRequest, request: Request, user: Authen
         )
 
     stored_hash = pin_doc["argon2Hash"]
-    is_valid = verify_pin_secure(stored_hash, req.pin)
+    is_valid = False
+    try:
+        is_valid = _argon2_hasher.verify(stored_hash, req.pin)
+    except VerifyMismatchError:
+        is_valid = False
+    except Exception as e:
+        logger.error(f"[ARGON2-VERIFY] Verification failure: {e}")
+        is_valid = False
 
     # Record verification result in Convex database
     client_ip = request.client.host if request.client else "unknown"

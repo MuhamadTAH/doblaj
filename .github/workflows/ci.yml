@@ -1,0 +1,265 @@
+name: CI Security Gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Secret Scanning — trufflehog scans full commit history
+  # ---------------------------------------------------------------------------
+  trufflehog:
+    name: Secret Scanning (trufflehog)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: trufflehog scan (full history)
+        uses: trufflesecurity/trufflehog@v3.88.0
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug --only-verified
+
+  # ---------------------------------------------------------------------------
+  # 2. SAST — semgrep, uploads SARIF to GitHub Security tab
+  # ---------------------------------------------------------------------------
+  semgrep:
+    name: SAST (semgrep)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python (for semgrep)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install semgrep
+        run: pip install semgrep
+
+      - name: Run semgrep (security-audit + OWASP Top 10 + project rules)
+        run: |
+          semgrep scan \
+            --config p/security-audit \
+            --config p/owasp-top-ten \
+            --config .semgrep.yml \
+            --sarif --output semgrep.sarif \
+            --error \
+            --severity ERROR WARNING \
+            store/ studio/ shared/ chatwoot-clone/
+
+      - name: Upload SARIF to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  # ---------------------------------------------------------------------------
+  # 3. Dependency Scanning — osv-scanner on lockfiles
+  # ---------------------------------------------------------------------------
+  osv-scanner:
+    name: Dependency Scan (osv-scanner)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        lockfile:
+          - store/backend/yarn.lock
+          - store/backend/package-lock.json
+          - store/storefront/yarn.lock
+          - studio/dubbing/requirements.txt
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run osv-scanner
+        uses: google/osv-scanner-action@v1.5.0
+        with:
+          lockfile: ${{ matrix.lockfile }}
+          fail-on: medium
+
+      - name: Upload SARIF (composite)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: osv-scanner.sarif
+          category: osv-scanner-${{ matrix.lockfile }}
+
+  # ---------------------------------------------------------------------------
+  # 4. Container & IaC Scanning — Grype via anchore/scan-action
+  # ---------------------------------------------------------------------------
+  grype:
+    name: Container & IaC Scan (Grype)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Grype (filesystem)
+        uses: anchore/scan-action@release
+        with:
+          path: ./
+          severity-cutoff: high
+          fail-build: true
+          output-format: sarif
+          output-file: grype.sarif
+
+      - name: Upload SARIF to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: grype.sarif
+          category: grype
+
+  # ---------------------------------------------------------------------------
+  # 5. Backend Static Analysis & Quality Gate (flake8, compile, import validation)
+  # ---------------------------------------------------------------------------
+  backend-static-analysis:
+    name: Backend Quality Gate (flake8 + AST compile)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies & linters
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 ruff pytest
+          pip install -r studio/dubbing/requirements.txt
+
+      - name: Flake8 Critical Undefined Name & Syntax Checks (F821, E999)
+        run: |
+          # Stop build if there are Python syntax errors or undefined names
+          flake8 studio/dubbing/app studio/dubbing/main.py --count --select=E9,F63,F7,F82,F821 --show-source --statistics
+
+      - name: Verify Full Module Bytecode Compilation
+        run: |
+          python -m compileall -q studio/dubbing/app studio/dubbing/main.py
+
+      - name: Run Backend Pytest Suite
+        run: |
+          cd studio/dubbing && pytest tests/ -v --maxfail=3
+
+  # ---------------------------------------------------------------------------
+  # 6. Frontend TypeScript Typecheck & Build Gate
+  # ---------------------------------------------------------------------------
+  frontend-typecheck-build:
+    name: Frontend Quality Gate (tsc + vite build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: studio/dubbing/dashboard-tts/package.json
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd studio/dubbing/dashboard-tts && npm install
+
+      - name: TypeScript Static Typecheck
+        run: |
+          cd studio/dubbing/dashboard-tts && npx tsc --noEmit
+
+      - name: Vite Production Build
+        run: |
+          cd studio/dubbing/dashboard-tts && npm run build
+
+  # ---------------------------------------------------------------------------
+  # 7. E2E Browser Tests — Playwright smoke
+  # ---------------------------------------------------------------------------
+  e2e-tests:
+    name: E2E Browser Tests (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Playwright browsers (chromium only)
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Gate — only merges if all jobs pass
+  # ---------------------------------------------------------------------------
+  all-gates-passed:
+    name: All Quality & Security Gates Passed
+    needs: [trufflehog, semgrep, osv-scanner, grype, backend-static-analysis, frontend-typecheck-build, e2e-tests]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check gate results
+        run: |
+          if [ "${{ needs.trufflehog.result }}"               != "success" ] || \
+             [ "${{ needs.semgrep.result }}"                  != "success" ] || \
+             [ "${{ needs.osv-scanner.result }}"              != "success" ] || \
+             [ "${{ needs.grype.result }}"                    != "success" ] || \
+             [ "${{ needs.backend-static-analysis.result }}"  != "success" ] || \
+             [ "${{ needs.frontend-typecheck-build.result }}" != "success" ] || \
+             [ "${{ needs.e2e-tests.result }}"                != "success" ]; then
+            echo "One or more gates failed."
+            echo "  trufflehog:               ${{ needs.trufflehog.result }}"
+            echo "  semgrep:                  ${{ needs.semgrep.result }}"
+            echo "  osv-scanner:              ${{ needs.osv-scanner.result }}"
+            echo "  grype:                    ${{ needs.grype.result }}"
+            echo "  backend-static-analysis:  ${{ needs.backend-static-analysis.result }}"
+            echo "  frontend-typecheck-build: ${{ needs.frontend-typecheck-build.result }}"
+            echo "  e2e-tests:                ${{ needs.e2e-tests.result }}"
+            exit 1
+          fi
+          echo "All quality & security gates passed."

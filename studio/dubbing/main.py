@@ -3,8 +3,11 @@ import os
 import json
 import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from fastapi import FastAPI, Request, HTTPException
+
+if TYPE_CHECKING:
+    from app.auth.clerk_auth import AuthenticatedUser
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates

@@ -292,110 +292,28 @@ async def require_user_optional(
         return None
 
 
-_admin_cache: Dict[str, str] = {}
-_admin_cache_exp: Dict[str, float] = {}
-
-async def is_admin_user(user: AuthenticatedUser) -> bool:
-    allowed_roles = {"org:admin", "admin", "org:service", "super_admin"}
-    
-    # 1. Direct role property check
-    if getattr(user, "role", "") in allowed_roles:
-        return True
-
-    # 2. Check token claims for role properties
-    claims = getattr(user, "raw_claims", {}) or {}
-    meta_role = (
-        claims.get("role")
-        or claims.get("app_role")
-        or claims.get("org_role")
-        or (claims.get("public_metadata") or {}).get("role")
-        or (claims.get("metadata") or {}).get("role")
-    )
-    if meta_role in allowed_roles:
-        user.role = meta_role
-        return True
-
-    # 3. Environment variable allowlist (ADMIN_EMAILS / ADMIN_USER_IDS)
-    admin_emails = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
-    admin_user_ids = {u.strip() for u in os.getenv("ADMIN_USER_IDS", "").split(",") if u.strip()}
-    if user.email and user.email.lower() in admin_emails:
-        user.role = "admin"
-        return True
-    if user.user_id in admin_user_ids:
-        user.role = "admin"
-        return True
-
-    # 4. Check cache (5 min TTL)
-    now = time.time()
-    if user.user_id in _admin_cache and _admin_cache_exp.get(user.user_id, 0) > now:
-        user.role = _admin_cache[user.user_id]
-        return True
-
-    # 5. Check Convex database for existing admin security record
-    try:
-        from convex import ConvexClient
-        convex_url = os.getenv("CONVEX_URL", "https://upbeat-scorpion-447.convex.cloud")
-        internal_key = os.getenv("INTERNAL_API_KEY", "")
-        
-        def _check_convex():
-            client = ConvexClient(convex_url)
-            pin_doc = client.query(
-                "admin:getAdminPinHashInternal",
-                {"userId": user.user_id, "__internalApiKey": internal_key}
-            )
-            return bool(pin_doc)
-
-        is_convex_admin = await asyncio.to_thread(_check_convex)
-        if is_convex_admin:
-            _admin_cache[user.user_id] = "admin"
-            _admin_cache_exp[user.user_id] = now + 300
-            user.role = "admin"
-            return True
-    except Exception as e:
-        logger.debug(f"[RBAC-CONVEX-CHECK] {e}")
-
-    # 6. Check Clerk API directly via CLERK_SECRET_KEY
-    clerk_secret = os.getenv("CLERK_SECRET_KEY", "")
-    if clerk_secret and user.user_id:
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get(
-                    f"https://api.clerk.com/v1/users/{user.user_id}",
-                    headers={"Authorization": f"Bearer {clerk_secret}"},
-                )
-                if resp.status_code == 200:
-                    user_data = resp.json()
-                    public_metadata = user_data.get("public_metadata", {})
-                    clerk_role = public_metadata.get("role", "")
-                    if clerk_role in allowed_roles:
-                        _admin_cache[user.user_id] = clerk_role
-                        _admin_cache_exp[user.user_id] = now + 300
-                        user.role = clerk_role
-                        return True
-                    org_memberships = user_data.get("organization_memberships", [])
-                    for mem in org_memberships:
-                        if mem.get("role") in allowed_roles:
-                            _admin_cache[user.user_id] = mem.get("role")
-                            _admin_cache_exp[user.user_id] = now + 300
-                            user.role = mem.get("role")
-                            return True
-        except Exception as e:
-            logger.warning(f"[RBAC-CLERK-API-CHECK] Failed to verify user with Clerk API: {e}")
-
-    return False
-
-
 async def require_admin(
     request: Request,
     authorization: Optional[str] = Header(None)
 ) -> AuthenticatedUser:
     user = await require_user(request=request, authorization=authorization)
-    if not await is_admin_user(user):
+    allowed_roles = {"org:admin", "admin", "super_admin", "org:service"}
+    
+    claims = getattr(user, "raw_claims", {}) or {}
+    token_role = (
+        claims.get("role")
+        or claims.get("org_role")
+        or claims.get("app_role")
+        or (claims.get("public_metadata") or {}).get("role")
+        or getattr(user, "role", "")
+    )
+    
+    if token_role not in allowed_roles:
         logger.warning(
-            f"[RBAC-DENIED] User {user.user_id} ({user.email}) with role '{user.role}' attempted admin endpoint"
+            f"[RBAC-DENIED] User {user.user_id} ({user.email}) with role '{token_role}' attempted admin endpoint"
         )
-        raise HTTPException(403, "Admin privileges required")
+        raise HTTPException(403, "Admin privileges required. Ensure 'role' is configured in Clerk JWT template.")
+    
     return user
 
 

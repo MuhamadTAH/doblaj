@@ -1,12 +1,14 @@
+import logging
 import os
+import uuid
+from typing import Optional
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from typing import Optional
 from app.auth.clerk_auth import require_user, require_user_or_internal, AuthenticatedUser
 from app.core import database as db
 from app.core import database_convex as convex_db
-import logging
-import uuid
 
 logger = logging.getLogger(__name__)
 
