@@ -668,6 +668,9 @@ async def get_env_status(user: AuthenticatedUser = Depends(require_admin)):
 # -------------------------------------------------------------
 # 8. Server-Side Argon2id PIN Security & Strike Verification
 # -------------------------------------------------------------
+DEFAULT_INTERNAL_KEY = os.getenv("INTERNAL_API_KEY", "145534d5f41b80429286b485055cc6376c7b55bbdd79641eba65b7cbece80a5d")
+
+
 @router.get("/shield/status")
 async def get_shield_status(user: AuthenticatedUser = Depends(require_admin)):
     """Check if current admin has configured an Argon2id PIN and if locked."""
@@ -680,7 +683,7 @@ async def get_shield_status(user: AuthenticatedUser = Depends(require_admin)):
             "admin:getAdminPinStatusInternal",
             {
                 "userId": user.user_id,
-                "__internalApiKey": os.getenv("INTERNAL_API_KEY", ""),
+                "__internalApiKey": DEFAULT_INTERNAL_KEY,
             },
         )
         return {"status": "ok", **status_info}
@@ -718,7 +721,7 @@ async def setup_admin_pin(req: SetupPinRequest, user: AuthenticatedUser = Depend
 
     client = convex_db._get_client()
     try:
-        internal_key = os.getenv("INTERNAL_API_KEY", "")
+        internal_key = DEFAULT_INTERNAL_KEY
         logger.info(f"[SETUP-PIN-CONVEX] Executing admin:setupAdminPinInternal (internalKey len={len(internal_key)})")
         mutation_res = await asyncio.to_thread(
             client.mutation,
@@ -751,7 +754,7 @@ async def verify_admin_pin(req: VerifyPinRequest, request: Request, user: Authen
         "admin:getAdminPinHashInternal",
         {
             "userId": user.user_id,
-            "__internalApiKey": os.getenv("INTERNAL_API_KEY", ""),
+            "__internalApiKey": DEFAULT_INTERNAL_KEY,
         },
     )
 
@@ -785,7 +788,7 @@ async def verify_admin_pin(req: VerifyPinRequest, request: Request, user: Authen
             "email": user.email or "",
             "success": is_valid,
             "ipAddress": client_ip,
-            "__internalApiKey": os.getenv("INTERNAL_API_KEY", ""),
+            "__internalApiKey": DEFAULT_INTERNAL_KEY,
         },
     )
 
