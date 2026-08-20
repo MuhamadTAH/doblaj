@@ -1,4 +1,6 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+import { getApiBaseUrl } from "../lib/apiClient";
+
+const API_BASE = getApiBaseUrl();
 
 export async function getTelegramLinkNonce(
   fetchClient: typeof fetch,

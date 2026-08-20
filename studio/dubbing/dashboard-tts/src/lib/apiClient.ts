@@ -1,5 +1,23 @@
 import { AuthFailedError, AuthNetworkError, HttpError } from '../hooks/useApi';
 
+export function getApiBaseUrl(): string {
+  const envUrl = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || "") as string;
+  if (envUrl && typeof envUrl === "string" && envUrl.trim().length > 0) {
+    return envUrl.trim().replace(/\/$/, "");
+  }
+
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host && host !== "localhost" && host !== "127.0.0.1") {
+      return "https://api.doblaj.com";
+    }
+  }
+
+  return "";
+}
+
+export const API_BASE = getApiBaseUrl();
+
 export interface TokenGetter {
   (options?: { template?: string; skipCache?: boolean }): Promise<string | null>;
 }

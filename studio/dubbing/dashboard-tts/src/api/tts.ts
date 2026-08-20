@@ -6,9 +6,10 @@
 // Pird: when deployed to CF Pages (doblaj.com) the API lives at api.doblaj.com,
 // not on the same origin. VITE_API_BASE_URL is set in the Pages dashboard and
 // injected at build time. Empty in dev -> fetch uses a relative path so Vite's
-// proxy in vite.config.ts can forward /api and /video to localhost:8002.
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+import { getApiBaseUrl } from '../lib/apiClient';
 import { AuthFailedError, AuthNetworkError } from '../hooks/useApi';
+
+const API_BASE = getApiBaseUrl();
 export type TtsRequest = {
   text: string;
   voice_id: string;

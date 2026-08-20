@@ -1,11 +1,10 @@
-import { uploadInChunksWithProgress, uploadWithAuthProgress, type TokenGetter, type UploadProgressData } from "../lib/apiClient";
+import { uploadInChunksWithProgress, uploadWithAuthProgress, getApiBaseUrl, type TokenGetter, type UploadProgressData } from "../lib/apiClient";
 
 // Dubbing API client. Calls /video/* through FastAPI. FastAPI verifies
 // the Clerk session cookie set by the shell, then proxies reads/writes
 // to the Convex backend.
 
-// Pird: see api/tts.ts API_BASE note. Same env var drives /video/* too.
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+const API_BASE = getApiBaseUrl();
 
 export type DubJobStatus = "pending" | "processing" | "completed" | "failed";
 

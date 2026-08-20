@@ -1,14 +1,4 @@
-import { getDubbingApiToken, TokenGetter } from "../lib/apiClient";
-
-export const API_BASE = (
-  import.meta.env.VITE_API_BASE_URL ??
-  import.meta.env.VITE_API_BASE ??
-  (typeof window !== "undefined" &&
-  (window.location.hostname.includes("doblaj.com") ||
-    window.location.hostname.includes("pages.dev"))
-    ? "https://api.doblaj.com"
-    : "")
-).replace(/\/$/, "");
+import { getDubbingApiToken, getApiBaseUrl, TokenGetter } from "../lib/apiClient";
 
 export async function adminFetch(
   getToken: TokenGetter,
@@ -16,9 +6,10 @@ export async function adminFetch(
   options: RequestInit = {}
 ): Promise<Response> {
   const token = await getDubbingApiToken(getToken, false);
+  const apiBase = getApiBaseUrl();
   const url = endpoint.startsWith("http")
     ? endpoint
-    : `${API_BASE}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+    : `${apiBase}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
   const headers = new Headers(options.headers || {});
   headers.set("Authorization", `Bearer ${token}`);
