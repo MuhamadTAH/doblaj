@@ -28,8 +28,13 @@ export const getAdminMetrics = query({
     try {
       const allJobs = await ctx.db.query("dubbingJobs").take(500).catch(() => []);
 
+      const TERMINAL_STATUSES = ["COMPLETED", "FAILED", "DEAD_LETTER", "CANCELLED", "CANCELLED_PURGED"];
+
       const queuedJobs = allJobs.filter((j: any) => (j.status || "").toUpperCase() === "QUEUED");
-      const processingJobs = allJobs.filter((j: any) => (j.status || "").toUpperCase() === "PROCESSING");
+      const processingJobs = allJobs.filter((j: any) => {
+        const st = (j.status || "").toUpperCase();
+        return st !== "" && !TERMINAL_STATUSES.includes(st);
+      });
       const deadLetterJobs = allJobs.filter((j: any) => (j.status || "").toUpperCase() === "DEAD_LETTER");
       const failedJobs = allJobs.filter((j: any) => (j.status || "").toUpperCase() === "FAILED");
       const completedJobs = allJobs.filter((j: any) => (j.status || "").toUpperCase() === "COMPLETED");
@@ -88,8 +93,26 @@ export const listJobsPaginated = query({
     await warnOnAuthFailure(ctx, "LIST-JOBS");
     try {
       if (args.statusFilter && args.statusFilter !== "ALL") {
-        const targetLower = args.statusFilter.toLowerCase();
         const targetUpper = args.statusFilter.toUpperCase();
+
+        if (targetUpper === "PROCESSING") {
+          return await ctx.db
+            .query("dubbingJobs")
+            .filter((q: any) =>
+              q.and(
+                q.neq(q.field("status"), "completed"),
+                q.neq(q.field("status"), "COMPLETED"),
+                q.neq(q.field("status"), "failed"),
+                q.neq(q.field("status"), "FAILED"),
+                q.neq(q.field("status"), "dead_letter"),
+                q.neq(q.field("status"), "DEAD_LETTER")
+              )
+            )
+            .order("desc")
+            .paginate(args.paginationOpts);
+        }
+
+        const targetLower = args.statusFilter.toLowerCase();
         return await ctx.db
           .query("dubbingJobs")
           .filter((q: any) =>
