@@ -4,9 +4,8 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "cd studio/dubbing && python main.py",
+    "startCommand": "python main.py",
     "restartPolicyType": "ON_FAILURE",
-    "healthcheckPath": "/healthz",
-    "healthcheckTimeout": 60
+    "healthcheckPath": "/healthz"
   }
 }
