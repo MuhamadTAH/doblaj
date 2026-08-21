@@ -1,14 +1,19 @@
 """
 Node 2: Audio Separation & Segmentation Service
 Zero-download headless audio extraction + Demucs htdemucs isolation + Silero VAD dual-fidelity segmentation.
+Hardened for production with OOM guards, comprehensive diagnostics, and explicit Convex status reporting.
 """
 from __future__ import annotations
 
+import asyncio
+import gc
 import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
+import traceback
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -29,7 +34,7 @@ _SILERO_UTILS = None
 def get_silero_vad():
     global _SILERO_MODEL, _SILERO_UTILS
     if _SILERO_MODEL is None:
-        logger.info("[NODE-2] Loading Silero VAD model...")
+        logger.info("[NODE-2] Loading Silero VAD model into memory...")
         model, utils = torch.hub.load(
             repo_or_dir="snakers4/silero-vad",
             model="silero_vad",
@@ -58,33 +63,47 @@ def extract_44k_audio_from_url(r2_signed_url: str, output_wav_path: str) -> None
         "-ac", "2",
         output_wav_path,
     ]
-    logger.info("[NODE-2] Running headless audio extraction from R2 stream...")
+    logger.info("[NODE-2][STEP 1] Running FFmpeg audio extraction to %s...", output_wav_path)
     proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     if proc.returncode != 0:
-        raise RuntimeError(f"FFmpeg headless audio extraction failed: {proc.stderr.decode('utf-8', errors='ignore')}")
+        err_msg = proc.stderr.decode("utf-8", errors="ignore")
+        logger.error("[NODE-2][STEP 1] FFmpeg extraction failed: %s", err_msg)
+        raise RuntimeError(f"FFmpeg extraction failed (code {proc.returncode}): {err_msg[:400]}")
+
+    if not os.path.exists(output_wav_path) or os.path.getsize(output_wav_path) < 100:
+        raise RuntimeError(f"FFmpeg produced empty audio file at {output_wav_path}")
+
+    dur = sf.info(output_wav_path).duration
+    logger.info("[NODE-2][STEP 1] Audio extracted successfully! Duration: %.2fs, Size: %.2f MB", dur, os.path.getsize(output_wav_path) / (1024 * 1024))
 
 
 def run_demucs_isolation(input_audio_path: str, output_dir: str) -> Tuple[str, str]:
     """
     Step 2: Demucs Vocal Isolation.
     Runs Hybrid Transformer Demucs (htdemucs) in --two-stems=vocals mode.
-    Returns paths to (vocals.wav, no_vocals.wav).
+    Includes --segment 10 to prevent OOM on longer files.
     """
-    demucs_bin = shutil.which("demucs") or "demucs"
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    logger.info("[NODE-2] Running Demucs (htdemucs) on device=%s...", device)
+    logger.info("[NODE-2][STEP 2] Running Demucs (htdemucs) on device=%s with segment=10 OOM protection...", device)
 
+    # Use python -m demucs.separate or demucs binary
     cmd = [
-        demucs_bin,
+        sys.executable,
+        "-m", "demucs.separate",
         "--two-stems=vocals",
         "-n", "htdemucs",
+        "--segment", "10",
         "-d", device,
         "-o", output_dir,
         input_audio_path,
     ]
+
+    logger.info("[NODE-2][STEP 2] Executing Demucs: %s", " ".join(cmd))
     proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     if proc.returncode != 0:
-        raise RuntimeError(f"Demucs separation failed: {proc.stderr.decode('utf-8', errors='ignore')}")
+        err_msg = proc.stderr.decode("utf-8", errors="ignore")
+        logger.error("[NODE-2][STEP 2] Demucs separation failed: %s", err_msg)
+        raise RuntimeError(f"Demucs separation failed (code {proc.returncode}): {err_msg[:400]}")
 
     track_name = Path(input_audio_path).stem
     demucs_track_dir = Path(output_dir) / "htdemucs" / track_name
@@ -92,8 +111,16 @@ def run_demucs_isolation(input_audio_path: str, output_dir: str) -> Tuple[str, s
     no_vocals_path = demucs_track_dir / "no_vocals.wav"
 
     if not vocals_path.is_file() or not no_vocals_path.is_file():
-        raise FileNotFoundError(f"Demucs output stems not found at {demucs_track_dir}")
+        # Search anywhere in output_dir for vocals.wav and no_vocals.wav
+        found_vocals = list(Path(output_dir).glob("**/vocals.wav"))
+        found_no_vocals = list(Path(output_dir).glob("**/no_vocals.wav"))
+        if found_vocals and found_no_vocals:
+            vocals_path = found_vocals[0]
+            no_vocals_path = found_no_vocals[0]
+        else:
+            raise FileNotFoundError(f"Demucs output stems not found in {output_dir}")
 
+    logger.info("[NODE-2][STEP 2] Demucs vocal isolation complete! Stems at %s", demucs_track_dir)
     return str(vocals_path), str(no_vocals_path)
 
 
@@ -118,6 +145,7 @@ def get_speech_segments_silero(wav_16k_mono_path: str, min_speech_duration_ms: i
     Step 3: Silero VAD Resampling & Speech Boundary Detection.
     Returns list of speech segments: [{'start': 0.5, 'end': 4.2}, ...]
     """
+    logger.info("[NODE-2][STEP 3] Running Silero VAD speech boundary detection...")
     model, (get_speech_ts, _, read_audio, *_) = get_silero_vad()
     wav_tensor = read_audio(wav_16k_mono_path, sampling_rate=16000)
     speech_timestamps = get_speech_ts(
@@ -137,12 +165,12 @@ def get_speech_segments_silero(wav_16k_mono_path: str, min_speech_duration_ms: i
             segments.append({"start": start_sec, "end": end_sec})
 
     if not segments:
-        # Fallback: if no VAD segments triggered, treat whole audio as one segment
         data, sr = sf.read(wav_16k_mono_path)
         dur = round(len(data) / float(sr), 3)
+        logger.warning("[NODE-2][STEP 3] No distinct speech boundaries detected by VAD. Using single whole segment (0.0s - %.2fs)", dur)
         segments = [{"start": 0.0, "end": dur}]
 
-    # Natural grouping: merge tiny adjacent pauses (< 0.6s) and cap maximum chunk length to 12.0s
+    # Merge adjacent pauses (< 0.6s) and cap chunk length at 12.0s
     merged: List[Dict[str, float]] = []
     curr = segments[0]
     for nxt in segments[1:]:
@@ -155,6 +183,7 @@ def get_speech_segments_silero(wav_16k_mono_path: str, min_speech_duration_ms: i
             curr = nxt
     merged.append(curr)
 
+    logger.info("[NODE-2][STEP 3] Silero VAD generated %d speech segments.", len(merged))
     return merged
 
 
@@ -199,10 +228,14 @@ async def process_node2_separation(
     """
     user_client = client or database._get_service_role_client()
     tmp_dir = Path(tempfile.mkdtemp(prefix=f"node2_{job_id[:8]}_"))
+    logger.info("================================================================")
+    logger.info("[NODE-2] STARTING SEPARATION & SEGMENTATION FOR JOB %s", job_id)
+    logger.info("================================================================")
 
     try:
         # Step 1: Headless extraction
         source_audio_44k = str(tmp_dir / "source_44k_stereo.wav")
+        logger.info("[NODE-2] Generating presigned streaming URL for R2 key: %s", source_r2_key)
         presigned_get_url = r2.signed_url(source_r2_key, ttl_seconds=3600, inline=True)
         extract_44k_audio_from_url(presigned_get_url, source_audio_44k)
 
@@ -221,7 +254,6 @@ async def process_node2_separation(
         vocals_16k_mono = str(tmp_dir / "vocals_16k_mono.wav")
         resample_to_16k_mono(vocals_path, vocals_16k_mono)
         segments = get_speech_segments_silero(vocals_16k_mono)
-        logger.info("[NODE-2] Silero VAD identified %d speech chunks", len(segments))
 
         # Step 4 & 5: Slice original 44.1k vocals and upload to R2
         chunks_for_convex: List[Dict[str, Any]] = []
@@ -260,7 +292,7 @@ async def process_node2_separation(
             chunks=chunks_for_convex,
         )
 
-        logger.info("[NODE-2] Node 2 (Separation & Segmentation) complete for job %s!", job_id)
+        logger.info("[NODE-2] SUCCESS: Node 2 (Separation & Segmentation) complete for job %s!", job_id)
         return {
             "success": True,
             "chunks_count": len(chunks_for_convex),
@@ -269,14 +301,36 @@ async def process_node2_separation(
             "chunks": chunks_for_convex,
         }
 
+    except Exception as e:
+        logger.exception("[NODE-2] CRITICAL ERROR during Node 2 execution for job %s: %s", job_id, e)
+        # Update Convex job status to failed with exact diagnostic error
+        try:
+            c = database._get_client()
+            err_details = f"Node 2 Separation Failed: {str(e)}"
+            await asyncio.to_thread(
+                c.mutation,
+                "dubbingJobs:updateStatusInternal",
+                {
+                    "__internalApiKey": os.getenv("INTERNAL_API_KEY", ""),
+                    "jobId": job_id,
+                    "status": "failed",
+                    "error": err_details,
+                }
+            )
+        except Exception as patch_err:
+            logger.error("[NODE-2] Could not patch failure status to Convex: %s", patch_err)
+        raise
+
     finally:
-        # Step 7: Ephemeral Disk Cleanup
+        # Step 7: Ephemeral Disk Cleanup & GPU Flush
         logger.info("[NODE-2] Wiping ephemeral scratch directory %s...", tmp_dir)
         shutil.rmtree(tmp_dir, ignore_errors=True)
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()
 
 
 async def asyncio_to_thread_batch_insert(c: Any, job_id: str, bg_audio_r2_key: str, isolated_vocals_r2_key: str, chunks: List[Dict[str, Any]]):
-    import asyncio
     def _do():
         return c.mutation(
             "dubbingChunks:batchInsertChunksInternal",
