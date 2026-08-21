@@ -27,6 +27,13 @@ export const JobOperationsView: React.FC = () => {
   const [overrideProvider, setOverrideProvider] = useState("runpod");
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Live real-time subscription to the inspected job document
+  const liveJobDoc = useQuery(
+    api.adminQuery.getJobById,
+    inspectJob ? { jobId: inspectJob._id } : "skip"
+  );
+  const activeJob = liveJobDoc || inspectJob;
+
   // Live real-time subscription to chunks for inspected job
   const jobChunks = useQuery(
     api.adminQuery.listChunksForJob,
@@ -49,25 +56,30 @@ export const JobOperationsView: React.FC = () => {
     }
   };
 
-  const handlePlayStem = async (key: string, title: string) => {
-    if (!inspectJob || !key) return;
+  const handlePlayStem = async (key: string | undefined, title: string) => {
+    if (!key) {
+      alert("This audio stem or chunk has not been generated on storage yet. Run Node 2 separation first.");
+      return;
+    }
     try {
-      const res = await signMediaKey(getToken, inspectJob._id, key);
+      const res = await signMediaKey(getToken, activeJob._id, key);
       if (res.url) {
         setActiveAudioStemUrl({ key, url: res.url, title });
+      } else {
+        alert("Could not retrieve streaming URL.");
       }
     } catch (e: any) {
-      alert(`Could not sign audio stem URL: ${e.message}`);
+      alert(`Could not sign audio URL: ${e.message}`);
     }
   };
 
   const handleRunNode2 = async () => {
-    if (!inspectJob) return;
+    if (!activeJob) return;
     setNode2Running(true);
     setNode2Error(null);
     try {
-      await triggerSeparation(getToken, inspectJob._id);
-      alert("Node 2 Audio Separation & Segmentation triggered successfully! Watching chunks stream in real-time.");
+      await triggerSeparation(getToken, activeJob._id);
+      alert("Node 2 Audio Separation & Segmentation triggered! Sliced chunks will appear live below.");
     } catch (e: any) {
       setNode2Error(e.message || "Failed to trigger Node 2 separation");
     } finally {
@@ -525,14 +537,19 @@ export const JobOperationsView: React.FC = () => {
                       <span className="text-[10px] text-emerald-400 font-bold">44.1kHz Stereo</span>
                     </div>
                     <div className="text-xs font-semibold text-white truncate">
-                      {inspectJob.bgAudioR2Key || `dubbing/.../stems/no_vocals.wav`}
+                      {activeJob.bgAudioR2Key || "Not generated yet"}
                     </div>
                     <button
-                      onClick={() => handlePlayStem(inspectJob.bgAudioR2Key || `dubbing/${inspectJob.workspaceId || "ws"}/${inspectJob._id}/stems/no_vocals.wav`, "Background Stem")}
-                      className="px-2.5 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold flex items-center gap-1.5"
+                      onClick={() => handlePlayStem(activeJob.bgAudioR2Key, "Background Stem (no_vocals.wav)")}
+                      disabled={!activeJob.bgAudioR2Key}
+                      className={`px-2.5 py-1 rounded text-[11px] font-bold flex items-center gap-1.5 ${
+                        activeJob.bgAudioR2Key
+                          ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 cursor-pointer"
+                          : "bg-white/[0.04] text-ink-500 cursor-not-allowed"
+                      }`}
                     >
                       <span>▶️</span>
-                      <span>Play Background Stem</span>
+                      <span>{activeJob.bgAudioR2Key ? "Play Background Stem" : "Stem Not Ready"}</span>
                     </button>
                   </div>
 
@@ -542,14 +559,19 @@ export const JobOperationsView: React.FC = () => {
                       <span className="text-[10px] text-purple-400 font-bold">44.1kHz Master</span>
                     </div>
                     <div className="text-xs font-semibold text-white truncate">
-                      {inspectJob.isolatedVocalsR2Key || `dubbing/.../stems/vocals.wav`}
+                      {activeJob.isolatedVocalsR2Key || "Not generated yet"}
                     </div>
                     <button
-                      onClick={() => handlePlayStem(inspectJob.isolatedVocalsR2Key || `dubbing/${inspectJob.workspaceId || "ws"}/${inspectJob._id}/stems/vocals.wav`, "Vocals Stem")}
-                      className="px-2.5 py-1 rounded bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 text-[11px] font-bold flex items-center gap-1.5"
+                      onClick={() => handlePlayStem(activeJob.isolatedVocalsR2Key, "Isolated Vocals Stem (vocals.wav)")}
+                      disabled={!activeJob.isolatedVocalsR2Key}
+                      className={`px-2.5 py-1 rounded text-[11px] font-bold flex items-center gap-1.5 ${
+                        activeJob.isolatedVocalsR2Key
+                          ? "bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 cursor-pointer"
+                          : "bg-white/[0.04] text-ink-500 cursor-not-allowed"
+                      }`}
                     >
                       <span>▶️</span>
-                      <span>Play Vocals Stem</span>
+                      <span>{activeJob.isolatedVocalsR2Key ? "Play Vocals Stem" : "Stem Not Ready"}</span>
                     </button>
                   </div>
                 </div>

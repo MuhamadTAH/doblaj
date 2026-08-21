@@ -321,3 +321,25 @@ export const listChunksForJob = query({
   },
 });
 
+export const getJobById = query({
+  args: { jobId: v.string() },
+  handler: async (ctx, args) => {
+    try {
+      let realJobId: any = args.jobId;
+      if (args.jobId.length !== 32) {
+        const j = await ctx.db
+          .query("dubbingJobs")
+          .withIndex("by_legacy_id", (q: any) => q.eq("legacyId", args.jobId))
+          .first();
+        if (!j) return null;
+        realJobId = j._id;
+      }
+      return await ctx.db.get(realJobId);
+    } catch (err) {
+      console.error("[GET-JOB-BY-ID-ERROR]", err);
+      return null;
+    }
+  },
+});
+
+
