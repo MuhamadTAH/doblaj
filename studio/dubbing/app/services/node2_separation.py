@@ -92,7 +92,7 @@ def run_demucs_isolation(input_audio_path: str, output_dir: str) -> Tuple[str, s
         "-m", "demucs.separate",
         "--two-stems=vocals",
         "-n", "htdemucs",
-        "--segment", "10",
+        "--segment", "7",
         "-d", device,
         "-o", output_dir,
         input_audio_path,
