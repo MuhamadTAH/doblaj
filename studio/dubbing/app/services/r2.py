@@ -121,18 +121,20 @@ def signed_url(
 
 def signed_put_url(
     key: str,
-    content_type: str = "video/mp4",
+    content_type: Optional[str] = None,
     ttl_seconds: int = 3600,
 ) -> str:
     """Generate a presigned PUT URL for direct client-to-R2 upload."""
     client = _client()
+    params: dict = {
+        "Bucket": R2_BUCKET,
+        "Key": key,
+    }
+    if content_type:
+        params["ContentType"] = content_type
     return client.generate_presigned_url(
         "put_object",
-        Params={
-            "Bucket": R2_BUCKET,
-            "Key": key,
-            "ContentType": content_type,
-        },
+        Params=params,
         ExpiresIn=ttl_seconds,
     )
 

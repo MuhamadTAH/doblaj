@@ -84,9 +84,10 @@ export async function submitDubJobWithProgress(
   signal?: AbortSignal
 ): Promise<{ id: string; status: DubJobStatus }> {
   try {
+    console.log(`[DUBBING-UPLOAD] Attempting direct browser-to-R2 upload for file: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
     return await submitDubJobDirectR2(getToken, file, meta, onProgress, signal);
   } catch (err: any) {
-    console.warn("Direct R2 upload fallback to chunked upload:", err);
+    console.warn("[DUBBING-UPLOAD] Direct R2 pre-signed upload failed (CORS/network restriction). Seamlessly falling back to chunked streaming through API Gateway:", err);
     return await uploadInChunksWithProgress<{ id: string; status: DubJobStatus }>(
       getToken,
       API_BASE,

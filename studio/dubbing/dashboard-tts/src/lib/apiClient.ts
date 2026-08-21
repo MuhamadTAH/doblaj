@@ -554,9 +554,12 @@ export function uploadDirectToR2(
   signal?: AbortSignal
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    console.log(`[R2-DIRECT] Starting browser direct PUT to R2 (${(file.size / 1024 / 1024).toFixed(2)} MB)...`);
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", uploadUrl);
-    xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+    if (file.type) {
+      xhr.setRequestHeader("Content-Type", file.type);
+    }
 
     const startTime = Date.now();
 
@@ -566,6 +569,7 @@ export function uploadDirectToR2(
         const elapsedSec = (Date.now() - startTime) / 1000;
         const speedMBps = elapsedSec > 0 ? (e.loaded / 1024 / 1024) / elapsedSec : 0;
         const remainMB = Number(((e.total - e.loaded) / 1024 / 1024).toFixed(1));
+        console.log(`[R2-DIRECT] Progress: ${percent}% · ${(e.loaded / 1024 / 1024).toFixed(1)} / ${(e.total / 1024 / 1024).toFixed(1)} MB · ${speedMBps.toFixed(2)} MB/s`);
         onProgress({
           loaded: e.loaded,
           total: e.total,
@@ -578,14 +582,22 @@ export function uploadDirectToR2(
 
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
+        console.log(`[R2-DIRECT] Direct PUT upload succeeded with HTTP ${xhr.status}`);
         resolve();
       } else {
+        console.error(`[R2-DIRECT] Direct PUT failed with HTTP ${xhr.status}: ${xhr.responseText}`);
         reject(new HttpError(xhr.status, `Direct R2 upload failed with HTTP ${xhr.status}: ${xhr.responseText}`));
       }
     };
 
-    xhr.onerror = () => reject(new AuthNetworkError("Network error during direct R2 upload"));
-    xhr.ontimeout = () => reject(new HttpError(408, "Direct R2 upload timed out"));
+    xhr.onerror = () => {
+      console.warn("[R2-DIRECT] Direct R2 PUT network/CORS error encountered. Falling back to backend chunked ingestion.");
+      reject(new AuthNetworkError("Network/CORS error during direct R2 upload"));
+    };
+    xhr.ontimeout = () => {
+      console.error("[R2-DIRECT] Direct R2 PUT timed out");
+      reject(new HttpError(408, "Direct R2 upload timed out"));
+    };
 
     if (signal) {
       signal.addEventListener("abort", () => {
