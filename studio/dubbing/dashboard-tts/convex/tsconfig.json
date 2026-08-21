@@ -1,0 +1,14 @@
+{
+  /* This TypeScript configuration is for Convex functions. */
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "lib": ["ES2021"],
+    "allowJs": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["./**/*"]
+}

@@ -371,8 +371,8 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
             if tts_duration > 0:
                 scale = tts_duration / max(0.1, video_slot_duration)
                 
-                if scale < 0.95 or scale > 1.20:
-                    logger.warning(f"[PHYSICS] Post-TTS validation failed! Scale {scale:.2f} is out of bounds [0.95, 1.20]. Bouncing back to Gemini.")
+                if scale < 0.95 or scale > 1.15:
+                    logger.warning(f"[PHYSICS] Post-TTS validation failed! Scale {scale:.2f} is out of bounds [0.95, 1.15]. Bouncing back to Gemini.")
                     
                     if scale < 0.95:
                         # Asymmetric 1.10x expansion multiplier to provide safe speedup headroom
@@ -412,7 +412,7 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
                         bypass_initial_translation = False
                         continue
                 else:
-                    logger.info(f"[PHYSICS] Post-TTS validation passed! Scale {scale:.2f} is perfectly within [0.95, 1.20].")
+                    logger.info(f"[PHYSICS] Post-TTS validation passed! Scale {scale:.2f} is perfectly within [0.95, 1.15].")
             else:
                 logger.warning("[PHYSICS] TTS duration measurement failed. Proceeding blindly.")
 

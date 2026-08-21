@@ -731,6 +731,59 @@ async def trigger_audio_separation(
     )
 
 
+@router.post("/jobs/{job_id}/transcribe", response_model=VideoJobResponse)
+@_rate_limited("10/minute")
+async def trigger_transcribe(
+    job_id: str,
+    request: Request,
+    user: AuthenticatedUser = Depends(require_user_or_internal),
+    background_tasks: BackgroundTasks = None,
+) -> VideoJobResponse:
+    """Manually/programmatically trigger Node 3 (Kurdish Sorani Speech-to-Text with granular live telemetry)."""
+    from app.core import db as database
+    from app.services.node3_transcription import process_node3_transcription
+    user_client = database.get_user_client(user.access_token)
+
+    job = await database.get_job(user_client, workspace_id=user.workspace_id, job_id=job_id)
+    if not job:
+        job = await database.get_job(user_client, workspace_id="", job_id=job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+    ws_id = job.get("workspace_id") or job.get("workspaceId") or user.workspace_id or "default"
+
+    async def run_asr():
+        try:
+            logger.info(f"[NODE-3] Triggering Kurdish ASR for job {job_id}")
+            await process_node3_transcription(
+                job_id=job_id,
+                workspace_id=ws_id,
+            )
+        except Exception as e:
+            logger.error(f"[NODE-3] Error executing Kurdish ASR on job {job_id}: {e}")
+            try:
+                await database.update_job_status(user_client, workspace_id=ws_id, job_id=job_id, status="failed", error=str(e))
+            except Exception:
+                pass
+
+    if background_tasks:
+        background_tasks.add_task(run_asr)
+    else:
+        asyncio.create_task(run_asr())
+
+    return VideoJobResponse(
+        id=job["id"],
+        store_id=job.get("store_id", ""),
+        status="processing",
+        progress=30,
+        input_path="",
+        output_path=job.get("result_video_r2_key") or "",
+        error="",
+        created_at=str(job.get("created_at", "")),
+        updated_at=str(job.get("updated_at", "")),
+    )
+
+
 @router.post("/jobs", response_model=VideoJobResponse)
 # PIRD-010: per-IP rate limit on job creation.
 @_rate_limited("5/minute")

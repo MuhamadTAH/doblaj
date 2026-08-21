@@ -99,7 +99,7 @@ def run_translation_pacing_calibration(session_ids: list):
     
     # Scale Ratio Violations
     violators_fast = [c for c in chunks_data if c["scale_ratio"] < 0.95]
-    violators_slow = [c for c in chunks_data if c["scale_ratio"] > 1.20]
+    violators_slow = [c for c in chunks_data if c["scale_ratio"] > 1.15]
     
     # Pird: was hardcoded to a developer's local antigravity brain dir with a
     # UUID fingerprint. See pass-7 review. Now respects CALIBRATION_OUT env
@@ -114,7 +114,7 @@ def run_translation_pacing_calibration(session_ids: list):
         f.write(f"**Total Chunks Analyzed:** {len(chunks_data)}\n")
         f.write("\n### Scale Ratio Violations (FFmpeg limits)\n")
         f.write(f"- **Too Fast (Scale < 0.95):** {len(violators_fast)} chunks\n")
-        f.write(f"- **Too Slow (Scale > 1.20):** {len(violators_slow)} chunks\n")
+        f.write(f"- **Too Slow (Scale > 1.15):** {len(violators_slow)} chunks\n")
         f.write("\n### PERFECTED Macro-Averages (Corrected for Speed Violations)\n")
         f.write(f"- **Slow Group Baseline:** {avg_slow:.2f} (A:K Word Ratio) | Average Speaking Speed: {avg_slow_wps:.2f} WPS\n")
         f.write(f"- **Normal Group Baseline:** {avg_normal:.2f} (A:K Word Ratio) | Average Speaking Speed: {avg_normal_wps:.2f} WPS\n")
@@ -128,8 +128,8 @@ def run_translation_pacing_calibration(session_ids: list):
             violation_str = "-"
             if scale_ratio < 0.95:
                 violation_str = f"{scale_ratio - 0.95:.2f}"
-            elif scale_ratio > 1.20:
-                violation_str = f"+{scale_ratio - 1.20:.2f}"
+            elif scale_ratio > 1.15:
+                violation_str = f"+{scale_ratio - 1.15:.2f}"
                 
             speed_mult = c['kurdish_wps'] / avg_normal_wps if avg_normal_wps > 0 else 1.0
                 

@@ -192,18 +192,49 @@ def route_voice(chunk: dict, session_state: dict) -> tuple[str | None, str | Non
         logger.info("[VOICE-ROUTER] State A: Custom clone from global_voice_ref.wav")
         return None, global_voice_ref
     
-    # State C: Dynamic Per-Chunk Voice & Energy Reference
-    # Uses the chunk's own audio so the TTS model captures the exact pitch, volume, and emotional energy of that specific moment
-    chunk_audio = chunk.get("audio_file", "") or chunk.get("voice_reference", "")
-    if chunk_audio and os.path.exists(chunk_audio):
-        logger.info("[VOICE-ROUTER] State C: Using chunk's own audio for dynamic energy & voice cloning: %s", os.path.basename(chunk_audio))
-        return None, chunk_audio
-
+    # State C: Dual-Tier Master Timbre Pool or Distinct Preset Fallback
     speaker_id = chunk.get("speaker", "A")
-    speaker_ref = os.path.join(work_dir, f"speaker_ref_{speaker_id}.wav")
-    if os.path.exists(speaker_ref):
-        logger.info("[VOICE-ROUTER] Fallback: Using global speaker_ref for Speaker %s", speaker_id)
-        return None, speaker_ref
+    master_ref = os.path.join(work_dir, f"master_ref_{speaker_id}.wav")
     
-    logger.error("[VOICE-ROUTER] No voice reference available for chunk %s", chunk.get("chunk_id"))
-    return None, None
+    # Check if a clean pooled master reference exists
+    if os.path.exists(master_ref):
+        import soundfile as sf
+        try:
+            dur = sf.info(master_ref).duration
+            if dur >= 4.0:
+                logger.info(
+                    "[VOICE-ROUTER] State C (Tier 1 Clone): Using Master Timbre Reference for %s (%.2fs): %s",
+                    speaker_id, dur, os.path.basename(master_ref)
+                )
+                return None, master_ref
+            else:
+                logger.warning(
+                    "[VOICE-ROUTER] Micro-Speaker Alert: %s has only %.2fs of audio. Fish Audio requires >=4.0s for stable cloning.",
+                    speaker_id, dur
+                )
+        except Exception as e:
+            logger.warning("[VOICE-ROUTER] Error checking master_ref duration: %s", e)
+
+    # State D (Tier 2 Preset Routing): Micro-Speakers (<4s) route to distinct Iraqi Arabic Character Presets
+    # This prevents the 1-second reference collapse and guarantees a distinct voice from the host!
+    MALE_IRAQI_PRESETS = [
+        "295e8c434c03469198a02ed8650ed9c6",  # Anwar (Warm male vendor/narrator)
+        "827db112349a425f8aa9069d30daae3d",  # Omar (Energetic male)
+        "93edb401ddf94e9a836a74f141be5258",  # Karwan (Colloquial male)
+    ]
+    FEMALE_IRAQI_PRESETS = [
+        "564ff4b232d6427f91513321de5fb651",  # Layla (Soft female)
+        "18372167389a425f8aa9069d30daae3c",  # Najla (Friendly female)
+    ]
+
+    # Map speaker letter to a deterministic secondary preset
+    spk_char = speaker_id.replace("Speaker_", "")
+    spk_idx = ord(spk_char[0]) - ord('A') if spk_char else 1
+    
+    # Assign distinct secondary preset voice
+    preset_id = MALE_IRAQI_PRESETS[spk_idx % len(MALE_IRAQI_PRESETS)]
+    logger.info(
+        "[VOICE-ROUTER] State D (Tier 2 Character Preset): Routing micro-speaker %s to distinct Iraqi preset %s",
+        speaker_id, preset_id
+    )
+    return preset_id, None

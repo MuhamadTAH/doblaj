@@ -102,6 +102,48 @@ export const updateInternal = mutation({
   },
 });
 
+export const updateChunkByIndexInternal = mutation({
+  args: {
+    jobId: v.string(),
+    chunkIndex: v.number(),
+    status: v.string(),
+    patch: v.optional(v.any()),
+    __internalApiKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireInternalApiKey(args.__internalApiKey);
+    let realJobId: any = args.jobId;
+    if (args.jobId.length !== 32) {
+      const j = await ctx.db
+        .query("dubbingJobs")
+        .withIndex("by_legacy_id", (q: any) => q.eq("legacyId", args.jobId))
+        .first();
+      if (j) realJobId = j._id;
+    }
+    const chunk = await ctx.db
+      .query("dubbingChunks")
+      .filter((q: any) =>
+        q.and(
+          q.or(q.eq(q.field("jobId"), realJobId), q.eq(q.field("jobId"), args.jobId)),
+          q.eq(q.field("chunkIndex"), args.chunkIndex)
+        )
+      )
+      .first();
+    if (!chunk) throw new ConvexError("CHUNK_NOT_FOUND");
+    const safePatch: Record<string, unknown> = {
+      status: args.status,
+      updatedAt: new Date().toISOString(),
+    };
+    if (args.patch) {
+      for (const [k, v] of Object.entries(args.patch)) {
+        safePatch[k] = v;
+      }
+    }
+    await ctx.db.patch(chunk._id, safePatch);
+    return await ctx.db.get(chunk._id);
+  },
+});
+
 export const insertInternal = mutation({
   args: {
     legacyId: v.string(),

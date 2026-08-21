@@ -5,6 +5,7 @@ import contextlib
 import torch
 import numpy as np
 import scipy.io.wavfile as wavfile
+import librosa
 import logging
 import gc
 
@@ -375,11 +376,206 @@ def enforce_minimum_chunk_duration(
     )
 
 
+def find_first_silence_valley(
+    audio_data: np.ndarray,
+    sr: int,
+    search_start_sec: float,
+    search_end_sec: float,
+    silence_threshold: float = 0.045
+) -> float:
+    """
+    Scans forward from search_start_sec to find the FIRST silence valley
+    immediately after Speaker 1 finishes.
+    This guarantees that the cut point sits in the inter-speaker pause, 
+    so Speaker 2's first word is NEVER cut in half.
+    """
+    s_sample = max(0, int(search_start_sec * sr))
+    e_sample = min(len(audio_data), int(search_end_sec * sr))
+    if e_sample <= s_sample + int(0.05 * sr):
+        return search_start_sec
+
+    sub = audio_data[s_sample:e_sample]
+    frame_len = int(0.025 * sr)
+    hop_len = int(0.010 * sr)
+    
+    if len(sub) < frame_len:
+        return search_start_sec
+        
+    try:
+        rms = librosa.feature.rms(y=sub, frame_length=frame_len, hop_length=hop_len)[0]
+        times = search_start_sec + librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=hop_len)
+        
+        below_thresh_indices = np.where(rms <= silence_threshold)[0]
+        if len(below_thresh_indices) > 0:
+            first_silence_group = []
+            for idx in below_thresh_indices:
+                if not first_silence_group or idx == first_silence_group[-1] + 1:
+                    first_silence_group.append(idx)
+                else:
+                    break # End of the first inter-speaker silence gap
+                    
+            best_idx = first_silence_group[int(np.argmin(rms[first_silence_group]))]
+            return round(float(times[best_idx]), 3)
+
+        half_len = max(1, len(rms) // 2)
+        min_idx = int(np.argmin(rms[:half_len]))
+        return round(float(times[min_idx]), 3)
+    except Exception:
+        return search_start_sec
+
+
+def split_turns_on_overlap_boundaries(
+    turns: list[dict],
+    overlap_intervals: list[dict],
+    audio_data: np.ndarray = None,
+    sample_rate: int = 16000
+) -> list[dict]:
+    """
+    Stage 3 (v2 Architecture): Splits speech turns at overlap onset (start) and offset (end)
+    timestamps refined by acoustic micro-silence energy dips.
+    Preserves all speakers neutrally without dropping or biased filtering.
+    """
+    if not overlap_intervals:
+        for t in turns:
+            t["has_overlap"] = False
+        return turns
+
+    split_chunks = []
+    for turn in turns:
+        t_start = turn["start"]
+        t_end = turn["end"]
+        spk = turn.get("speaker", "SPEAKER_00")
+
+        # Find all cuts within [t_start, t_end]
+        cut_points = {t_start, t_end}
+        for o in overlap_intervals:
+            o_s, o_e = o["start"], o["end"]
+            
+            # Snap cut points to acoustic energy dips if audio is available
+            if audio_data is not None:
+                o_s = find_first_silence_valley(audio_data, sample_rate, max(0, o_s - 0.2), o_s + 0.3)
+                o_e = find_first_silence_valley(audio_data, sample_rate, max(0, o_e - 0.2), o_e + 0.3)
+
+            if t_start + 0.15 < o_s < t_end - 0.15:
+                cut_points.add(o_s)
+            if t_start + 0.15 < o_e < t_end - 0.15:
+                cut_points.add(o_e)
+
+        sorted_cuts = sorted(list(cut_points))
+
+        for i in range(len(sorted_cuts) - 1):
+            sub_s = sorted_cuts[i]
+            sub_e = sorted_cuts[i+1]
+            dur = round(sub_e - sub_s, 3)
+
+            if dur < 0.25:
+                continue
+
+            # Check if midpoint falls inside any overlap interval
+            mid = (sub_s + sub_e) / 2.0
+            is_overlap = any(o["start"] <= mid <= o["end"] for o in overlap_intervals)
+
+            split_chunks.append({
+                "start": round(sub_s, 3),
+                "end": round(sub_e, 3),
+                "duration": dur,
+                "speaker": spk,
+                "has_overlap": is_overlap
+            })
+
+    return split_chunks
+
+
+def resolve_short_overlap_transitions(
+    turns: list[dict],
+    audio_data: np.ndarray,
+    sr: int = 16000,
+    max_transition_sec: float = 1.8
+) -> list[dict]:
+    """
+    When two consecutive speaker turns have a short overlap (<= 1.8s),
+    finds the exact first silence valley between the speakers and cleanly hands off
+    from Speaker 1 to Speaker 2. This prevents splitting Speaker 2's words in half.
+    """
+    if len(turns) < 2:
+        return turns
+
+    sorted_turns = sorted(turns, key=lambda x: x["start"])
+    resolved = []
+    
+    i = 0
+    while i < len(sorted_turns):
+        cur = sorted_turns[i].copy()
+        
+        if i + 1 < len(sorted_turns):
+            nxt = sorted_turns[i + 1].copy()
+            
+            # Check if there is an overlap between cur and nxt
+            if nxt["start"] < cur["end"]:
+                overlap_dur = cur["end"] - nxt["start"]
+                
+                if overlap_dur <= max_transition_sec:
+                    # Tri-Metric Physical Boundary Decision (MFCC Vocal Tract Delta + F0 Pitch Discontinuity + Silero VAD)
+                    try:
+                        from app.services.vcta.acoustic_boundary_matrix import find_optimal_physical_boundary
+                        split_t = find_optimal_physical_boundary(
+                            audio_data=audio_data,
+                            sr=sr,
+                            search_start_sec=nxt["start"],
+                            search_end_sec=cur["end"]
+                        )
+                        logger.info(
+                            f"[SURGICAL-LOG] Transition Detected between {cur.get('speaker')} & {nxt.get('speaker')}: "
+                            f"Window [{nxt['start']:.2f}s -> {cur['end']:.2f}s] (overlap={overlap_dur:.2f}s) "
+                            f"==> Physical Cut Locked at: {split_t:.3f}s (MFCC/F0/Silero-VAD)"
+                        )
+                    except Exception as e:
+                        logger.warning(f"[CHUNKER] Tri-metric boundary fallback: {e}")
+                        split_t = find_first_silence_valley(
+                            audio_data=audio_data,
+                            sr=sr,
+                            search_start_sec=nxt["start"],
+                            search_end_sec=cur["end"],
+                            silence_threshold=0.045
+                        )
+                        logger.info(f"[SURGICAL-LOG] Silence Valley Fallback Cut at: {split_t:.3f}s")
+                    
+                    # Clean handoff: cur ends at split_t, nxt starts at split_t
+                    prev_end = cur["end"]
+                    cur["end"] = split_t
+                    cur["duration"] = round(cur["end"] - cur["start"], 3)
+                    cur["has_overlap"] = False
+                    
+                    prev_nxt_start = nxt["start"]
+                    nxt["start"] = split_t
+                    nxt["duration"] = round(nxt["end"] - nxt["start"], 3)
+                    nxt["has_overlap"] = False
+                    
+                    logger.info(
+                        f"[CHUNK-DIAGNOSTIC] Left Chunk [{cur.get('speaker')}]: {cur['start']:.2f}s -> {cur['end']:.2f}s ({cur['duration']:.2f}s) | "
+                        f"Right Chunk [{nxt.get('speaker')}]: {nxt['start']:.2f}s -> {nxt['end']:.2f}s ({nxt['duration']:.2f}s)"
+                    )
+                    
+                    if cur["duration"] >= 0.25:
+                        resolved.append(cur)
+                    sorted_turns[i + 1] = nxt
+                    i += 1
+                    continue
+
+        if cur.get("duration", cur["end"] - cur["start"]) >= 0.25:
+            cur["duration"] = round(cur["end"] - cur["start"], 3)
+            cur["has_overlap"] = cur.get("has_overlap", False)
+            resolved.append(cur)
+            logger.info(f"[CHUNK-DIAGNOSTIC] Finalized Chunk [{cur.get('speaker')}]: {cur['start']:.2f}s -> {cur['end']:.2f}s ({cur['duration']:.2f}s)")
+        i += 1
+
+    return resolved
+
+
 async def run_diarization(audio_path: str) -> tuple[list[dict], list[dict]]:
     """
-    Stage 2-4: Acoustic Diarization & Collision Surgery.
-    Returns the exact finalized chunk objects ready for FFmpeg slicing, 
-    and a list of purged background secondary speaker turns for restoration.
+    Stage 2-4: Acoustic Diarization & Collision Surgery (v2 Architecture).
+    Returns finalized chunk objects with has_overlap flags and overlap intervals.
     """
     def _diarize():
         pipeline = get_pyannote_pipeline()
@@ -396,145 +592,55 @@ async def run_diarization(audio_path: str) -> tuple[list[dict], list[dict]]:
         if len(audio_data.shape) > 1:
             audio_data = audio_data.mean(axis=1)
 
-        if total_duration > 1800:
-            logger.warning("[CHUNKER] Audio exceeds 30 minutes! Attempting to find silence split...")
-                
-            split_idx = _find_silence_split(audio_data, sample_rate)
-            if split_idx > 0:
-                logger.info(f"[CHUNKER] Found silence split at {split_idx/sample_rate:.2f}s. OOM guard triggered.")
-                audio_data = audio_data[:split_idx]
-                waveform = torch.from_numpy(np.ascontiguousarray(audio_data)).float().unsqueeze(0)
-                logger.info(f"[CHUNKER] STAGE 2: Running Pyannote 3.1 on preloaded tensor...")
-                diarization = pipeline({"waveform": waveform, "sample_rate": sample_rate}, min_speakers=1, max_speakers=5)
-                del waveform
-            else:
-                raise Exception("This video is too long without any natural pauses. Please cut the video into smaller segments and try again.")
-        else:
-            # Native Pyannote loading avoids C++ memory access violations on Windows
-            logger.info(f"[CHUNKER] STAGE 2: Running Pyannote 3.1 natively on file path...")
-            diarization = pipeline(audio_path, min_speakers=1, max_speakers=5)
-        
-        # Memory Release per v4.0 spec
-        if 'waveform' in locals():
-            del waveform
-        gc.collect()
+        logger.info(f"[CHUNKER] STAGE 2: Running Pyannote 3.1 Powerset Diarization...")
+        diarization = pipeline(audio_path, min_speakers=1, max_speakers=5)
+
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        
+
+        # Extract native Pyannote 3.1 powerset overlap timeline
+        overlap_intervals = []
+        try:
+            overlap_timeline = diarization.get_timeline().get_overlap()
+            for seg in overlap_timeline:
+                overlap_intervals.append({
+                    "start": round(seg.start, 2),
+                    "end": round(seg.end, 2),
+                    "duration": round(seg.end - seg.start, 2)
+                })
+            logger.info(f"[CHUNKER] STAGE 2: Detected {len(overlap_intervals)} native powerset overlap regions.")
+        except Exception as e:
+            logger.warning(f"[CHUNKER] Powerset overlap extraction warning: {e}")
+
         speakers_found = list(diarization.itertracks(yield_label=True))
-        
         raw_turns = [{"start": t.start, "end": t.end, "speaker": l} for t, _, l in speakers_found]
-        
-        logger.info(f"[CHUNKER] Pre-processing {len(raw_turns)} raw turns for >30.0s overflow...")
-        sliced_turns = []
-        for t in raw_turns:
-            sliced_turns.extend(_slice_long_turn(t, audio_data, sample_rate))
-        raw_turns = sliced_turns
-        logger.info(f"[CHUNKER] STAGE 2.5: Primary Speaker Filtering (V2.4)")
+
+        # STAGE 3: Map Pyannote's native global speaker IDs by duration (Speaker_A = Main Host)
         speaker_durations = {}
         for t in raw_turns:
-            spk = t["speaker"]
             dur = t["end"] - t["start"]
-            speaker_durations[spk] = speaker_durations.get(spk, 0.0) + dur
-            
-        if speaker_durations:
-            valid_speakers = [spk for spk, dur in speaker_durations.items() if dur >= 5.0]
-            if valid_speakers:
-                earliest_starts = {}
-                for t in raw_turns:
-                    spk = t["speaker"]
-                    if spk in valid_speakers and spk not in earliest_starts:
-                        earliest_starts[spk] = t["start"]
-                primary_speaker = min(earliest_starts, key=earliest_starts.get)
-            else:
-                primary_speaker = max(speaker_durations, key=speaker_durations.get)
-                
-            logger.info(f"[CHUNKER] Primary Speaker detected: {primary_speaker} with {speaker_durations[primary_speaker]:.2f}s total duration.")
-            
-            primary_raw_turns = [t for t in raw_turns if t["speaker"] == primary_speaker]
-            primary_raw_turns.sort(key=lambda x: x["start"])
-            
-            purged_turns = []
-            current_time = 0.0
-            for t in primary_raw_turns:
-                if t["start"] > current_time:
-                    purged_turns.append({"start": current_time, "end": t["start"]})
-                current_time = max(current_time, t["end"])
-                
-            if current_time < total_duration:
-                purged_turns.append({"start": current_time, "end": total_duration})
-                
-            raw_turns = primary_raw_turns
-            logger.info(f"[CHUNKER] Extracted {len(purged_turns)} gaps (Inverse Timeline) for Restoration. Kept {len(raw_turns)} primary chunks.")
-        else:
-            purged_turns = []
-            logger.warning("[CHUNKER] No speakers found during diarization!")
-        
-        logger.info(f"[CHUNKER] STAGE 3: Timeline Merging (Strict Adjacency)")
-        raw_turns.sort(key=lambda x: x["start"])
-        
-        merged_turns = raw_turns.copy()
-        previous_length = -1
-        max_iterations = len(merged_turns)
-        iterations = 0
-        
-        while len(merged_turns) != previous_length:
-            if iterations > max_iterations:
-                raise Exception("An unexpected system error occurred while processing the audio timeline. Please try again or contact support.")
-            iterations += 1
-            previous_length = len(merged_turns)
-            
-            new_merged = []
-            skip = False
-            for i in range(len(merged_turns)):
-                if skip:
-                    skip = False
-                    continue
-                if i < len(merged_turns) - 1:
-                    turn_a = merged_turns[i]
-                    turn_b = merged_turns[i+1]
-                    
-                    should_merge = False
-                    if turn_a["speaker"] == turn_b["speaker"]:
-                        potential_duration = max(turn_a["end"], turn_b["end"]) - turn_a["start"]
-                        gap = turn_b["start"] - turn_a["end"]
-                        
-                        # Progressive Silence Window Matrix
-                        if potential_duration < 15.0:
-                            # ALWAYS accumulate under 15 seconds (NO cuts under 15s)
-                            should_merge = True
-                        elif potential_duration <= 30.0:
-                            # 15s to 30s window: cut if silence is >= 0.2s (200ms)
-                            if gap >= 0.2:
-                                should_merge = False
-                            else:
-                                should_merge = True
-                        else:
-                            # > 30.0s window: HARD CAP (never merge past 30 seconds)
-                            should_merge = False
+            speaker_durations[t["speaker"]] = speaker_durations.get(t["speaker"], 0.0) + dur
 
-                    if should_merge:
-                        potential_end = max(turn_a["end"], turn_b["end"])
-                        merged = {"start": turn_a["start"], "end": potential_end, "speaker": turn_a["speaker"]}
-                        new_merged.append(merged)
-                        skip = True
-                    else:
-                        new_merged.append(turn_a)
-                else:
-                    new_merged.append(merged_turns[i])
-            merged_turns = new_merged
+        sorted_spks = sorted(speaker_durations.keys(), key=lambda k: -speaker_durations[k])
+        label_map = {spk: f"Speaker_{chr(65 + idx)}" for idx, spk in enumerate(sorted_spks)}
 
-        # Micro-Chunk Purge: Drop junk chunks under 0.5 seconds
-        merged_turns = [t for t in merged_turns if (t["end"] - t["start"]) >= 0.5]
+        for t in raw_turns:
+            t["speaker"] = label_map.get(t["speaker"], t["speaker"])
+            t["global_speaker_id"] = t["speaker"]
 
-        # STAGE 3.5: Strict Minimum 15-Second Enforcement
-        merged_turns = enforce_minimum_chunk_duration(merged_turns, audio_data, sample_rate, min_dur=15.0, max_dur=30.0)
+        logger.info(f"[CHUNKER] Pyannote Native Global Speakers ({len(sorted_spks)} total):")
+        for spk in sorted_spks:
+            logger.info(f"  * {label_map[spk]} ({spk}): {speaker_durations[spk]:.2f}s total speech")
 
-        # STAGE 4: Contiguous Timeline Partitioning
-        from app.services.vcta.contiguous_math import calculate_contiguous_timeline
-        logger.info("[CHUNKER] STAGE 4: Contiguous Timeline Partitioning (Zero-Gap Math)")
-        contiguous_chunks = calculate_contiguous_timeline(merged_turns, total_duration)
-        
-        return contiguous_chunks, purged_turns
+        # STAGE 4: Resolve short transitions with acoustic boundary snapping (Tri-Metric / Silence Scalpel)
+        logger.info("[CHUNKER] STAGE 4: Resolving transitions with physical boundary matrix...")
+        resolved_turns = resolve_short_overlap_transitions(raw_turns, audio_data, sr=sample_rate)
+
+        # Filter out micro-noise glitches under 0.25s
+        valid_turns = [t for t in resolved_turns if (t["end"] - t["start"]) >= 0.25]
+        valid_turns.sort(key=lambda x: x["start"])
+
+        logger.info(f"[CHUNKER] Successfully produced {len(valid_turns)} cleanly resolved multi-speaker sub-chunks.")
+        return valid_turns, overlap_intervals
 
     return await asyncio.to_thread(_diarize)

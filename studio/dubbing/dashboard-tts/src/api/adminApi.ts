@@ -88,6 +88,13 @@ export async function triggerSeparation(getToken: TokenGetter, jobId: string) {
   return res.json();
 }
 
+export async function triggerTranscribe(getToken: TokenGetter, jobId: string) {
+  const res = await adminFetch(getToken, `/video/jobs/${jobId}/transcribe`, {
+    method: "POST",
+  });
+  return res.json();
+}
+
 export async function retryJob(
   getToken: TokenGetter,
   jobId: string,

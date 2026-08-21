@@ -92,21 +92,35 @@ async def transcribe_and_segment_gemini(chunks: list) -> list:
             
             content_array = []
             
-            # The Master Prompt Reinforcement
-            master_prompt = "You are an expert Kurdish Sorani transcriber. Transcribe the following audio chunks exactly as spoken in Kurdish Sorani. Do not translate them. Ensure grammatical continuity between the chunks. Output a strict JSON object mapping the chunk ID to its transcription. Do not skip any chunks."
+            # Fail-Loud Strict JSON Schema (Confidence Scoring + Human Review Gate)
+            fail_loud_schema = """{
+  "transcriptions": {
+    "<chunk_id>": {
+      "kurdish_sorani": "exact Kurdish text",
+      "confidence_score": 0.95,
+      "overlap_unresolvable": false,
+      "reasoning_if_unresolvable": ""
+    }
+  }
+}"""
+            master_prompt = (
+                "You are an expert Kurdish Sorani (کوردی سۆرانی) transcriber. "
+                "Transcribe the following audio chunks with high precision. "
+                "CRITICAL: If an audio segment contains severe overlapping crosstalk or unintelligible speech that cannot be deciphered with high confidence, "
+                "set 'overlap_unresolvable': true, set 'confidence_score' < 0.60, and state the reason in 'reasoning_if_unresolvable'. "
+                "Do NOT guess or hallucinate. "
+                f"Output strictly in this JSON format:\n{fail_loud_schema}"
+            )
             
             if previous_chunk_text:
-                master_prompt += f'\n\nThe speaker previously said: "{previous_chunk_text}". Here is the next sequence of chunks. Transcribe them so the Kurdish Sorani grammar perfectly flows from the previous sentence.'
+                master_prompt += f'\n\nPrior Context: The speaker previously said: "{previous_chunk_text}". Ensure grammatical and semantic continuity where applicable.'
                 
             content_array.append({
                 "text": master_prompt
             })
             
-            expected_keys = []
-            
             for c in batch:
                 chunk_id = c.get("chunk_id", f"chunk_{i}")
-                expected_keys.append(chunk_id)
                 audio_path = c.get("audio_file")
                 
                 b64_audio = ""
@@ -114,7 +128,12 @@ async def transcribe_and_segment_gemini(chunks: list) -> list:
                     b64_audio = await _compress_audio_to_base64(audio_path)
                 
                 if b64_audio:
-                    content_array.append({"text": f"Here is {chunk_id}:"})
+                    speaker_id = c.get("speaker", "Speaker_A")
+                    duration = c.get("duration", c.get("duration_sec", 0.0))
+                    turn_type = "Short Colloquial Interjection" if duration < 2.0 else "Continuous Dialogue"
+                    content_array.append({
+                        "text": f"Audio for {chunk_id} [Speaker: {speaker_id}, Duration: {duration:.2f}s, Turn: {turn_type}]:"
+                    })
                     content_array.append({
                         "inline_data": {
                             "data": b64_audio,
@@ -124,20 +143,12 @@ async def transcribe_and_segment_gemini(chunks: list) -> list:
                 else:
                     logger.warning(f"[GEMINI STT] Missing audio or compression failed for {chunk_id}.")
 
-            # Add the JSON format enforcement text
-            json_format_str = ', '.join([f'"{k}": "text"' for k in expected_keys])
-            content_array.append({
-                "text": f"Output exactly in this JSON format and do not skip any chunks: {{{json_format_str}}}"
-            })
-
             payload = {
                 "contents": [
                     {
                         "parts": content_array
                     }
                 ],
-                # The response_format parameter works differently on the direct API,
-                # but we can rely on the prompt instructing it to output JSON.
                 "generationConfig": {"response_mime_type": "application/json"}
             }
 
@@ -158,25 +169,36 @@ async def transcribe_and_segment_gemini(chunks: list) -> list:
                                 clean_content = clean_content[:-3]
                             clean_content = clean_content.strip()
                             
-                            try:
-                                parsed_json = json.loads(clean_content)
-                            except json.JSONDecodeError:
-                                # Fallback: append closing brace if it was cut off
-                                if not clean_content.endswith("}"):
-                                    parsed_json = json.loads(clean_content + "}")
-                                else:
-                                    raise
-                                    
+                            # Support both nested {"transcriptions": {...}} and flat {chunk_id: ...}
+                            trans_dict = parsed_json.get("transcriptions", parsed_json)
                             for c in batch:
                                 c_id = c.get("chunk_id")
-                                text = sanitize_transcript(parsed_json.get(c_id, ""))
-                                c["kurdish_raw"] = text
-                                if text:
-                                    previous_chunk_text = text # Track the last chunk's text for overlap
+                                item = trans_dict.get(c_id, "")
+                                if isinstance(item, dict):
+                                    text = sanitize_transcript(item.get("kurdish_sorani", item.get("text", "")))
+                                    c["kurdish_raw"] = text
+                                    c["confidence_score"] = float(item.get("confidence_score", 1.0))
+                                    c["overlap_unresolvable"] = bool(item.get("overlap_unresolvable", False))
+                                    c["reasoning_if_unresolvable"] = item.get("reasoning_if_unresolvable", "")
+                                    if c["overlap_unresolvable"] or c["confidence_score"] < 0.60:
+                                        logger.warning(
+                                            f"[GEMINI STT LOUD-FAIL] Chunk {c_id} flagged unresolvable! "
+                                            f"Confidence: {c['confidence_score']:.2f} | Reason: {c['reasoning_if_unresolvable']}"
+                                        )
+                                else:
+                                    text = sanitize_transcript(str(item))
+                                    c["kurdish_raw"] = text
+                                    c["confidence_score"] = 1.0
+                                    c["overlap_unresolvable"] = False
+
+                                if text and not c.get("overlap_unresolvable"):
+                                    previous_chunk_text = text
                         except Exception as e:
                             logger.error(f"[GEMINI STT] Failed to parse JSON response for batch {i}: {e}. Content: {content}")
                             for c in batch:
                                 c["kurdish_raw"] = ""
+                                c["confidence_score"] = 0.0
+                                c["overlap_unresolvable"] = True
                     else:
                         error_text = await resp.text()
                         logger.error(f"[GEMINI STT] API error {resp.status} for batch {i}: {error_text}")

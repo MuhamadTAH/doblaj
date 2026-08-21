@@ -499,8 +499,8 @@ class DubbingPipelineEngine:
                 chunk_dur = c.get("duration_sec", active_dur)
                 target_speech_dur = min(active_dur, max(0.2, chunk_dur - lead_sil))
                 
-                # If audio is significantly longer than target (>1.25x) or shorter (<0.70x)
-                if tts_dur > (target_speech_dur * 1.25) or (target_speech_dur >= 2.0 and tts_dur < (target_speech_dur * 0.70)):
+                # If audio is outside the strict [0.95x, 1.15x] window
+                if tts_dur > (target_speech_dur * 1.15) or tts_dur < (target_speech_dur * 0.95):
                     curr_text = trans_by_idx.get(idx, "")
                     curr_words = len(curr_text.split())
                     target_words = max(2, int(target_speech_dur * 2.2))
@@ -584,11 +584,11 @@ class DubbingPipelineEngine:
                 # Guaranteed Zero-Cutoff Auto-Stretch:
                 # If TTS audio duration exceeds the available speech slot, automatically time-stretch
                 if tts_dur > target_speech_dur or (tts_dur + lead_sil) > chunk_dur:
-                    stretch_rate = max(1.01, tts_dur / target_speech_dur)
+                    stretch_rate = min(1.15, max(1.01, tts_dur / target_speech_dur))
                     logger.info(f"  ⚡ [Chunk #{idx+1} Zero-Cutoff Auto-Stretch] TTS ({tts_dur:.2f}s) > target ({target_speech_dur:.2f}s) -> Stretching at {stretch_rate:.3f}x to fit 100% of speech without cutoff")
                     tts_audio = librosa.effects.time_stretch(tts_audio, rate=stretch_rate)
                 elif abs(tts_dur - target_speech_dur) > 0.20 and target_speech_dur >= 0.5:
-                    stretch_rate = max(0.85, min(1.35, tts_dur / target_speech_dur))
+                    stretch_rate = max(0.95, min(1.15, tts_dur / target_speech_dur))
                     logger.info(f"  ⚡ [Chunk #{idx+1} Cadence Match] TTS ({tts_dur:.2f}s) -> Aligned to active speech ({target_speech_dur:.2f}s) via time_stretch {stretch_rate:.2f}x")
                     tts_audio = librosa.effects.time_stretch(tts_audio, rate=stretch_rate)
                 

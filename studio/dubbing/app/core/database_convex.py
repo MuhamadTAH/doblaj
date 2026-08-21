@@ -577,6 +577,41 @@ async def record_and_process_webhook_durable(client: Any = None, *, event_id: st
             "eventType": event_type,
             "payload": payload or {}
         }))
+async def update_chunk_micro_status(
+    client: Any = None,
+    *,
+    job_id: str,
+    chunk_index: int,
+    status: str,
+    kurdish_text: Optional[str] = None,
+    arabic_text: Optional[str] = None,
+    error: Optional[str] = None,
+    patch: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Immediately emits micro-step status for a chunk to Convex (PENDING -> PROCESSING -> COMPLETED)."""
+    c = client or _get_client()
+    safe_patch = dict(patch or {})
+    if kurdish_text is not None:
+        safe_patch["kurdishRaw"] = kurdish_text
+    if arabic_text is not None:
+        safe_patch["arabicText"] = arabic_text
+    if error is not None:
+        safe_patch["error"] = error
+
+    def _do():
+        try:
+            return c.mutation(
+                "dubbingChunks:updateChunkByIndexInternal",
+                _internal_args({
+                    "jobId": job_id,
+                    "chunkIndex": chunk_index,
+                    "status": status,
+                    "patch": safe_patch,
+                })
+            )
+        except Exception as e:
+            logger.warning(f"[CONVEX] update_chunk_micro_status notice for job {job_id} chunk {chunk_index}: {e}")
+            return None
     return await asyncio.to_thread(_do)
 
 
