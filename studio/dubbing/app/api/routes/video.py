@@ -668,6 +668,7 @@ async def start_uploaded_job(
 @_rate_limited("10/minute")
 async def trigger_audio_separation(
     job_id: str,
+    request: Request,
     user: AuthenticatedUser = Depends(require_user_or_internal),
     background_tasks: BackgroundTasks = None,
 ) -> VideoJobResponse:
