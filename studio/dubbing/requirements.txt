@@ -1,8 +1,8 @@
 # Pird: lower-bound pins for security. Upper bounds stay flexible so
 # minor patches flow through. Pin exact versions via pip-tools / lock
 # files when ready. See handoffs/dubbing-security-pass3-fixes.md Fix 8.
-torch>=2.3.0
-torchaudio>=2.3.0
+torch>=2.3.0,<2.6.0
+torchaudio>=2.3.0,<2.6.0
 soundfile>=0.12.1,<0.13
 fastapi>=0.110.0
 uvicorn[standard]>=0.30.0

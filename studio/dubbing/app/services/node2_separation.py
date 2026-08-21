@@ -20,6 +20,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import soundfile as sf
 import torch
+try:
+    import torchaudio
+    if hasattr(torchaudio, "set_audio_backend"):
+        torchaudio.set_audio_backend("soundfile")
+except Exception:
+    pass
 
 from app.core import database_convex as convex_db
 from app.services import r2
@@ -150,36 +156,14 @@ def resample_to_16k_mono(input_wav_path: str, output_wav_path: str) -> None:
         raise RuntimeError(f"Resampling to 16k mono failed: {proc.stderr.decode('utf-8', errors='ignore')}")
 
 
-def _load_wav_as_tensor(wav_path: str) -> "torch.Tensor":
-    """
-    Load a 16kHz mono WAV using soundfile + numpy → torch tensor.
-    Bypasses torchaudio entirely so torchaudio >= 2.9 breaking change
-    (requires torchcodec) never triggers.
-    """
-    data, sr = sf.read(wav_path, dtype="float32", always_2d=False)
-    if data.ndim == 2:
-        data = data.mean(axis=1)
-    return torch.from_numpy(data)
-
-
 def get_speech_segments_silero(wav_16k_mono_path: str, min_speech_duration_ms: int = 250) -> List[Dict[str, float]]:
     """
-    Step 3: Silero VAD Speech Boundary Detection.
-    Loads audio via soundfile (no torchaudio dependency), runs Silero VAD.
+    Step 3: Silero VAD Resampling & Speech Boundary Detection.
     Returns list of speech segments: [{'start': 0.5, 'end': 4.2}, ...]
     """
     logger.info("[NODE-2][STEP 3] Running Silero VAD speech boundary detection...")
-    model, utils = get_silero_vad()
-
-    # Unpack get_speech_timestamps robustly regardless of utils tuple length
-    if isinstance(utils, tuple):
-        get_speech_ts = utils[0]
-    else:
-        get_speech_ts = utils
-
-    # Load WAV with soundfile — avoids torchaudio >= 2.9 torchcodec requirement
-    wav_tensor = _load_wav_as_tensor(wav_16k_mono_path)
-
+    model, (get_speech_ts, _, read_audio, *_) = get_silero_vad()
+    wav_tensor = read_audio(wav_16k_mono_path, sampling_rate=16000)
     speech_timestamps = get_speech_ts(
         wav_tensor,
         model,
