@@ -74,6 +74,20 @@ export async function downloadJobSource(getToken: TokenGetter, jobId: string) {
   return res.json();
 }
 
+export async function signMediaKey(getToken: TokenGetter, jobId: string, key: string) {
+  const res = await adminFetch(getToken, `/api/admin/jobs/${jobId}/sign-media-key?key=${encodeURIComponent(key)}`, {
+    method: "GET",
+  });
+  return res.json();
+}
+
+export async function triggerSeparation(getToken: TokenGetter, jobId: string) {
+  const res = await adminFetch(getToken, `/video/jobs/${jobId}/separate-audio`, {
+    method: "POST",
+  });
+  return res.json();
+}
+
 export async function retryJob(
   getToken: TokenGetter,
   jobId: string,

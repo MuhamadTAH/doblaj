@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useAuth } from "@clerk/clerk-react";
-import { downloadJobSource, retryJob, failJob, nukeJob } from "../../api/adminApi";
+import { downloadJobSource, retryJob, failJob, nukeJob, triggerSeparation, signMediaKey } from "../../api/adminApi";
 
 export const JobOperationsView: React.FC = () => {
   const { getToken } = useAuth();
@@ -14,8 +14,12 @@ export const JobOperationsView: React.FC = () => {
   );
 
   const [inspectJob, setInspectJob] = useState<any | null>(null);
-  const [activeNodeTab, setActiveNodeTab] = useState<"node1" | "node2">("node1");
+  const [activeNodeTab, setActiveNodeTab] = useState<string>("node1");
   const [inspectVideoUrl, setInspectVideoUrl] = useState<string | null>(null);
+  const [activeAudioStemUrl, setActiveAudioStemUrl] = useState<{ key: string; url: string; title: string } | null>(null);
+  const [node2Running, setNode2Running] = useState(false);
+  const [node2Error, setNode2Error] = useState<string | null>(null);
+
   const [selectedJob, setSelectedJob] = useState<any | null>(null);
   const [actionType, setActionType] = useState<"RETRY" | "FAIL" | "NUKE" | null>(null);
   const [nukeConfirmText, setNukeConfirmText] = useState("");
@@ -29,10 +33,12 @@ export const JobOperationsView: React.FC = () => {
     inspectJob ? { jobId: inspectJob._id } : "skip"
   ) || [];
 
-  const handleInspect = async (job: any, initialTab: "node1" | "node2" = "node1") => {
+  const handleInspect = async (job: any, initialTab: string = "node1") => {
     setInspectJob(job);
     setActiveNodeTab(initialTab);
     setInspectVideoUrl(null);
+    setActiveAudioStemUrl(null);
+    setNode2Error(null);
     try {
       const data = await downloadJobSource(getToken, job._id);
       if (data.download_url) {
@@ -40,6 +46,32 @@ export const JobOperationsView: React.FC = () => {
       }
     } catch (e) {
       console.warn("Could not fetch video streaming URL for inspection:", e);
+    }
+  };
+
+  const handlePlayStem = async (key: string, title: string) => {
+    if (!inspectJob || !key) return;
+    try {
+      const res = await signMediaKey(getToken, inspectJob._id, key);
+      if (res.url) {
+        setActiveAudioStemUrl({ key, url: res.url, title });
+      }
+    } catch (e: any) {
+      alert(`Could not sign audio stem URL: ${e.message}`);
+    }
+  };
+
+  const handleRunNode2 = async () => {
+    if (!inspectJob) return;
+    setNode2Running(true);
+    setNode2Error(null);
+    try {
+      await triggerSeparation(getToken, inspectJob._id);
+      alert("Node 2 Audio Separation & Segmentation triggered successfully! Watching chunks stream in real-time.");
+    } catch (e: any) {
+      setNode2Error(e.message || "Failed to trigger Node 2 separation");
+    } finally {
+      setNode2Running(false);
     }
   };
 
@@ -96,7 +128,7 @@ export const JobOperationsView: React.FC = () => {
               Live Watch Engine
             </span>
           </h1>
-          <p className="text-xs text-ink-400">Inspect real-time execution across Node 1 (Ingestion) and Node 2 (Demucs + Silero VAD)</p>
+          <p className="text-xs text-ink-400">Click any job to open the real-time Live Node Watch and inspect extracted media metadata</p>
         </div>
 
         <div className="flex items-center gap-1.5 bg-ink-900/60 p-1 rounded-xl border border-white/[0.06] overflow-x-auto">
@@ -175,9 +207,12 @@ export const JobOperationsView: React.FC = () => {
                       </div>
                     </td>
                     <td className="py-3 px-4 text-ink-300">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${job.chunksCount ? "bg-purple-500/20 text-purple-300 border border-purple-500/30" : "text-ink-500"}`}>
-                        {job.chunksCount ? `${job.chunksCount} chunks` : "Pending VAD"}
-                      </span>
+                      <button
+                        onClick={() => handleInspect(job, "node2")}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold hover:underline ${job.chunksCount ? "bg-purple-500/20 text-purple-300 border border-purple-500/30" : "text-ink-500"}`}
+                      >
+                        {job.chunksCount ? `${job.chunksCount} chunks ➔` : "Inspect Node 2"}
+                      </button>
                     </td>
                     <td className="py-3 px-4 text-ink-300">
                       <div>{job.sourceLang || "ckb"} ➔ {job.targetLang || "ar-IQ"}</div>
@@ -282,11 +317,12 @@ export const JobOperationsView: React.FC = () => {
             {/* Pipeline Stage Stepper */}
             <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
               <button
+                type="button"
                 onClick={() => setActiveNodeTab("node1")}
-                className={`p-2.5 rounded-xl border text-center space-y-1 transition-all ${
+                className={`p-2.5 rounded-xl border text-center space-y-1 transition-all cursor-pointer ${
                   activeNodeTab === "node1"
-                    ? "border-brand-500/60 bg-brand-500/20 shadow-lg shadow-brand-500/10"
-                    : "border-white/[0.08] bg-ink-900/40 hover:bg-white/[0.04]"
+                    ? "border-brand-500/80 bg-brand-500/25 ring-2 ring-brand-500/40 shadow-lg shadow-brand-500/20"
+                    : "border-white/[0.08] bg-ink-900/40 hover:bg-white/[0.06]"
                 }`}
               >
                 <div className="text-[10px] font-mono font-bold text-emerald-400">NODE 1</div>
@@ -295,13 +331,14 @@ export const JobOperationsView: React.FC = () => {
               </button>
 
               <button
+                type="button"
                 onClick={() => setActiveNodeTab("node2")}
-                className={`p-2.5 rounded-xl border text-center space-y-1 transition-all ${
+                className={`p-2.5 rounded-xl border text-center space-y-1 transition-all cursor-pointer ${
                   activeNodeTab === "node2"
-                    ? "border-brand-500/60 bg-brand-500/20 shadow-lg shadow-brand-500/10"
+                    ? "border-purple-500/80 bg-purple-500/25 ring-2 ring-purple-500/40 shadow-lg shadow-purple-500/20"
                     : jobChunks.length > 0
                     ? "border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20"
-                    : "border-white/[0.08] bg-ink-900/40 hover:bg-white/[0.04]"
+                    : "border-white/[0.08] bg-ink-900/40 hover:bg-white/[0.06]"
                 }`}
               >
                 <div className="text-[10px] font-mono font-bold text-purple-400">NODE 2</div>
@@ -311,29 +348,61 @@ export const JobOperationsView: React.FC = () => {
                 </div>
               </button>
 
-              <div className="p-2.5 rounded-xl border border-white/[0.06] bg-ink-900/40 text-center space-y-1 opacity-60">
-                <div className="text-[10px] font-mono font-bold text-ink-400">NODE 3</div>
+              <button
+                type="button"
+                onClick={() => setActiveNodeTab("node3")}
+                className={`p-2.5 rounded-xl border text-center space-y-1 transition-all cursor-pointer ${
+                  activeNodeTab === "node3"
+                    ? "border-blue-500/80 bg-blue-500/25 ring-2 ring-blue-500/40"
+                    : "border-white/[0.08] bg-ink-900/40 hover:bg-white/[0.06]"
+                }`}
+              >
+                <div className="text-[10px] font-mono font-bold text-blue-400">NODE 3</div>
                 <div className="text-xs font-bold text-ink-200">Kurdish ASR</div>
-                <div className="text-[9px] text-ink-500 font-mono">Transcription</div>
-              </div>
+                <div className="text-[9px] text-ink-500 font-mono">Dual-Pass STT</div>
+              </button>
 
-              <div className="p-2.5 rounded-xl border border-white/[0.06] bg-ink-900/40 text-center space-y-1 opacity-60">
-                <div className="text-[10px] font-mono font-bold text-ink-400">NODE 4</div>
+              <button
+                type="button"
+                onClick={() => setActiveNodeTab("node4")}
+                className={`p-2.5 rounded-xl border text-center space-y-1 transition-all cursor-pointer ${
+                  activeNodeTab === "node4"
+                    ? "border-amber-500/80 bg-amber-500/25 ring-2 ring-amber-500/40"
+                    : "border-white/[0.08] bg-ink-900/40 hover:bg-white/[0.06]"
+                }`}
+              >
+                <div className="text-[10px] font-mono font-bold text-amber-400">NODE 4</div>
                 <div className="text-xs font-bold text-ink-200">Iraqi Arabic</div>
                 <div className="text-[9px] text-ink-500 font-mono">Localization</div>
-              </div>
+              </button>
 
-              <div className="p-2.5 rounded-xl border border-white/[0.06] bg-ink-900/40 text-center space-y-1 opacity-60">
-                <div className="text-[10px] font-mono font-bold text-ink-400">NODE 5</div>
+              <button
+                type="button"
+                onClick={() => setActiveNodeTab("node5")}
+                className={`p-2.5 rounded-xl border text-center space-y-1 transition-all cursor-pointer ${
+                  activeNodeTab === "node5"
+                    ? "border-cyan-500/80 bg-cyan-500/25 ring-2 ring-cyan-500/40"
+                    : "border-white/[0.08] bg-ink-900/40 hover:bg-white/[0.06]"
+                }`}
+              >
+                <div className="text-[10px] font-mono font-bold text-cyan-400">NODE 5</div>
                 <div className="text-xs font-bold text-ink-200">TTS Synthesis</div>
                 <div className="text-[9px] text-ink-500 font-mono">Voice Clone</div>
-              </div>
+              </button>
 
-              <div className="p-2.5 rounded-xl border border-white/[0.06] bg-ink-900/40 text-center space-y-1 opacity-60">
-                <div className="text-[10px] font-mono font-bold text-ink-400">NODE 6</div>
+              <button
+                type="button"
+                onClick={() => setActiveNodeTab("node6")}
+                className={`p-2.5 rounded-xl border text-center space-y-1 transition-all cursor-pointer ${
+                  activeNodeTab === "node6"
+                    ? "border-pink-500/80 bg-pink-500/25 ring-2 ring-pink-500/40"
+                    : "border-white/[0.08] bg-ink-900/40 hover:bg-white/[0.06]"
+                }`}
+              >
+                <div className="text-[10px] font-mono font-bold text-pink-400">NODE 6</div>
                 <div className="text-xs font-bold text-ink-200">Master Mux</div>
-                <div className="text-[9px] text-ink-500 font-mono">Render Output</div>
-              </div>
+                <div className="text-[9px] text-ink-500 font-mono">Final Output</div>
+              </button>
             </div>
 
             {/* TAB 1: NODE 1 INSPECTION */}
@@ -422,37 +491,89 @@ export const JobOperationsView: React.FC = () => {
             {/* TAB 2: NODE 2 DEMUCS & SILERO VAD INSPECTION */}
             {activeNodeTab === "node2" && (
               <div className="space-y-4 rounded-xl border border-white/[0.08] bg-ink-950/60 p-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-purple-400 font-mono flex items-center gap-2">
                     <span>🎛️ Node 2 Inspection: Demucs Vocal Isolation & Silero VAD Chunks</span>
                   </h3>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                    {jobChunks.length} Segmented Chunks
-                  </span>
+                  
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleRunNode2}
+                      disabled={node2Running}
+                      className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-mono text-xs font-bold transition-colors flex items-center gap-1.5 shadow-lg shadow-purple-600/20"
+                    >
+                      <span>⚡</span>
+                      <span>{node2Running ? "Separating Audio..." : "Run Node 2 Separation"}</span>
+                    </button>
+                    <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      {jobChunks.length} Chunks Generated
+                    </span>
+                  </div>
                 </div>
 
-                {/* Stems Overview */}
+                {node2Error && (
+                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-xs font-mono text-red-400">
+                    ⚠️ Error: {node2Error}
+                  </div>
+                )}
+
+                {/* Stems Overview with Direct Audio Playback */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs">
-                  <div className="p-3 rounded-lg border border-white/[0.06] bg-ink-900/50 space-y-1">
+                  <div className="p-3.5 rounded-lg border border-white/[0.06] bg-ink-900/50 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-ink-500 uppercase">Background Music / SFX Stem</span>
+                      <span className="text-[10px] text-ink-400 uppercase font-bold">🎵 Background Instrumental / SFX Stem</span>
                       <span className="text-[10px] text-emerald-400 font-bold">44.1kHz Stereo</span>
                     </div>
                     <div className="text-xs font-semibold text-white truncate">
                       {inspectJob.bgAudioR2Key || `dubbing/.../stems/no_vocals.wav`}
                     </div>
+                    <button
+                      onClick={() => handlePlayStem(inspectJob.bgAudioR2Key || `dubbing/${inspectJob.workspaceId || "ws"}/${inspectJob._id}/stems/no_vocals.wav`, "Background Stem")}
+                      className="px-2.5 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold flex items-center gap-1.5"
+                    >
+                      <span>▶️</span>
+                      <span>Play Background Stem</span>
+                    </button>
                   </div>
 
-                  <div className="p-3 rounded-lg border border-white/[0.06] bg-ink-900/50 space-y-1">
+                  <div className="p-3.5 rounded-lg border border-white/[0.06] bg-ink-900/50 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-ink-500 uppercase">Isolated Vocals Stem</span>
-                      <span className="text-[10px] text-purple-400 font-bold">44.1kHz High-Res</span>
+                      <span className="text-[10px] text-ink-400 uppercase font-bold">🗣️ Isolated High-Res Vocals Stem</span>
+                      <span className="text-[10px] text-purple-400 font-bold">44.1kHz Master</span>
                     </div>
                     <div className="text-xs font-semibold text-white truncate">
                       {inspectJob.isolatedVocalsR2Key || `dubbing/.../stems/vocals.wav`}
                     </div>
+                    <button
+                      onClick={() => handlePlayStem(inspectJob.isolatedVocalsR2Key || `dubbing/${inspectJob.workspaceId || "ws"}/${inspectJob._id}/stems/vocals.wav`, "Vocals Stem")}
+                      className="px-2.5 py-1 rounded bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 text-[11px] font-bold flex items-center gap-1.5"
+                    >
+                      <span>▶️</span>
+                      <span>Play Vocals Stem</span>
+                    </button>
                   </div>
                 </div>
+
+                {/* Active Stem Audio Player Bar */}
+                {activeAudioStemUrl && (
+                  <div className="p-3 rounded-xl border border-brand-500/30 bg-brand-500/10 space-y-1.5">
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span className="text-white font-bold">Playing: {activeAudioStemUrl.title}</span>
+                      <button
+                        onClick={() => setActiveAudioStemUrl(null)}
+                        className="text-ink-400 hover:text-white text-[10px]"
+                      >
+                        ✕ Close Player
+                      </button>
+                    </div>
+                    <audio
+                      src={activeAudioStemUrl.url}
+                      controls
+                      autoPlay
+                      className="w-full h-8"
+                    />
+                  </div>
+                )}
 
                 {/* Silero VAD Chunks Table */}
                 <div className="rounded-xl border border-white/[0.06] overflow-hidden bg-ink-900/30">
@@ -462,7 +583,7 @@ export const JobOperationsView: React.FC = () => {
                   </div>
 
                   {jobChunks.length > 0 ? (
-                    <div className="max-h-[260px] overflow-y-auto divide-y divide-white/[0.04] text-xs font-mono">
+                    <div className="max-h-[300px] overflow-y-auto divide-y divide-white/[0.04] text-xs font-mono">
                       {jobChunks.map((chunk: any) => (
                         <div key={chunk._id} className="p-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
                           <div className="flex items-center gap-3">
@@ -472,7 +593,7 @@ export const JobOperationsView: React.FC = () => {
                             <div>
                               <div className="text-white font-semibold flex items-center gap-2">
                                 <span>{chunk.startTime.toFixed(2)}s ➔ {chunk.endTime.toFixed(2)}s</span>
-                                <span className="text-[10px] text-purple-300">({chunk.speechDuration.toFixed(2)}s)</span>
+                                <span className="text-[10px] text-purple-300">({chunk.speechDuration ? chunk.speechDuration.toFixed(2) : (chunk.endTime - chunk.startTime).toFixed(2)}s)</span>
                               </div>
                               <div className="text-[10px] text-ink-500 truncate max-w-[280px]">
                                 {chunk.kurdish_raw_audio_url || "R2 chunk key"}
@@ -481,6 +602,14 @@ export const JobOperationsView: React.FC = () => {
                           </div>
 
                           <div className="flex items-center gap-2">
+                            {chunk.kurdish_raw_audio_url && (
+                              <button
+                                onClick={() => handlePlayStem(chunk.kurdish_raw_audio_url, `Chunk #${chunk.chunkIndex + 1}`)}
+                                className="px-2 py-1 rounded bg-white/[0.06] hover:bg-white/[0.12] text-[11px] text-ink-200 font-bold"
+                              >
+                                ▶️ Play
+                              </button>
+                            )}
                             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/20">
                               {chunk.status || "PENDING_ASR"}
                             </span>
@@ -489,12 +618,90 @@ export const JobOperationsView: React.FC = () => {
                       ))}
                     </div>
                   ) : (
-                    <div className="p-8 text-center text-xs text-ink-400 font-mono space-y-2">
-                      <p>No VAD chunks generated yet.</p>
-                      <p className="text-[11px] text-ink-500">Trigger Node 2 to run Demucs separation and Silero VAD segmentation.</p>
+                    <div className="p-8 text-center text-xs text-ink-400 font-mono space-y-3">
+                      <p className="text-white font-semibold">No VAD chunks generated yet for this job.</p>
+                      <p className="text-[11px] text-ink-400">Click the button below to extract audio and run Demucs + Silero VAD segmentation:</p>
+                      <button
+                        onClick={handleRunNode2}
+                        disabled={node2Running}
+                        className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs font-mono transition-colors shadow-lg shadow-purple-600/20"
+                      >
+                        ⚡ Run Node 2 Audio Separation Now
+                      </button>
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* TAB 3: NODE 3 KURDISH ASR */}
+            {activeNodeTab === "node3" && (
+              <div className="space-y-4 rounded-xl border border-white/[0.08] bg-ink-950/60 p-6 font-mono text-xs">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-blue-400 flex items-center gap-2">
+                    <span>🎙️ Node 3: Kurdish Sorani Speech-to-Text (ASR) Engine</span>
+                  </h3>
+                  <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                    Dual-Pass Global Reference
+                  </span>
+                </div>
+                <p className="text-ink-300 leading-relaxed">
+                  Node 3 transcribes each segmented 44.1kHz vocal chunk into accurate Kurdish Sorani text using Unicode normalization and dual-pass context anchoring.
+                </p>
+                <div className="p-4 rounded-xl border border-white/[0.06] bg-ink-900/40 text-ink-400">
+                  Ready to deploy Node 3 ASR pipeline.
+                </div>
+              </div>
+            )}
+
+            {/* TAB 4: NODE 4 IRAQI TRANSLATION */}
+            {activeNodeTab === "node4" && (
+              <div className="space-y-4 rounded-xl border border-white/[0.08] bg-ink-950/60 p-6 font-mono text-xs">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                    <span>💬 Node 4: Iraqi Arabic (العامية العراقية) Localization Engine</span>
+                  </h3>
+                  <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    Phonetic Syllable Matching
+                  </span>
+                </div>
+                <p className="text-ink-300 leading-relaxed">
+                  Node 4 converts Kurdish Sorani transcriptions into natural spoken Iraqi Arabic with strict syllable budgets and phonetic number expansion for lip-sync alignment.
+                </p>
+              </div>
+            )}
+
+            {/* TAB 5: NODE 5 TTS SYNTHESIS */}
+            {activeNodeTab === "node5" && (
+              <div className="space-y-4 rounded-xl border border-white/[0.08] bg-ink-950/60 p-6 font-mono text-xs">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+                    <span>🔊 Node 5: TTS Voice Synthesis & Cadence Alignment</span>
+                  </h3>
+                  <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                    Fish Audio / Clone
+                  </span>
+                </div>
+                <p className="text-ink-300 leading-relaxed">
+                  Node 5 generates clone voice audio in Iraqi Arabic and warps playback to fit the exact millisecond duration of each chunk.
+                </p>
+              </div>
+            )}
+
+            {/* TAB 6: NODE 6 MASTER MUXING */}
+            {activeNodeTab === "node6" && (
+              <div className="space-y-4 rounded-xl border border-white/[0.08] bg-ink-950/60 p-6 font-mono text-xs">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-pink-400 flex items-center gap-2">
+                    <span>🎬 Node 6: Master Muxing & Video Export</span>
+                  </h3>
+                  <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/30">
+                    Dynamic Audio Ducking
+                  </span>
+                </div>
+                <p className="text-ink-300 leading-relaxed">
+                  Node 6 mixes the new Iraqi vocal track over the isolated background instrumental track (<span className="text-emerald-300 font-bold">no_vocals.wav</span>) and muxes with the original video container.
+                </p>
               </div>
             )}
 

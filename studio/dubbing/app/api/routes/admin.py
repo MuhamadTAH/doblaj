@@ -209,6 +209,22 @@ async def get_job_source_download(job_id: str, user: AuthenticatedUser = Depends
     return {"download_url": download_url, "source_key": job["sourceVideoR2Key"]}
 
 
+@router.get("/jobs/{job_id}/sign-media-key")
+async def sign_media_key(
+    job_id: str,
+    key: str = Query(...),
+    user: AuthenticatedUser = Depends(require_permission("dubbing:read")),
+):
+    """Generate a presigned streaming URL for any audio stem or sliced chunk."""
+    from app.services import r2
+    try:
+        url = r2.signed_url(key, ttl_seconds=86400, inline=True)
+        return {"url": url, "key": key}
+    except Exception as e:
+        logger.warning("[ADMIN] Could not sign media key %s: %s", key, e)
+        raise HTTPException(status_code=400, detail=f"Failed to sign media key: {e}")
+
+
 @router.post("/jobs/{job_id}/retry")
 async def retry_job(job_id: str, req: RetryJobRequest, user: AuthenticatedUser = Depends(require_permission("dubbing:write"))):
     """Force retry a DLQ job with optional parameter overrides."""
