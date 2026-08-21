@@ -309,6 +309,15 @@ async def process_node2_separation(
         )
 
         logger.info("[NODE-2] SUCCESS: Node 2 (Separation & Segmentation) complete for job %s!", job_id)
+
+        # Step 7: Auto-trigger Node 3 (Kurdish Sorani Speech-to-Text)
+        try:
+            from app.services.node3_transcription import process_node3_transcription
+            logger.info("[NODE-2] Auto-triggering Node 3 Kurdish ASR for job %s", job_id)
+            asyncio.create_task(process_node3_transcription(job_id=job_id, workspace_id=workspace_id))
+        except Exception as asr_trigger_err:
+            logger.warning("[NODE-2] Could not auto-trigger Node 3 ASR: %s", asr_trigger_err)
+
         return {
             "success": True,
             "chunks_count": len(chunks_for_convex),
