@@ -387,28 +387,70 @@ async def complete_chunked_job(
         logger.exception("Failed to create video job from chunked upload")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-    # 2. Pipeline execution: Unconditionally launch Node 2 (Separation & Segmentation) in background
-    async def process_r2_locally():
-        from app.services.node2_separation import process_node2_separation
-        try:
-            logger.info(f"[LOCAL-WORKER] Starting automatic Node 2 (Separation & Segmentation) for chunked job {job_id}")
-            sep_res = await process_node2_separation(
-                job_id=job_id,
-                workspace_id=user.workspace_id,
-                source_r2_key=source_r2_key,
-            )
-            logger.info(f"[LOCAL-WORKER] Automatic Node 2 complete for {job_id}: {sep_res.get('chunks_count')} chunks created")
-        except Exception as loc_err:
-            logger.error(f"[LOCAL-WORKER] Node 2 separation error for job {job_id}: {loc_err}")
-            try:
-                await database.update_job_status(user_client, workspace_id=user.workspace_id, job_id=job_id, status="failed", error=f"Node 2 separation failed: {loc_err}")
-            except Exception:
-                pass
+    # 2. Pipeline execution: Dispatch to RunPod Serverless GPU worker or local worker
+    mcp_webhook_url = os.getenv("MCP_WEBHOOK_URL", "")
+    runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID", "")
+    runpod_api_key = os.getenv("RUNPOD_API_KEY", "")
 
-    if background_tasks:
-        background_tasks.add_task(process_r2_locally)
+    if runpod_endpoint and runpod_api_key:
+        logger.info(f"[DISPATCH] Dispatching chunked job {job_id} to RunPod Serverless GPU endpoint {runpod_endpoint}")
+        async def trigger_runpod():
+            try:
+                url = f"https://api.runpod.ai/v2/{runpod_endpoint}/run"
+                headers = {"Authorization": f"Bearer {runpod_api_key}", "Content-Type": "application/json"}
+                wb_payload = {
+                    "input": {
+                        "job_id": job_id,
+                        "workspace_id": user.workspace_id,
+                        "source_video_r2_key": source_r2_key,
+                    }
+                }
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(url, json=wb_payload, headers=headers)
+                    resp.raise_for_status()
+                    logger.info(f"[DISPATCH] RunPod GPU worker triggered successfully for chunked job {job_id}: {resp.json()}")
+            except Exception as trigger_err:
+                logger.error(f"[DISPATCH] Failed to trigger RunPod Serverless for job {job_id}: {trigger_err}")
+
+        if background_tasks:
+            background_tasks.add_task(trigger_runpod)
+        else:
+            asyncio.create_task(trigger_runpod())
+    elif mcp_webhook_url:
+        logger.info(f"[DISPATCH] Triggering MCP Webhook {mcp_webhook_url} for job {job_id}")
+        async def trigger_webhook():
+            try:
+                wb_payload = {"job_id": job_id, "workspace_id": user.workspace_id}
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(mcp_webhook_url, json=wb_payload)
+                    resp.raise_for_status()
+                    logger.info(f"[DISPATCH] MCP Webhook triggered: {resp.json()}")
+            except Exception as trigger_err:
+                logger.error(f"[DISPATCH] Failed to trigger Webhook: {trigger_err}")
+
+        asyncio.create_task(trigger_webhook())
     else:
-        asyncio.create_task(process_r2_locally())
+        async def process_r2_locally():
+            from app.services.node2_separation import process_node2_separation
+            try:
+                logger.info(f"[LOCAL-WORKER] Starting automatic Node 2 (Separation & Segmentation) for chunked job {job_id}")
+                sep_res = await process_node2_separation(
+                    job_id=job_id,
+                    workspace_id=user.workspace_id,
+                    source_r2_key=source_r2_key,
+                )
+                logger.info(f"[LOCAL-WORKER] Automatic Node 2 complete for {job_id}: {sep_res.get('chunks_count')} chunks created")
+            except Exception as loc_err:
+                logger.error(f"[LOCAL-WORKER] Node 2 separation error for job {job_id}: {loc_err}")
+                try:
+                    await database.update_job_status(user_client, workspace_id=user.workspace_id, job_id=job_id, status="failed", error=f"Node 2 separation failed: {loc_err}")
+                except Exception:
+                    pass
+
+        if background_tasks:
+            background_tasks.add_task(process_r2_locally)
+        else:
+            asyncio.create_task(process_r2_locally())
 
     return VideoJobResponse(
         id=job["id"],
@@ -553,33 +595,70 @@ async def start_uploaded_job(
     # Kick off metadata extraction immediately
     asyncio.create_task(extract_and_patch_metadata())
 
-    # 2. Pipeline execution dispatch
+    # 2. Pipeline execution: Dispatch to RunPod Serverless GPU worker or local worker
     mcp_webhook_url = os.getenv("MCP_WEBHOOK_URL", "")
     runpod_endpoint = os.getenv("RUNPOD_ENDPOINT_ID", "")
     runpod_api_key = os.getenv("RUNPOD_API_KEY", "")
 
-    # 2. Pipeline execution: Unconditionally launch Node 2 (Separation & Segmentation) in background
-    async def process_r2_locally():
-        from app.services.node2_separation import process_node2_separation
-        try:
-            logger.info(f"[LOCAL-WORKER] Starting automatic Node 2 (Separation & Segmentation) for finalized job {job_id}")
-            sep_res = await process_node2_separation(
-                job_id=job_id,
-                workspace_id=user.workspace_id,
-                source_r2_key=source_r2_key,
-            )
-            logger.info(f"[LOCAL-WORKER] Automatic Node 2 complete for {job_id}: {sep_res.get('chunks_count')} chunks created")
-        except Exception as loc_err:
-            logger.error(f"[LOCAL-WORKER] Node 2 separation error for job {job_id}: {loc_err}")
+    if runpod_endpoint and runpod_api_key:
+        logger.info(f"[DISPATCH] Dispatching job {job_id} to RunPod Serverless GPU endpoint {runpod_endpoint}")
+        async def trigger_runpod():
             try:
-                await database.update_job_status(user_client, workspace_id=user.workspace_id, job_id=job_id, status="failed", error=f"Node 2 separation failed: {loc_err}")
-            except Exception:
-                pass
+                url = f"https://api.runpod.ai/v2/{runpod_endpoint}/run"
+                headers = {"Authorization": f"Bearer {runpod_api_key}", "Content-Type": "application/json"}
+                wb_payload = {
+                    "input": {
+                        "job_id": job_id,
+                        "workspace_id": user.workspace_id,
+                        "source_video_r2_key": source_r2_key,
+                    }
+                }
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(url, json=wb_payload, headers=headers)
+                    resp.raise_for_status()
+                    logger.info(f"[DISPATCH] RunPod GPU worker triggered successfully for job {job_id}: {resp.json()}")
+            except Exception as trigger_err:
+                logger.error(f"[DISPATCH] Failed to trigger RunPod Serverless for job {job_id}: {trigger_err}")
 
-    if background_tasks:
-        background_tasks.add_task(process_r2_locally)
+        if background_tasks:
+            background_tasks.add_task(trigger_runpod)
+        else:
+            asyncio.create_task(trigger_runpod())
+    elif mcp_webhook_url:
+        logger.info(f"[DISPATCH] Triggering MCP Webhook {mcp_webhook_url} for job {job_id}")
+        async def trigger_webhook():
+            try:
+                wb_payload = {"job_id": job_id, "workspace_id": user.workspace_id}
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(mcp_webhook_url, json=wb_payload)
+                    resp.raise_for_status()
+                    logger.info(f"[DISPATCH] MCP Webhook triggered: {resp.json()}")
+            except Exception as trigger_err:
+                logger.error(f"[DISPATCH] Failed to trigger Webhook: {trigger_err}")
+
+        asyncio.create_task(trigger_webhook())
     else:
-        asyncio.create_task(process_r2_locally())
+        async def process_r2_locally():
+            from app.services.node2_separation import process_node2_separation
+            try:
+                logger.info(f"[LOCAL-WORKER] Starting automatic Node 2 (Separation & Segmentation) for finalized job {job_id}")
+                sep_res = await process_node2_separation(
+                    job_id=job_id,
+                    workspace_id=user.workspace_id,
+                    source_r2_key=source_r2_key,
+                )
+                logger.info(f"[LOCAL-WORKER] Automatic Node 2 complete for {job_id}: {sep_res.get('chunks_count')} chunks created")
+            except Exception as loc_err:
+                logger.error(f"[LOCAL-WORKER] Node 2 separation error for job {job_id}: {loc_err}")
+                try:
+                    await database.update_job_status(user_client, workspace_id=user.workspace_id, job_id=job_id, status="failed", error=f"Node 2 separation failed: {loc_err}")
+                except Exception:
+                    pass
+
+        if background_tasks:
+            background_tasks.add_task(process_r2_locally)
+        else:
+            asyncio.create_task(process_r2_locally())
 
     return VideoJobResponse(
         id=job["id"],
