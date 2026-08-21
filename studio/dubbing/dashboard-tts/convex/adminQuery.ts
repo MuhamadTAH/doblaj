@@ -301,17 +301,31 @@ export const listChunksForJob = query({
   handler: async (ctx, args) => {
     try {
       let realJobId: any = args.jobId;
+      let legacyId: string = args.jobId;
       if (args.jobId.length !== 32) {
         const j = await ctx.db
           .query("dubbingJobs")
           .withIndex("by_legacy_id", (q: any) => q.eq("legacyId", args.jobId))
           .first();
-        if (!j) return [];
-        realJobId = j._id;
+        if (j) {
+          realJobId = j._id;
+          legacyId = j.legacyId || args.jobId;
+        }
+      } else {
+        const j = await ctx.db.get(args.jobId as any);
+        if (j && (j as any).legacyId) {
+          legacyId = (j as any).legacyId;
+        }
       }
       return await ctx.db
         .query("dubbingChunks")
-        .filter((q: any) => q.eq(q.field("jobId"), realJobId))
+        .filter((q: any) =>
+          q.or(
+            q.eq(q.field("jobId"), realJobId),
+            q.eq(q.field("jobId"), legacyId),
+            q.eq(q.field("jobId"), args.jobId)
+          )
+        )
         .order("asc")
         .collect();
     } catch (err) {

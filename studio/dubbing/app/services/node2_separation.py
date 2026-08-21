@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import soundfile as sf
 import torch
 
-from app.core import db as database
+from app.core import database_convex as convex_db
 from app.services import r2
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,7 @@ def get_silero_vad():
             model="silero_vad",
             force_reload=False,
             onnx=False,
+            trust_repo=True,
         )
         _SILERO_MODEL = model
         _SILERO_UTILS = utils
@@ -226,7 +227,7 @@ async def process_node2_separation(
     6. Batch insert chunks into Convex dubbingChunks with status PENDING_ASR.
     7. Ephemeral cleanup of worker disk.
     """
-    user_client = client or database._get_service_role_client()
+    user_client = client or convex_db._get_service_role_client()
     tmp_dir = Path(tempfile.mkdtemp(prefix=f"node2_{job_id[:8]}_"))
     logger.info("================================================================")
     logger.info("[NODE-2] STARTING SEPARATION & SEGMENTATION FOR JOB %s", job_id)
@@ -283,7 +284,7 @@ async def process_node2_separation(
 
         # Step 6: Batch insert into Convex
         logger.info("[NODE-2] Registering %d chunks in Convex state machine...", len(chunks_for_convex))
-        c = database._get_client()
+        c = convex_db._get_client()
         await asyncio_to_thread_batch_insert(
             c,
             job_id=job_id,
@@ -305,7 +306,7 @@ async def process_node2_separation(
         logger.exception("[NODE-2] CRITICAL ERROR during Node 2 execution for job %s: %s", job_id, e)
         # Update Convex job status to failed with exact diagnostic error
         try:
-            c = database._get_client()
+            c = convex_db._get_client()
             err_details = f"Node 2 Separation Failed: {str(e)}"
             await asyncio.to_thread(
                 c.mutation,
