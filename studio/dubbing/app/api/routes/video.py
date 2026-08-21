@@ -425,15 +425,28 @@ async def complete_chunked_job(
         else:
             asyncio.create_task(trigger_runpod())
     else:
-        # Local background processing fallback
+        # Local background processing: zero-download Node 2 separation + pipeline execution
+        async def process_r2_locally():
+            from app.services.node2_separation import process_node2_separation
+            try:
+                logger.info(f"[LOCAL-WORKER] Starting Node 2 (Separation & Segmentation) for chunked job {job_id}")
+                sep_res = await process_node2_separation(
+                    job_id=job_id,
+                    workspace_id=user.workspace_id,
+                    source_r2_key=source_r2_key,
+                )
+                logger.info(f"[LOCAL-WORKER] Node 2 complete for {job_id}: {sep_res.get('chunks_count')} chunks created")
+            except Exception as loc_err:
+                logger.error(f"[LOCAL-WORKER] Node 2 separation error for job {job_id}: {loc_err}")
+                try:
+                    await database.update_job_status(user_client, workspace_id=user.workspace_id, job_id=job_id, status="failed", error=f"Node 2 separation failed: {loc_err}")
+                except Exception:
+                    pass
+
         if background_tasks:
-            background_tasks.add_task(
-                worker_process_video_job, job_id, str(final_input_path), user.workspace_id, payload.category, payload.entity
-            )
+            background_tasks.add_task(process_r2_locally)
         else:
-            asyncio.create_task(
-                asyncio.to_thread(worker_process_video_job, job_id, str(final_input_path), user.workspace_id, payload.category, payload.entity)
-            )
+            asyncio.create_task(process_r2_locally())
 
     return VideoJobResponse(
         id=job["id"],
@@ -679,22 +692,30 @@ async def trigger_audio_separation(
 
     job = await database.get_job(user_client, workspace_id=user.workspace_id, job_id=job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        job = await database.get_job(user_client, workspace_id="", job_id=job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
 
-    source_r2_key = job.get("source_video_r2_key") or ""
+    source_r2_key = job.get("source_video_r2_key") or job.get("sourceVideoR2Key") or ""
     if not source_r2_key:
         raise HTTPException(status_code=400, detail="Job has no source video in storage")
 
+    ws_id = job.get("workspace_id") or job.get("workspaceId") or user.workspace_id or "default"
+
     async def run_sep():
         try:
+            logger.info(f"[NODE-2] Triggering separation for job {job_id} on R2 key {source_r2_key}")
             await process_node2_separation(
                 job_id=job_id,
-                workspace_id=user.workspace_id,
+                workspace_id=ws_id,
                 source_r2_key=source_r2_key,
             )
         except Exception as e:
             logger.error(f"[NODE-2] Error executing separation on job {job_id}: {e}")
-            await database.update_job_status(user_client, workspace_id=user.workspace_id, job_id=job_id, status="failed", error=str(e))
+            try:
+                await database.update_job_status(user_client, workspace_id=ws_id, job_id=job_id, status="failed", error=str(e))
+            except Exception:
+                pass
 
     if background_tasks:
         background_tasks.add_task(run_sep)
