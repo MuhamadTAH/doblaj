@@ -35,15 +35,24 @@ def get_silero_vad():
     global _SILERO_MODEL, _SILERO_UTILS
     if _SILERO_MODEL is None:
         logger.info("[NODE-2] Loading Silero VAD model into memory...")
-        model, utils = torch.hub.load(
-            repo_or_dir="snakers4/silero-vad",
-            model="silero_vad",
-            force_reload=False,
-            onnx=False,
-            trust_repo=True,
-        )
-        _SILERO_MODEL = model
-        _SILERO_UTILS = utils
+        try:
+            from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
+            model = load_silero_vad()
+            utils = (get_speech_timestamps, None, read_audio)
+            _SILERO_MODEL = model
+            _SILERO_UTILS = utils
+            logger.info("[NODE-2] Loaded Silero VAD from silero_vad package")
+        except Exception as e:
+            logger.info("[NODE-2] Falling back to torch.hub.load with trust_repo=True: %s", e)
+            model, utils = torch.hub.load(
+                repo_or_dir="snakers4/silero-vad",
+                model="silero_vad",
+                force_reload=False,
+                onnx=False,
+                trust_repo=True,
+            )
+            _SILERO_MODEL = model
+            _SILERO_UTILS = utils
     return _SILERO_MODEL, _SILERO_UTILS
 
 
