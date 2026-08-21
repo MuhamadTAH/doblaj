@@ -521,7 +521,7 @@ export async function uploadInChunksWithProgress<T = any>(
   }
 
   // 3. Complete chunked job
-  const compRes = await postJsonWithAuthRetry(`${apiBase}/video/jobs/chunked/complete`, {
+  const compRes = await postJsonWithAuthRetry(getToken, `${apiBase}/video/jobs/chunked/complete`, {
     job_id,
     filename: file.name,
     category: meta?.category,
