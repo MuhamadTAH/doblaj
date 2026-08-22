@@ -50,6 +50,7 @@ export default function SoraniqLandingPage() {
       heroHeadlineEnd: "دووکانەکەت قسە بۆ کام بازاڕ دەکات؟",
       heroSub:
         "واز لە چاوەڕوانیی مووچەی دواکەوتوو بهێنە. لە ڕێگەی سیستەمی زیرەکی دەستکردمانەوە، یەکسەر ڤیدیۆکانی دووکانەکەت بکە بە عەرەبی عێراقی و ئەو گەشتیارانەی بە بەردەم دەرگاکەتدا تێدەپەڕن بکە بە کڕیاری ڕاستەقینە.",
+      ctaHeroMassive: "یەکسەر دەست پێبکە (لینککردنی وەتسئەپ لە ١٠ چرکەدا)",
       inputPlaceholder: "ژمارەی وەتسئەپ بنووسە (+964 7XX...)",
       ctaPrimary: "لە ١٠ چرکەدا وەتسئەپەکەم ببەستەوە",
       ctaSubtext: "⚡ تاقیکردنەوەی دەستبەجێ بە خۆڕایی • پێویست بە کارتی بانک ناکات",
@@ -159,6 +160,7 @@ export default function SoraniqLandingPage() {
       heroHeadlineEnd: "محلك ديحچي ويّا يا سوق؟",
       heroSub:
         "لتنتظر رواتب تتأخر. عن طريق نظام الذكاء الاصطناعي مالتنا، دبلج فيديوهات محلك للهجة العراقية بلحظات وحوّل السياح اللي يمرون من يم بابك إلى زبائن حقيقيين.",
+      ctaHeroMassive: "ابدأ الآن فوراً (ربط الواتساب بـ ١٠ ثواني)",
       inputPlaceholder: "اكتب رقم الواتساب (+964 7XX...)",
       ctaPrimary: "اربط رقم الواتساب بـ ١٠ ثواني",
       ctaSubtext: "⚡ تجربة مجانية فورية • بدون الحاجة لبطاقة بنكية",
@@ -268,6 +270,7 @@ export default function SoraniqLandingPage() {
       heroHeadlineEnd: "Which market is your store talking to?",
       heroSub:
         "Stop waiting for delayed salaries. With our AI system, instantly dub your store's videos into Iraqi Arabic and turn the tourists walking past your door into real paying customers.",
+      ctaHeroMassive: "Start Immediately (Link WhatsApp in 10 Seconds)",
       inputPlaceholder: "Enter WhatsApp number (+964 7XX...)",
       ctaPrimary: "Link My WhatsApp in 10 Seconds",
       ctaSubtext: "⚡ 100% Free Demo • No credit card required to test",
@@ -463,30 +466,8 @@ export default function SoraniqLandingPage() {
             </div>
           </Link>
 
-          {/* Nav Links */}
-          <div className="hidden lg:flex items-center gap-7 text-xs font-bold uppercase tracking-wider text-[#a1a1aa]">
-            <a href="#voice-demo" className="hover:text-emerald-400 transition-colors flex items-center gap-1.5">
-              <span>🎙️</span> {t.navFeatures}
-            </a>
-            <a href="#contrast-hero" className="hover:text-emerald-400 transition-colors flex items-center gap-1.5">
-              <span>⚖️</span> {isRTL ? "مقارنەی بازاڕ" : "Market Contrast"}
-            </a>
-            <a href="#roi-calculator" className="hover:text-emerald-400 transition-colors flex items-center gap-1.5">
-              <span>📊</span> {t.navCalculator}
-            </a>
-            <a href="#territorial-map" className="hover:text-emerald-400 transition-colors flex items-center gap-1.5">
-              <span>🗺️</span> {t.navMap}
-            </a>
-            <a href="#pricing" className="hover:text-emerald-400 transition-colors flex items-center gap-1.5">
-              <span>💎</span> {t.navPricing}
-            </a>
-            <a href="#faq" className="hover:text-emerald-400 transition-colors flex items-center gap-1.5">
-              <span>❓</span> {t.navFaq}
-            </a>
-          </div>
-
-          {/* Action Buttons & Language Switcher */}
-          <div className="hidden sm:flex items-center gap-3.5">
+          {/* Action Buttons & Language Switcher (No Escape Hatch Nav Links) */}
+          <div className="flex items-center gap-3.5">
             {/* Language Switch */}
             <div className="flex items-center bg-[#111218] border border-white/[0.08] rounded-xl p-1 text-xs shadow-inner">
               <button
@@ -523,90 +504,16 @@ export default function SoraniqLandingPage() {
 
             <Link
               to={isSignedIn ? "/dubbing" : `/sign-up?redirect_url=${encodeURIComponent('/dubbing')}`}
-              className="relative group overflow-hidden px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500 text-[#040407] text-xs sm:text-sm font-black uppercase tracking-wider shadow-[0_0_30px_rgba(16,185,129,0.4)] transition-all duration-300 transform hover:scale-[1.03] active:scale-[0.98]"
+              className="relative group overflow-hidden px-5 py-2.5 sm:px-6 sm:py-3 rounded-xl bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500 text-[#040407] text-xs sm:text-sm font-black uppercase tracking-wider shadow-[0_0_30px_rgba(16,185,129,0.4)] transition-all duration-300 transform hover:scale-[1.03] active:scale-[0.98]"
             >
-              <span className="relative z-10 flex items-center gap-2">
+              <span className="relative z-10 flex items-center gap-2 font-bold">
                 <span>⚡</span>
                 <span>{isSignedIn ? t.navLogin : t.navStart}</span>
               </span>
               <div className="absolute inset-0 bg-white/20 transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
             </Link>
           </div>
-
-          {/* Mobile hamburger */}
-          <button
-            onClick={() => setMobileMenu(!mobileMenu)}
-            aria-label="Toggle menu"
-            className="lg:hidden text-[#cfcfd3] hover:text-emerald-400 p-2 rounded-xl bg-[#111218] border border-white/[0.08]"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={mobileMenu ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
-            </svg>
-          </button>
         </div>
-
-        {/* Mobile Dropdown */}
-        <AnimatePresence>
-          {mobileMenu && (
-            <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="lg:hidden bg-[#0a0c12] border-b border-white/[0.1] px-6 py-6 space-y-4 shadow-2xl"
-            >
-              <div className="flex justify-center gap-2 mb-4 bg-[#111218] p-1.5 rounded-xl border border-white/[0.08]">
-                <button
-                  onClick={() => setLang("ckb")}
-                  className={`flex-1 py-2 rounded-lg font-bold text-sm ${
-                    lang === "ckb" ? "bg-emerald-500 text-[#040407]" : "text-[#cfcfd3]"
-                  }`}
-                >
-                  سۆرانی
-                </button>
-                <button
-                  onClick={() => setLang("ar")}
-                  className={`flex-1 py-2 rounded-lg font-bold text-sm ${
-                    lang === "ar" ? "bg-emerald-500 text-[#040407]" : "text-[#cfcfd3]"
-                  }`}
-                >
-                  عربي
-                </button>
-                <button
-                  onClick={() => setLang("en")}
-                  className={`flex-1 py-2 rounded-lg font-bold text-sm ${
-                    lang === "en" ? "bg-emerald-500 text-[#040407]" : "text-[#cfcfd3]"
-                  }`}
-                >
-                  EN
-                </button>
-              </div>
-              <a href="#voice-demo" onClick={() => setMobileMenu(false)} className="block text-sm font-bold text-[#cfcfd3] hover:text-emerald-400">
-                🎙️ {t.navFeatures}
-              </a>
-              <a href="#contrast-hero" onClick={() => setMobileMenu(false)} className="block text-sm font-bold text-[#cfcfd3] hover:text-emerald-400">
-                ⚖️ {isRTL ? "مقارنەی بازاڕ" : "Market Contrast"}
-              </a>
-              <a href="#roi-calculator" onClick={() => setMobileMenu(false)} className="block text-sm font-bold text-[#cfcfd3] hover:text-emerald-400">
-                📊 {t.navCalculator}
-              </a>
-              <a href="#territorial-map" onClick={() => setMobileMenu(false)} className="block text-sm font-bold text-[#cfcfd3] hover:text-emerald-400">
-                🗺️ {t.navMap}
-              </a>
-              <a href="#pricing" onClick={() => setMobileMenu(false)} className="block text-sm font-bold text-[#cfcfd3] hover:text-emerald-400">
-                💎 {t.navPricing}
-              </a>
-              <a href="#faq" onClick={() => setMobileMenu(false)} className="block text-sm font-bold text-[#cfcfd3] hover:text-emerald-400">
-                ❓ {t.navFaq}
-              </a>
-              <Link
-                to={isSignedIn ? "/dubbing" : `/sign-up?redirect_url=${encodeURIComponent('/dubbing')}`}
-                className="block w-full text-center px-6 py-3.5 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 text-[#040407] font-black text-sm shadow-[0_0_25px_rgba(16,185,129,0.4)]"
-              >
-                {isSignedIn ? t.navLogin : t.navStart}
-              </Link>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </nav>
 
       {/* SECTION 1: THE HERO SECTION (Extreme Contrast & Lethal Framing) */}
@@ -632,19 +539,25 @@ export default function SoraniqLandingPage() {
           initial={{ opacity: 0, y: 25 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="text-center max-w-4xl mx-auto mb-10 space-y-4"
+          className="text-center max-w-4xl mx-auto mb-12 space-y-5"
         >
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-[#fafafa] tracking-tight leading-[1.25]">
-            <span className="text-rose-400 block mb-2 drop-shadow-[0_0_35px_rgba(244,63,94,0.3)]">
+          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white leading-[1.3]">
+            {/* The Cold Pain: Dead, harsh, flat light gray representing boring reality */}
+            <span className="text-[#9ca3af] block mb-3 text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-normal">
               {t.heroHeadlineStart}
             </span>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-emerald-400 to-teal-200 block mb-2 drop-shadow-[0_0_40px_rgba(16,185,129,0.4)]">
+            {/* The Target Outcome: ONLY this is glowing Teal/Emerald (Money/Escape) */}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-emerald-400 to-teal-300 block mb-4 text-3xl sm:text-5xl lg:text-6xl font-black drop-shadow-[0_0_45px_rgba(16,185,129,0.45)]">
               {t.heroHeadlineHighlight}
             </span>
-            <span className="text-white block">{t.heroHeadlineEnd}</span>
+            {/* The Closing Question: Crisp pure white */}
+            <span className="text-white block text-2xl sm:text-4xl lg:text-5xl font-black">
+              {t.heroHeadlineEnd}
+            </span>
           </h1>
 
-          <p className="text-base sm:text-lg md:text-xl text-[#cfcfd3] max-w-3xl mx-auto font-medium leading-relaxed pt-2">
+          {/* Subheadline: 1.5x Line-height breathing room for effortless reading */}
+          <p className="text-base sm:text-xl lg:text-2xl text-zinc-300 max-w-3xl mx-auto font-medium leading-[2.1] sm:leading-[2.3] pt-4 px-2">
             {t.heroSub}
           </p>
         </motion.div>
@@ -738,12 +651,29 @@ export default function SoraniqLandingPage() {
           </div>
         </motion.div>
 
-        {/* Psychological ROI Note */}
-        <div className="mt-8 text-center max-w-4xl mx-auto">
-          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-emerald-500/15 to-teal-500/10 border border-emerald-500/30 shadow-[0_0_35px_rgba(16,185,129,0.15)] text-xs sm:text-sm md:text-base font-bold text-emerald-300 leading-relaxed">
+        {/* MASSIVE GLOWING HERO CTA BUTTON (The Release Valve) */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.6, delay: 0.4 }}
+          className="mt-12 flex flex-col items-center justify-center text-center max-w-3xl mx-auto z-20"
+        >
+          <Link
+            to={isSignedIn ? "/dubbing" : `/sign-up?redirect_url=${encodeURIComponent('/dubbing')}`}
+            className="w-full sm:w-auto relative group overflow-hidden px-8 sm:px-14 py-5 sm:py-6 rounded-2xl bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 hover:from-emerald-300 hover:to-teal-300 text-[#040407] text-lg sm:text-2xl font-black shadow-[0_0_60px_rgba(16,185,129,0.55)] hover:shadow-[0_0_80px_rgba(16,185,129,0.75)] transition-all duration-300 transform hover:scale-[1.03] active:scale-[0.98] flex items-center justify-center gap-3 border-2 border-emerald-300/60"
+          >
+            <span className="relative z-10 flex items-center gap-3 font-black">
+              <span className="text-2xl sm:text-3xl">⚡</span>
+              <span>{t.ctaHeroMassive}</span>
+            </span>
+            <div className="absolute inset-0 bg-white/30 transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
+          </Link>
+
+          {/* Repositioned bold psychological rational justification directly under CTA */}
+          <p className="mt-5 text-sm sm:text-base lg:text-lg font-bold text-emerald-300/95 max-w-2xl mx-auto leading-relaxed px-4 drop-shadow-[0_0_20px_rgba(16,185,129,0.25)]">
             {t.splitBottomNote}
-          </div>
-        </div>
+          </p>
+        </motion.div>
       </section>
 
       {/* SECTION 2: INTERACTIVE "HEAR THE DIFFERENCE" LIVE DUBBING PREVIEW PLAYER */}
