@@ -8,9 +8,6 @@ export default function SoraniqLandingPage() {
   const navigate = useNavigate();
   const [lang, setLang] = useState<"ckb" | "ar" | "en">("ckb");
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [whatsAppNumber, setWhatsAppNumber] = useState("");
-  const [toastIndex, setToastIndex] = useState(0);
-  const [showToast, setShowToast] = useState(true);
   const [isAnnual, setIsAnnual] = useState(false);
   
   // Audio demo player state
@@ -27,39 +24,6 @@ export default function SoraniqLandingPage() {
 
   // FAQ open state
   const [openFaq, setOpenFaq] = useState<number | null>(0);
-
-  // Live social proof toasts cycling
-  const liveNotifications = useMemo(() => ({
-    en: [
-      { text: "A fashion boutique on Salim St. just dubbed 3 reels into Iraqi Arabic.", time: "2 min ago", store: "Salim Boutique" },
-      { text: "A showroom in Mawlawi St. captured 14 tourist orders from Baghdad.", time: "5 min ago", store: "Mawlawi Palace" },
-      { text: "An electronics store in Saholaka converted a 2-minute Kurdish promo.", time: "8 min ago", store: "Tech Hub" },
-      { text: "A perfume shop in Majidi Mall just linked their WhatsApp.", time: "11 min ago", store: "Royal Oud" },
-    ],
-    ckb: [
-      { text: "دووکانێکی جلوبەرگ لە شەقامی سەلیم ٣ ڤیدیۆی کردە عەرەبی عێراقی.", time: "٢ خولەک لەمەوبەر", store: "پۆشاکی سەلیم" },
-      { text: "پێشانگایەک لە شەقامی مەولەوی ١٤ داواکاریی گەشتیارانی بەغدای وەرگرت.", time: "٥ خولەک لەمەوبەر", store: "پێشانگای مەولەوی" },
-      { text: "دووکانێکی مۆبایل لە سەهۆڵەکە ڕیکلامێکی ٢ خولەکیی سۆرانی گۆڕی بۆ عێراقی.", time: "٨ خولەک لەمەوبەر", store: "تەکنەلۆجیای سەهۆڵەکە" },
-      { text: "بۆنفرۆشێک لە مەجیدی مۆڵ وەتسئەپەکەی بەستەوە بە سیستەمەکە.", time: "١١ خولەک لەمەوبەر", store: "عەتری شاهانە" },
-    ],
-    ar: [
-      { text: "محل أزياء بشارع سالم دبلج ٣ فيديوهات للهجة العراقية الآن.", time: "منذ دقيقتين", store: "أزياء سالم" },
-      { text: "معرض بشارع مولوي استقبل ١٤ طلب من سياح بغداد.", time: "منذ ٥ دقائق", store: "معرض المولوي" },
-      { text: "محل إلكترونيات بالسهولكة حول إعلانه من الكردية إلى العراقية.", time: "منذ ٨ دقائق", store: "تكنو سهولكة" },
-      { text: "محل عطور بمجيدي مول ربط رقمه على الواتساب للبدء فوراً.", time: "منذ ١١ دقيقة", store: "العود الملكي" },
-    ],
-  }[lang]), [lang]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setShowToast(false);
-      setTimeout(() => {
-        setToastIndex((prev) => (prev + 1) % liveNotifications.length);
-        setShowToast(true);
-      }, 500);
-    }, 8000);
-    return () => clearInterval(interval);
-  }, [liveNotifications.length]);
 
   // Simulated audio progress timer
   useEffect(() => {
@@ -1257,34 +1221,6 @@ export default function SoraniqLandingPage() {
           </div>
         </div>
       </section>
-
-      {/* Dynamic Floating Social Proof Toast (Bottom Corner) */}
-      <div
-        className={`fixed bottom-6 ${
-          isRTL ? "left-6" : "right-6"
-        } z-40 max-w-sm w-full transition-all duration-500 transform ${
-          showToast ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
-        }`}
-      >
-        <div className="bg-[#0d1017]/95 border-2 border-emerald-500/60 rounded-2xl p-4 shadow-[0_15px_40px_rgba(0,0,0,0.8)] backdrop-blur-2xl flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-lg flex-shrink-0 text-emerald-400 font-black">
-            ⚡
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex justify-between items-center mb-0.5">
-              <span className="text-[10px] font-mono text-emerald-400 font-black uppercase">
-                {liveNotifications[toastIndex]?.store}
-              </span>
-              <span className="text-[9px] font-mono text-[#71717a]">
-                {liveNotifications[toastIndex]?.time}
-              </span>
-            </div>
-            <p className="text-xs font-bold text-[#fafafa] leading-snug">
-              {liveNotifications[toastIndex]?.text}
-            </p>
-          </div>
-        </div>
-      </div>
 
       {/* Footer */}
       <footer className="bg-[#030305] border-t border-white/[0.06] w-full py-16 px-4 sm:px-6 lg:px-10 relative z-10">
