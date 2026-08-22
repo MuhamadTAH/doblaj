@@ -15,12 +15,9 @@ export default function SoraniqLandingPage() {
   const [isPlayingAudio, setIsPlayingAudio] = useState(true);
   const [audioProgress, setAudioProgress] = useState(42);
 
-  // ROI Calculator state
-  const [avgTicketPrice, setAvgTicketPrice] = useState(35); // in USD
-  const [touristSalesPerWeek, setTouristSalesPerWeek] = useState(12); // sales
-
-  // Selected Radar Hotspot
-  const [selectedHotspot, setSelectedHotspot] = useState<number | null>(0);
+  // ROI Calculator state (IQD Realistic Architecture)
+  const [avgProfitPerCustomer, setAvgProfitPerCustomer] = useState(20000); // 20,000 IQD default
+  const [touristCustomersPerWeek, setTouristCustomersPerWeek] = useState(10); // 10 customers default
 
   // FAQ open state
   const [openFaq, setOpenFaq] = useState<number | null>(0);
@@ -36,11 +33,11 @@ export default function SoraniqLandingPage() {
 
   const isRTL = lang === "ckb" || lang === "ar";
 
-  // Calculations for ROI simulator
-  const monthlyRevenue = avgTicketPrice * touristSalesPerWeek * 4;
-  const toolCost = isAnnual ? 16 : 20;
-  const netMonthlyProfit = monthlyRevenue - toolCost;
-  const roiPercentage = Math.round((netMonthlyProfit / toolCost) * 100);
+  // Calculations for ROI simulator (Realistic IQD Math Engine)
+  const softwareCostIQD = 30000;
+  const monthlyArabCustomers = touristCustomersPerWeek * 4;
+  const monthlyGrossProfitIQD = monthlyArabCustomers * avgProfitPerCustomer;
+  const monthlyNetLostProfitIQD = Math.max(0, monthlyGrossProfitIQD - softwareCostIQD);
 
   const t = {
     ckb: {
@@ -78,12 +75,12 @@ export default function SoraniqLandingPage() {
       splitBottomNote: "(تێبینی: تەنها یەک فرۆش بە گەشتیارێکی عەرەب، تێچووی تەواوی مانگێکی ئەم سیستەمە دەردێنێتەوە. باقی ٢٩ ڕۆژەکەی تر ١٠٠٪ قازانجی ساغە بۆ خۆت).",
 
       calcTitle: "ژمێرەری قازانجی گەشتیاران بۆ دووکانەکەت",
-      calcSubtitle: "بزانە مانگانە چەند ملیۆن دینار لەدەست دەدەیت ئەگەر بە عەرەبی عێراقی قسە لەگەڵ گەشتیاران نەکەیت:",
-      calcSlider1Label: "تێکڕای نرخی کەلوپەل لە دووکانەکەت ($):",
-      calcSlider2Label: "فرۆشی چاوەڕوانکراو بە گەشتیار لە هەفتەیەکدا:",
-      calcResultProfit: "داهاتی مانگانەی گەشتیار:",
-      calcResultRoi: "ڕێژەی قازانج لەسەر تێچووی $20:",
-      calcPaybackTime: "کاتی دەرهێنانەوەی تێچووی بەرنامەکە: کەمتر لە ٤ کاتژمێر لە ڕۆژی هەینی!",
+      calcSubtitle: "واز لە خەمڵاندن بهێنە. ئەم دوو خلیسکێنەرەی خوارەوە بجوڵێنە بۆ ئەوەی بە تەواوی بزانیت چەند پارەی کاشی گەشتیارانی عەرەب دەبەخشیتە ڕکابەرەکانت هەموو هەفتەیەک.",
+      calcSlider1Label: "قازانجی مامناوەند لە هەر گەشتیارێک:",
+      calcSlider2Label: "ژمارەی گەشتیارە عەرەبەکان لە هەفتەیەکدا:",
+      calcResultProfit: "داهاتی مانگانەی لەدەستچوو:",
+      calcCostNote: "تێچووی سیستەم: تەنها ٣٠,٠٠٠ دینار لە مانگێکدا. باقي قازانجی ساغە.",
+      calcCtaBtn: "ئەم قازانجە بۆ دووکانەکەم زیاد بکە",
 
       painSectionTag: "زەنگی مەترسیی ناوچەیی",
       painHeadline: "کەلوپەلەکەت بێ کڕیار ماوەتەوە، لە کاتێکدا ڕکابەرەکانت پارەی گەشتیاران دەبەن.",
@@ -188,12 +185,12 @@ export default function SoraniqLandingPage() {
       splitBottomNote: "(ملاحظة: بيعة واحدة لسائح عربي تطلع تكلفة اشتراك شهر كامل من هذا النظام. باقي الـ ٢٩ يوم أرباح صافية ١٠٠٪ لجيبك).",
 
       calcTitle: "حاسبة أرباح السياح لمحلك",
-      calcSubtitle: "احسب شكد د تخسر فلوس شهرياً لأن ما د تحچي ويّا السياح بلهجتهم:",
-      calcSlider1Label: "متوسط سعر القطعة بمحلك ($):",
-      calcSlider2Label: "عدد مبيعات السياح المتوقعة أسبوعياً:",
-      calcResultProfit: "أرباح السياح الشهرية المتوقعة:",
-      calcResultRoi: "نسبة العائد على استثمار الـ 20$:",
-      calcPaybackTime: "استرجاع تكلفة البرنامج: بأقل من ٤ ساعات بيع يوم الجمعة!",
+      calcSubtitle: "لتخمّن وتتحزر. حرك المؤشرات جوا وشوف بالضبط شكد فلوس كاش من السياح العرب د تخلي منافسيك ياخذوها منك كل اسبوع.",
+      calcSlider1Label: "متوسط الربح الصافي من كل سائح:",
+      calcSlider2Label: "عدد السياح العرب الإضافيين أسبوعياً:",
+      calcResultProfit: "الأرباح الشهرية الصافية الضائعة:",
+      calcCostNote: "تكلفة النظام: فقط ٣٠,٠٠٠ دينار شهرياً. باقي المبلغ أرباح صافية.",
+      calcCtaBtn: "ضيف هاي الأرباح لمحلي",
 
       painSectionTag: "جرس إنذار محلي",
       painHeadline: "بينما بضاعتك نايمة بالمحل، منافسينك د ياخذون فلوس السياح.",
@@ -298,12 +295,12 @@ export default function SoraniqLandingPage() {
       splitBottomNote: "(Note: Just ONE sale to an Arab tourist covers the entire monthly cost of this system. The remaining 29 days are 100% pure profit for you).",
 
       calcTitle: "Tourist Cash Lift Calculator",
-      calcSubtitle: "Calculate how much tourist revenue your store is currently leaving on the table:",
-      calcSlider1Label: "Average Item Price in Your Store ($):",
-      calcSlider2Label: "Expected Weekly Tourist Sales:",
-      calcResultProfit: "Projected Monthly Tourist Cash Inflow:",
-      calcResultRoi: "ROI on $20/mo Investment:",
-      calcPaybackTime: "Payback Period: Less than 4 hours of Friday foot traffic!",
+      calcSubtitle: "Stop guessing. Move the sliders below to see exactly how much Arab cash you are letting your competitors steal every single week.",
+      calcSlider1Label: "Average Profit per Arab Customer:",
+      calcSlider2Label: "Extra Arab Customers per Week:",
+      calcResultProfit: "Monthly Lost Tourist Revenue:",
+      calcCostNote: "System Cost: Only 30,000 IQD (~$20)/mo. The rest is 100% pure profit.",
+      calcCtaBtn: "Add This Profit to My Store",
 
       painSectionTag: "TERRITORIAL ALERT",
       painHeadline: "While you sit on unsold inventory, your competitors are taking the tourist cash.",
@@ -374,55 +371,6 @@ export default function SoraniqLandingPage() {
       navStart: "Start Now",
     },
   }[lang];
-
-  const hotspots = [
-    {
-      id: 0,
-      name: isRTL ? "شەقامی سەلیم (سلێمانی)" : "Salim Street (Sulaymaniyah)",
-      stats: isRTL ? "٥ دووکان چالاکە • ٢٨ ڤیدیۆ دۆبلاژکراوە" : "5 Stores Active • 28 Dubs",
-      quote: isRTL ? "«سێ گەشتیاری بەغدا ڕاستەوخۆ بە ڤیدیۆی تیکتۆک هاتنە دووکانەکەم و ٦٠٠ دۆلاریان سەرف کرد.»" : "«Three Baghdad tourists walked in from TikTok and spent $600.»",
-      top: "32%",
-      left: "26%",
-      pulseColor: "#10b981",
-    },
-    {
-      id: 1,
-      name: isRTL ? "بازاڕی مەولەوی (سلێمانی)" : "Mawlawi Bazaar (Sulaymaniyah)",
-      stats: isRTL ? "٤ پێشانگا چالاکە • ٤١ ڤیدیۆ دۆبلاژکراوە" : "4 Showrooms Active • 41 Dubs",
-      quote: isRTL ? "«کە بە عەرەبی عێراقی گوێیان لە ڕیکلامەکە بوو، هەموو ڕۆژانی هەینی قەرەباڵغ دەبێت لامان.»" : "«Hearing Iraqi Arabic reels made every Friday packed with shoppers.»",
-      top: "66%",
-      left: "39%",
-      pulseColor: "#10b981",
-    },
-    {
-      id: 2,
-      name: isRTL ? "گەڕەکی سەهۆڵەکە (سلێمانی)" : "Saholaka Corridor (Sulaymaniyah)",
-      stats: isRTL ? "٣ دووکان چالاکە • ١٩ ڤیدیۆ دۆبلاژکراوە" : "3 Stores Active • 19 Dubs",
-      quote: isRTL ? "«ڤیدیۆکەمان کردە عەرەبی و گەیاندمانە ئینستاگرام، کڕیاری عەرەب یەکسەر لۆکەیشنی داواکرد.»" : "«Dubbed to Iraqi Arabic on IG, tourist immediately asked for location.»",
-      top: "42%",
-      left: "56%",
-      pulseColor: "#34d399",
-    },
-    {
-      id: 3,
-      name: isRTL ? "ئیمپایەر و فامیلی مۆڵ (هەولێر)" : "Empire & Family Mall (Erbil)",
-      stats: isRTL ? "٢ بووتیک چالاکە • ٣٣ ڤیدیۆ دۆبلاژکراوە" : "2 Boutiques Active • 33 Dubs",
-      quote: isRTL ? "«گەشتیار بە تایبەتی لە هەولێر بەدوای فرۆشگادا دەگەڕێن، دۆبلاژەکە متمانەی تەواوی پێدان.»" : "«Erbil tourists trusted us immediately upon hearing natural dialect.»",
-      top: "36%",
-      left: "79%",
-      pulseColor: "#10b981",
-    },
-  ];
-
-  const handleWhatsAppSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanNumber = whatsAppNumber.replace(/[^0-9]/g, "");
-    if (isSignedIn) {
-      navigate("/dubbing");
-    } else {
-      navigate(`/sign-up?redirect_url=${encodeURIComponent('/dubbing')}&phone=${cleanNumber}`);
-    }
-  };
 
   return (
     <div
@@ -791,168 +739,92 @@ export default function SoraniqLandingPage() {
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#fafafa] tracking-tight">
             {t.calcTitle}
           </h2>
-          <p className="text-sm sm:text-base text-[#a1a1aa] font-medium leading-relaxed">
+          <p className="text-base sm:text-lg text-zinc-300 font-medium leading-relaxed max-w-2xl mx-auto">
             {t.calcSubtitle}
           </p>
         </div>
 
-        <div className="grid lg:grid-cols-12 gap-8 items-center bg-[#0d1017] rounded-3xl p-6 sm:p-10 border border-white/[0.1] shadow-2xl">
-          {/* Sliders Input Panel (7 Cols) */}
-          <div className="lg:col-span-7 space-y-8 pr-0 lg:pr-6">
-            {/* Slider 1: Average Item Price */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center text-sm font-bold text-[#fafafa]">
+        <div className="grid lg:grid-cols-12 gap-8 items-stretch bg-[#0d1017] rounded-3xl p-6 sm:p-10 border border-white/[0.1] shadow-2xl">
+          {/* Sliders Input Panel (Right column in RTL, 7 Cols) */}
+          <div className="lg:col-span-7 space-y-8 flex flex-col justify-center">
+            {/* Slider 1: Average Profit per Arab Customer */}
+            <div className="space-y-3 bg-[#08090f] p-5 rounded-2xl border border-white/[0.06]">
+              <div className="flex justify-between items-center text-sm sm:text-base font-bold text-white">
                 <span>{t.calcSlider1Label}</span>
-                <span className="text-2xl font-black text-emerald-400 font-mono">${avgTicketPrice}</span>
-              </div>
-              <input
-                type="range"
-                min="10"
-                max="200"
-                step="5"
-                value={avgTicketPrice}
-                onChange={(e) => setAvgTicketPrice(Number(e.target.value))}
-                className="w-full h-2.5 bg-[#07090d] rounded-lg appearance-none cursor-pointer accent-emerald-400"
-              />
-              <div className="flex justify-between text-[11px] font-mono text-[#71717a]">
-                <span>$10</span>
-                <span>$100</span>
-                <span>$200+</span>
-              </div>
-            </div>
-
-            {/* Slider 2: Tourist Sales per Week */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center text-sm font-bold text-[#fafafa]">
-                <span>{t.calcSlider2Label}</span>
-                <span className="text-2xl font-black text-emerald-400 font-mono">
-                  {touristSalesPerWeek} {isRTL ? "کڕیار / هەفتە" : "sales / wk"}
+                <span className="text-xl sm:text-2xl font-black text-emerald-400 font-mono">
+                  {avgProfitPerCustomer.toLocaleString()} {isRTL ? "دینار" : "IQD"}
                 </span>
               </div>
               <input
                 type="range"
-                min="2"
-                max="40"
-                step="1"
-                value={touristSalesPerWeek}
-                onChange={(e) => setTouristSalesPerWeek(Number(e.target.value))}
-                className="w-full h-2.5 bg-[#07090d] rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                min="10000"
+                max="100000"
+                step="5000"
+                value={avgProfitPerCustomer}
+                onChange={(e) => setAvgProfitPerCustomer(Number(e.target.value))}
+                className="w-full h-3 bg-[#030407] rounded-lg appearance-none cursor-pointer accent-emerald-400"
               />
-              <div className="flex justify-between text-[11px] font-mono text-[#71717a]">
-                <span>2 {isRTL ? "کڕیار" : "sales"}</span>
-                <span>20 {isRTL ? "کڕیار" : "sales"}</span>
-                <span>40+ {isRTL ? "کڕیار" : "sales"}</span>
+              <div className="flex justify-between text-xs font-mono text-[#71717a]">
+                <span>{isRTL ? "١٠,٠٠٠ دینار" : "10,000 IQD"}</span>
+                <span>{isRTL ? "٥٠,٠٠٠ دینار" : "50,000 IQD"}</span>
+                <span>{isRTL ? "١٠٠,٠٠٠ دینار" : "100,000 IQD"}</span>
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-[#08090f] border border-white/[0.06] text-xs text-[#a1a1aa] font-medium leading-relaxed">
-              💡 {t.calcPaybackTime}
+            {/* Slider 2: Arab Customers per Week */}
+            <div className="space-y-3 bg-[#08090f] p-5 rounded-2xl border border-white/[0.06]">
+              <div className="flex justify-between items-center text-sm sm:text-base font-bold text-white">
+                <span>{t.calcSlider2Label}</span>
+                <span className="text-xl sm:text-2xl font-black text-emerald-400 font-mono">
+                  {touristCustomersPerWeek} {isRTL ? "کڕیار" : "customers"}
+                </span>
+              </div>
+              <input
+                type="range"
+                min="1"
+                max="50"
+                step="1"
+                value={touristCustomersPerWeek}
+                onChange={(e) => setTouristCustomersPerWeek(Number(e.target.value))}
+                className="w-full h-3 bg-[#030407] rounded-lg appearance-none cursor-pointer accent-emerald-400"
+              />
+              <div className="flex justify-between text-xs font-mono text-[#71717a]">
+                <span>{isRTL ? "١ کڕیار" : "1 customer"}</span>
+                <span>{isRTL ? "٢٥ کڕیار" : "25 customers"}</span>
+                <span>{isRTL ? "٥٠ کڕیار" : "50 customers"}</span>
+              </div>
             </div>
           </div>
 
-          {/* Result Output Card (5 Cols) */}
-          <div className="lg:col-span-5 bg-gradient-to-b from-[#112419] to-[#0a160f] rounded-2xl p-6 sm:p-8 border-2 border-emerald-500/80 shadow-[0_0_50px_rgba(16,185,129,0.25)] space-y-6 text-center">
-            <div>
-              <div className="text-xs uppercase font-mono text-emerald-400/90 font-black tracking-wider mb-2">
+          {/* Result Output Card (Left column in RTL, 5 Cols) */}
+          <div className="lg:col-span-5 bg-gradient-to-b from-[#112419] to-[#0a160f] rounded-2xl p-6 sm:p-8 border-2 border-emerald-500/80 shadow-[0_0_50px_rgba(16,185,129,0.25)] flex flex-col justify-between text-center space-y-6">
+            <div className="space-y-3">
+              {/* Sub-text in White / light gray */}
+              <div className="text-sm sm:text-base font-bold text-zinc-300 tracking-normal">
                 {t.calcResultProfit}
               </div>
-              <div className="text-4xl sm:text-5xl font-black text-[#fafafa] font-mono tracking-tight drop-shadow-[0_0_25px_rgba(16,185,129,0.4)]">
-                +${monthlyRevenue.toLocaleString()}
+              {/* Massive Glowing Green Text */}
+              <div className="text-4xl sm:text-5xl lg:text-6xl font-black text-emerald-400 font-mono tracking-tight drop-shadow-[0_0_35px_rgba(16,185,129,0.55)]">
+                +{monthlyNetLostProfitIQD.toLocaleString()} {isRTL ? "دینار" : "IQD"}
               </div>
-              <div className="text-xs font-mono text-emerald-400 font-bold mt-1">
-                ≈ +{(monthlyRevenue * 1530).toLocaleString()} IQD / month
-              </div>
+              {/* Small White Text underneath */}
+              <p className="text-xs sm:text-sm font-medium text-zinc-300/90 leading-relaxed pt-2">
+                {t.calcCostNote}
+              </p>
             </div>
 
-            <div className="py-3 px-4 rounded-xl bg-black/50 border border-emerald-500/30 flex justify-between items-center text-xs font-mono">
-              <span className="text-[#a1a1aa]">{t.calcResultRoi}</span>
-              <span className="text-lg font-black text-emerald-400 font-bold">+{roiPercentage.toLocaleString()}%</span>
-            </div>
-
+            {/* Massive Glowing Green CTA Button */}
             <Link
               to={isSignedIn ? "/dubbing" : `/sign-up?redirect_url=${encodeURIComponent('/dubbing')}`}
-              className="block w-full py-4 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-[#040407] font-black text-sm uppercase tracking-wider shadow-[0_0_25px_rgba(16,185,129,0.5)] transition-all transform hover:scale-[1.02]"
+              className="block w-full py-4 sm:py-5 rounded-2xl bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 hover:from-emerald-300 hover:to-teal-300 text-[#040407] font-black text-base sm:text-lg shadow-[0_0_35px_rgba(16,185,129,0.5)] transition-all transform hover:scale-[1.02] active:scale-[0.98]"
             >
-              {isRTL ? "ئەم قازانجە بۆ دووکانەکەم زیاد بکە 🚀" : "Claim This Revenue Now 🚀"}
+              {t.calcCtaBtn}
             </Link>
           </div>
         </div>
       </section>
 
-      {/* SECTION 4: THE TERRITORIAL ALERT & INTERACTIVE CITY RADAR */}
-      <section id="territorial-map" className="py-24 px-4 sm:px-6 lg:px-10 bg-[#08090e] border-y border-white/[0.08] relative z-10">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-14 space-y-3">
-            <div className="inline-block px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest bg-amber-500/15 text-amber-400 border border-amber-500/30">
-              {t.painSectionTag}
-            </div>
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#fafafa] tracking-tight">
-              {t.painHeadline}
-            </h2>
-            <p className="text-sm sm:text-base text-[#a1a1aa] font-medium leading-relaxed">
-              {t.painBody}
-            </p>
-          </div>
-
-          {/* Interactive Radar Screen */}
-          <div className="bg-[#0e111a] rounded-3xl p-6 sm:p-10 border border-white/[0.1] shadow-2xl relative overflow-hidden">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 pb-6 border-b border-white/[0.08]">
-              <div>
-                <h3 className="text-xl sm:text-2xl font-bold text-[#fafafa]">
-                  {t.mapTitle}
-                </h3>
-                <p className="text-xs sm:text-sm text-[#8e8e9c] mt-1">
-                  {t.mapSubtitle}
-                </p>
-              </div>
-              <div className="flex items-center gap-2.5 px-4 py-2 rounded-xl bg-[#06070a] border border-emerald-500/40">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-                <span className="text-xs font-mono font-bold text-emerald-400">14 Stores Live Right Now</span>
-              </div>
-            </div>
-
-            {/* Radar Viewport */}
-            <div className="relative w-full aspect-[16/9] min-h-[380px] bg-[#050609] rounded-2xl border border-white/[0.08] overflow-hidden p-6">
-              {/* Sonar sweep & grid overlay */}
-              <div className="absolute inset-0 bg-[radial-gradient(#10b981_1px,transparent_1px)] [background-size:28px_28px] opacity-15"></div>
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] h-[480px] rounded-full border border-emerald-500/20 animate-ping opacity-25 pointer-events-none"></div>
-
-              {/* Hotspots */}
-              <div className="relative w-full h-full">
-                {hotspots.map((spot) => (
-                  <div
-                    key={spot.id}
-                    onClick={() => setSelectedHotspot(spot.id)}
-                    style={{ top: spot.top, left: spot.left }}
-                    className="absolute -translate-x-1/2 -translate-y-1/2 group cursor-pointer z-20"
-                  >
-                    <div className="relative flex items-center justify-center">
-                      <span className="absolute w-10 h-10 rounded-full bg-emerald-400/30 animate-ping"></span>
-                      <span className={`relative w-5 h-5 rounded-full bg-emerald-400 border-2 border-white shadow-[0_0_15px_#10b981] transition-transform ${selectedHotspot === spot.id ? "scale-125 ring-4 ring-emerald-400/40" : ""}`}></span>
-                    </div>
-
-                    <div className="mt-2.5 bg-[#0f121d]/95 border border-emerald-500/50 px-3.5 py-2 rounded-xl text-center shadow-2xl backdrop-blur-md transition-all hover:scale-105">
-                      <div className="text-[11px] font-black text-[#fafafa] whitespace-nowrap">{spot.name}</div>
-                      <div className="text-[9px] font-mono text-emerald-400 font-bold">{spot.stats}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Selected Hotspot Intelligence Quote */}
-            {selectedHotspot !== null && (
-              <div className="mt-6 p-4 rounded-2xl bg-[#06080e] border border-emerald-500/30 flex items-center gap-3 text-xs sm:text-sm font-medium text-emerald-200">
-                <span className="text-xl">📍</span>
-                <span className="font-bold text-white">{hotspots[selectedHotspot]?.name}:</span>
-                <span className="italic">{hotspots[selectedHotspot]?.quote}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* SECTION 5: THE PRICING GUILLOTINE (Decoy Effect & Anchoring) */}
+      {/* SECTION 4: THE PRICING GUILLOTINE (Decoy Effect & Anchoring) */}
       <section id="pricing" className="py-24 px-4 sm:px-6 lg:px-10 max-w-7xl mx-auto z-10">
         <div className="text-center max-w-3xl mx-auto mb-16 space-y-4">
           {/* Top Crossed-out Human Anchor */}
@@ -1180,9 +1052,6 @@ export default function SoraniqLandingPage() {
               </li>
               <li>
                 <a href="#roi-calculator" className="text-[#8e8e9c] hover:text-emerald-400 transition-colors">{t.navCalculator}</a>
-              </li>
-              <li>
-                <a href="#territorial-map" className="text-[#8e8e9c] hover:text-emerald-400 transition-colors">{t.navMap}</a>
               </li>
               <li>
                 <a href="#pricing" className="text-[#8e8e9c] hover:text-emerald-400 transition-colors">{t.navPricing}</a>
