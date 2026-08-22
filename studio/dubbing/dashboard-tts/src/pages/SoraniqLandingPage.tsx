@@ -15,9 +15,9 @@ export default function SoraniqLandingPage() {
   const [isPlayingAudio, setIsPlayingAudio] = useState(true);
   const [audioProgress, setAudioProgress] = useState(42);
 
-  // ROI Calculator state (IQD Realistic Architecture)
-  const [avgProfitPerCustomer, setAvgProfitPerCustomer] = useState(20000); // 20,000 IQD default
-  const [touristCustomersPerWeek, setTouristCustomersPerWeek] = useState(10); // 10 customers default
+  // ROI Calculator state (IQD Direct Architecture)
+  const [avgProfitPerCustomer, setAvgProfitPerCustomer] = useState(10000); // 10,000 IQD default
+  const [touristCustomers, setTouristCustomers] = useState(10); // 10 customers default
 
   // FAQ open state
   const [openFaq, setOpenFaq] = useState<number | null>(0);
@@ -33,11 +33,8 @@ export default function SoraniqLandingPage() {
 
   const isRTL = lang === "ckb" || lang === "ar";
 
-  // Calculations for ROI simulator (Realistic IQD Math Engine)
-  const softwareCostIQD = 30000;
-  const monthlyArabCustomers = touristCustomersPerWeek * 4;
-  const monthlyGrossProfitIQD = monthlyArabCustomers * avgProfitPerCustomer;
-  const monthlyNetLostProfitIQD = Math.max(0, monthlyGrossProfitIQD - softwareCostIQD);
+  // Direct intuitive calculation: 1 customer = 10,000, 2 = 20,000, 10 = 100,000
+  const totalCalculatedProfitIQD = touristCustomers * avgProfitPerCustomer;
 
   const t = {
     ckb: {
@@ -77,9 +74,9 @@ export default function SoraniqLandingPage() {
       calcTitle: "ژمێرەری قازانجی گەشتیاران بۆ دووکانەکەت",
       calcSubtitle: "واز لە خەمڵاندن بهێنە. ئەم دوو خلیسکێنەرەی خوارەوە بجوڵێنە بۆ ئەوەی بە تەواوی بزانیت چەند پارەی کاشی گەشتیارانی عەرەب دەبەخشیتە ڕکابەرەکانت هەموو هەفتەیەک.",
       calcSlider1Label: "قازانجی مامناوەند لە هەر گەشتیارێک:",
-      calcSlider2Label: "ژمارەی گەشتیارە عەرەبەکان لە هەفتەیەکدا:",
+      calcSlider2Label: "ژمارەی گەشتیارە عەرەبەکان:",
       calcResultProfit: "داهاتی مانگانەی لەدەستچوو:",
-      calcCostNote: "تێچووی سیستەم: تەنها ٣٠,٠٠٠ دینار لە مانگێکدا. باقي قازانجی ساغە.",
+      calcCostNote: "تێچووی سیستەم: تەنها $20 لە مانگێکدا. باقی قازانجی ساغە.",
       calcCtaBtn: "ئەم قازانجە بۆ دووکانەکەم زیاد بکە",
 
       painSectionTag: "زەنگی مەترسیی ناوچەیی",
@@ -187,9 +184,9 @@ export default function SoraniqLandingPage() {
       calcTitle: "حاسبة أرباح السياح لمحلك",
       calcSubtitle: "لتخمّن وتتحزر. حرك المؤشرات جوا وشوف بالضبط شكد فلوس كاش من السياح العرب د تخلي منافسيك ياخذوها منك كل اسبوع.",
       calcSlider1Label: "متوسط الربح الصافي من كل سائح:",
-      calcSlider2Label: "عدد السياح العرب الإضافيين أسبوعياً:",
+      calcSlider2Label: "عدد السياح العرب:",
       calcResultProfit: "الأرباح الشهرية الصافية الضائعة:",
-      calcCostNote: "تكلفة النظام: فقط ٣٠,٠٠٠ دينار شهرياً. باقي المبلغ أرباح صافية.",
+      calcCostNote: "تكلفة النظام: فقط $20 شهرياً. باقي المبلغ أرباح صافية.",
       calcCtaBtn: "ضيف هاي الأرباح لمحلي",
 
       painSectionTag: "جرس إنذار محلي",
@@ -297,9 +294,9 @@ export default function SoraniqLandingPage() {
       calcTitle: "Tourist Cash Lift Calculator",
       calcSubtitle: "Stop guessing. Move the sliders below to see exactly how much Arab cash you are letting your competitors steal every single week.",
       calcSlider1Label: "Average Profit per Arab Customer:",
-      calcSlider2Label: "Extra Arab Customers per Week:",
+      calcSlider2Label: "Number of Arab Customers:",
       calcResultProfit: "Monthly Lost Tourist Revenue:",
-      calcCostNote: "System Cost: Only 30,000 IQD (~$20)/mo. The rest is 100% pure profit.",
+      calcCostNote: "System Cost: Only $20/mo. The rest is 100% pure profit.",
       calcCtaBtn: "Add This Profit to My Store",
 
       painSectionTag: "TERRITORIAL ALERT",
@@ -771,12 +768,12 @@ export default function SoraniqLandingPage() {
               </div>
             </div>
 
-            {/* Slider 2: Arab Customers per Week */}
+            {/* Slider 2: Number of Arab Customers */}
             <div className="space-y-3 bg-[#08090f] p-5 rounded-2xl border border-white/[0.06]">
               <div className="flex justify-between items-center text-sm sm:text-base font-bold text-white">
                 <span>{t.calcSlider2Label}</span>
                 <span className="text-xl sm:text-2xl font-black text-emerald-400 font-mono">
-                  {touristCustomersPerWeek} {isRTL ? "کڕیار" : "customers"}
+                  {touristCustomers} {isRTL ? "کڕیار" : "customers"}
                 </span>
               </div>
               <input
@@ -784,8 +781,8 @@ export default function SoraniqLandingPage() {
                 min="1"
                 max="50"
                 step="1"
-                value={touristCustomersPerWeek}
-                onChange={(e) => setTouristCustomersPerWeek(Number(e.target.value))}
+                value={touristCustomers}
+                onChange={(e) => setTouristCustomers(Number(e.target.value))}
                 className="w-full h-3 bg-[#030407] rounded-lg appearance-none cursor-pointer accent-emerald-400"
               />
               <div className="flex justify-between text-xs font-mono text-[#71717a]">
@@ -805,7 +802,7 @@ export default function SoraniqLandingPage() {
               </div>
               {/* Massive Glowing Green Text */}
               <div className="text-4xl sm:text-5xl lg:text-6xl font-black text-emerald-400 font-mono tracking-tight drop-shadow-[0_0_35px_rgba(16,185,129,0.55)]">
-                +{monthlyNetLostProfitIQD.toLocaleString()} {isRTL ? "دینار" : "IQD"}
+                +{totalCalculatedProfitIQD.toLocaleString()} {isRTL ? "دینار" : "IQD"}
               </div>
               {/* Small White Text underneath */}
               <p className="text-xs sm:text-sm font-medium text-zinc-300/90 leading-relaxed pt-2">
