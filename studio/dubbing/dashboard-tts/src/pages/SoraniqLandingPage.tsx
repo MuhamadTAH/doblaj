@@ -90,7 +90,7 @@ export default function SoraniqLandingPage() {
       pricingAnchorOld: "$500 / مانگانە",
       pricingAnchorSave: "٩٦٪ پاشەکەوت بکە بە Doblaj AI",
       pricingTitle: "نرخی ڕزگارکردنی کاسبییەکەت",
-      pricingSubtitle: "تەنها یەک فرۆش بە گەشتیارێکی عەرەب، تێچووی تەواوی ساڵێکی ئەم سیستەمە دەردێنێتەوە.",
+      pricingSubtitle: "تەنها یەک فرۆش بە گەشتیارێکی عەرەب، تێچووی تەواوی مانگێکی ئەم سیستەمە دەردێنێتەوە.",
       billingMonthly: "مانگانە",
       billingAnnual: "ساڵانە (٢ مانگ بە دیاری 🎁)",
 
@@ -200,7 +200,7 @@ export default function SoraniqLandingPage() {
       pricingAnchorOld: "$500 / شهرياً",
       pricingAnchorSave: "وفّر ٩٦٪ فوراً مع Doblaj AI",
       pricingTitle: "أسعار خطة النجاة وزيادة المبيعات",
-      pricingSubtitle: "بيعة وحدة لسائح عربي تطلعلك تكلفة اشتراك سنة كاملة من هذا البرنامج.",
+      pricingSubtitle: "بيعة وحدة لسائح عربي تطلعلك تكلفة اشتراك شهر كامل من هذا البرنامج.",
       billingMonthly: "شهرياً",
       billingAnnual: "سنوياً (شهران مجاناً 🎁)",
 
@@ -310,7 +310,7 @@ export default function SoraniqLandingPage() {
       pricingAnchorOld: "$500 / month",
       pricingAnchorSave: "Save 96% with Doblaj AI",
       pricingTitle: "The Survival Pricing",
-      pricingSubtitle: "One sale to an Arab tourist pays for an entire year of this software.",
+      pricingSubtitle: "Just one sale to an Arab tourist pays for an entire month of this system.",
       billingMonthly: "Monthly",
       billingAnnual: "Annual (2 Months Free 🎁)",
 
@@ -853,36 +853,37 @@ export default function SoraniqLandingPage() {
           </div>
         </div>
 
-        {/* 3 Manipulated Tiers */}
+        {/* 3 Manipulated Tiers (RTL Reading Flow: Anchor ($99) on Far Right -> Target ($20) in Middle -> Decoy ($15) on Far Left) */}
         <div className="grid lg:grid-cols-3 gap-8 items-center max-w-6xl mx-auto">
-          {/* Tier 1: The Decoy ($15) */}
-          <div className="bg-[#0e1017] rounded-3xl p-6 sm:p-8 border border-white/[0.06] flex flex-col justify-between opacity-80 hover:opacity-100 transition-all">
+          {/* Card 1: The Anchor ($99 - Agency / Company Plan) -> First Child = Far Right in RTL */}
+          <div className="bg-[#0a0c12] rounded-3xl p-6 sm:p-8 border border-white/[0.08] flex flex-col justify-between shadow-2xl">
             <div>
-              <div className="text-xs uppercase font-mono text-[#71717a] font-bold mb-2">
-                {t.decoyTitle}
+              <div className="text-xs uppercase font-mono text-[#a1a1aa] font-bold mb-2">
+                {t.anchorTitle}
               </div>
               <div className="flex items-baseline gap-1 mb-2">
-                <span className="text-4xl font-extrabold text-[#a1a1aa]">{t.decoyPrice}</span>
-                <span className="text-xs text-[#71717a]">{t.decoyPeriod}</span>
+                <span className="text-4xl font-extrabold text-[#fafafa]">{t.anchorPrice}</span>
+                <span className="text-xs text-[#71717a]">{t.anchorPeriod}</span>
               </div>
-              <div className="text-xs font-bold text-rose-400/90 mb-6 bg-rose-500/10 px-3 py-1 rounded-lg inline-block border border-rose-500/20">
-                ⚠️ {t.decoyLimit}
+              <div className="text-xs font-bold text-[#a1a1aa] mb-6 bg-white/[0.05] px-3 py-1 rounded-lg inline-block">
+                🏢 {t.anchorLimit}
               </div>
-              <ul className="space-y-3 text-xs text-[#8e8e9c] mb-8 font-medium">
-                <li className="flex items-center gap-2"><span>✕</span> {t.decoyItem1}</li>
-                <li className="flex items-center gap-2"><span>✕</span> {t.decoyItem2}</li>
-                <li className="flex items-center gap-2"><span>✕</span> {t.decoyItem3}</li>
+              <ul className="space-y-3 text-xs text-[#cfcfd3] mb-8 font-medium">
+                <li className="flex items-center gap-2"><span className="text-emerald-400 font-bold">✓</span> {t.anchorItem1}</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400 font-bold">✓</span> {t.anchorItem2}</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400 font-bold">✓</span> {t.anchorItem3}</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400 font-bold">✓</span> {t.anchorItem4}</li>
               </ul>
             </div>
             <Link
-              to={isSignedIn ? "/pricing?plan=starter" : `/sign-up?redirect_url=${encodeURIComponent('/pricing?plan=starter')}`}
-              className="w-full py-3.5 rounded-xl border border-white/[0.1] text-center text-xs font-bold text-[#a1a1aa] hover:bg-white/[0.05] transition-colors block"
+              to={isSignedIn ? "/pricing?plan=creator" : `/sign-up?redirect_url=${encodeURIComponent('/pricing?plan=creator')}`}
+              className="w-full py-3.5 rounded-xl border border-white/[0.15] text-center text-xs font-bold text-[#fafafa] hover:bg-white/[0.06] transition-colors block"
             >
-              {t.decoyCta}
+              {t.anchorCta}
             </Link>
           </div>
 
-          {/* Tier 2: The Target ($20 - Most Popular) */}
+          {/* Card 2: The Target ($20 - Most Popular) -> Middle Child */}
           <div className="bg-gradient-to-b from-[#12281a] via-[#0b1b11] to-[#06100a] rounded-3xl p-8 sm:p-10 border-2 border-emerald-400 flex flex-col justify-between relative shadow-[0_0_60px_rgba(16,185,129,0.3)] transform lg:-translate-y-4">
             <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 bg-gradient-to-r from-emerald-400 to-teal-400 text-[#040407] text-xs font-black uppercase rounded-full shadow-[0_0_20px_rgba(16,185,129,0.8)] whitespace-nowrap">
               {t.targetBadge}
@@ -916,31 +917,30 @@ export default function SoraniqLandingPage() {
             </Link>
           </div>
 
-          {/* Tier 3: The Anchor ($99 - Agency) */}
-          <div className="bg-[#0a0c12] rounded-3xl p-6 sm:p-8 border border-white/[0.08] flex flex-col justify-between shadow-2xl">
+          {/* Card 3: The Decoy ($15) -> Third Child = Far Left in RTL */}
+          <div className="bg-[#0e1017] rounded-3xl p-6 sm:p-8 border border-white/[0.06] flex flex-col justify-between opacity-80 hover:opacity-100 transition-all">
             <div>
-              <div className="text-xs uppercase font-mono text-[#a1a1aa] font-bold mb-2">
-                {t.anchorTitle}
+              <div className="text-xs uppercase font-mono text-[#71717a] font-bold mb-2">
+                {t.decoyTitle}
               </div>
               <div className="flex items-baseline gap-1 mb-2">
-                <span className="text-4xl font-extrabold text-[#fafafa]">{t.anchorPrice}</span>
-                <span className="text-xs text-[#71717a]">{t.anchorPeriod}</span>
+                <span className="text-4xl font-extrabold text-[#a1a1aa]">{t.decoyPrice}</span>
+                <span className="text-xs text-[#71717a]">{t.decoyPeriod}</span>
               </div>
-              <div className="text-xs font-bold text-[#a1a1aa] mb-6 bg-white/[0.05] px-3 py-1 rounded-lg inline-block">
-                🏢 {t.anchorLimit}
+              <div className="text-xs font-bold text-rose-400/90 mb-6 bg-rose-500/10 px-3 py-1 rounded-lg inline-block border border-rose-500/20">
+                ⚠️ {t.decoyLimit}
               </div>
-              <ul className="space-y-3 text-xs text-[#cfcfd3] mb-8 font-medium">
-                <li className="flex items-center gap-2"><span className="text-emerald-400 font-bold">✓</span> {t.anchorItem1}</li>
-                <li className="flex items-center gap-2"><span className="text-emerald-400 font-bold">✓</span> {t.anchorItem2}</li>
-                <li className="flex items-center gap-2"><span className="text-emerald-400 font-bold">✓</span> {t.anchorItem3}</li>
-                <li className="flex items-center gap-2"><span className="text-emerald-400 font-bold">✓</span> {t.anchorItem4}</li>
+              <ul className="space-y-3 text-xs text-[#8e8e9c] mb-8 font-medium">
+                <li className="flex items-center gap-2"><span>✕</span> {t.decoyItem1}</li>
+                <li className="flex items-center gap-2"><span>✕</span> {t.decoyItem2}</li>
+                <li className="flex items-center gap-2"><span>✕</span> {t.decoyItem3}</li>
               </ul>
             </div>
             <Link
-              to={isSignedIn ? "/pricing?plan=creator" : `/sign-up?redirect_url=${encodeURIComponent('/pricing?plan=creator')}`}
-              className="w-full py-3.5 rounded-xl border border-white/[0.15] text-center text-xs font-bold text-[#fafafa] hover:bg-white/[0.06] transition-colors block"
+              to={isSignedIn ? "/pricing?plan=starter" : `/sign-up?redirect_url=${encodeURIComponent('/pricing?plan=starter')}`}
+              className="w-full py-3.5 rounded-xl border border-white/[0.1] text-center text-xs font-bold text-[#a1a1aa] hover:bg-white/[0.05] transition-colors block"
             >
-              {t.anchorCta}
+              {t.decoyCta}
             </Link>
           </div>
         </div>
