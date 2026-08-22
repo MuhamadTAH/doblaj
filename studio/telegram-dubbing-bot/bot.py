@@ -39,29 +39,13 @@ formatter = jsonlogger.JsonFormatter(
 logHandler.setFormatter(formatter)
 logger.addHandler(logHandler)
 
-from dotenv import load_dotenv
-from pathlib import Path
-
-# Load local .env
-load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
-
 # =====================================================================
 # 2. CONFIGURATION & SECRETS
 # =====================================================================
-_base_dir = os.path.dirname(os.path.abspath(__file__))
-_root_env = os.path.abspath(os.path.join(_base_dir, "..", "dubbing", ".env"))
-
-if os.path.exists(_root_env):
-    try:
-        from dotenv import load_dotenv
-        load_dotenv(_root_env)
-    except Exception:
-        pass
-
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8347989335:AAEMeGXkjx0z1kAWtg8JA5TcWQtK9onygQE")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 LOCAL_API_SERVER_URL = os.getenv("LOCAL_API_SERVER_URL", "http://telegram-bot-api:8081")
-DUBBING_BACKEND_URL = os.getenv("DUBBING_BACKEND_URL", "https://api.doblaj.com")
-INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "145534d5f41b80429286b485055cc6376c7b55bbdd79641eba65b7cbece80a5d")
+DUBBING_BACKEND_URL = os.getenv("DUBBING_BACKEND_URL", "http://backend:8000")
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "pird_internal_dubbing_key_2026")
 
 DB_PATH = os.getenv("BOT_DB_PATH", "/app/state/jobs.db")
 OUTPUTS_DIR = os.getenv("BOT_OUTPUTS_DIR", "/var/lib/telegram-bot-api/pird_outputs")
@@ -158,7 +142,7 @@ async def process_job_queue():
             if not os.path.exists(local_out_path):
                 logger.info({"service": "worker", "message": f"Downloading dubbed video for {job_id}"})
                 headers = {"x-internal-key": INTERNAL_API_KEY} if INTERNAL_API_KEY else {}
-                async with httpx.AsyncClient(timeout=1800.0) as client:
+                async with httpx.AsyncClient(timeout=1800.0, follow_redirects=True) as client:
                     async with client.stream('GET', result_url, headers=headers) as resp:
                         if resp.status_code == 200:
                             with open(local_out_path, 'wb') as f:
@@ -1083,27 +1067,14 @@ async def main():
     worker_task = asyncio.create_task(process_job_queue())
     poller_task = asyncio.create_task(poll_pending_jobs_loop())
 
-    # Start Aiohttp Webhook Server (fail-soft across port conflicts)
-    try:
-        app = web.Application()
-        app.router.add_post("/callback", internal_webhook)
-        webhook_app_runner = web.AppRunner(app)
-        await webhook_app_runner.setup()
-        webhook_port = int(os.getenv("BOT_WEBHOOK_PORT", "8000"))
-        started = False
-        for p in (webhook_port, 8005, 8010, 8085):
-            try:
-                site = web.TCPSite(webhook_app_runner, '0.0.0.0', p)
-                await site.start()
-                logger.info({"service": "devops", "message": f"Internal Webhook Receiver started on 0.0.0.0:{p}/callback"})
-                started = True
-                break
-            except OSError:
-                continue
-        if not started:
-            logger.warning({"service": "devops", "message": "Could not bind webhook port, relying on background poller."})
-    except Exception as wh_err:
-        logger.warning({"service": "devops", "message": f"Webhook server init notice: {wh_err}"})
+    # Start Aiohttp Webhook Server
+    app = web.Application()
+    app.router.add_post("/callback", internal_webhook)
+    webhook_app_runner = web.AppRunner(app)
+    await webhook_app_runner.setup()
+    site = web.TCPSite(webhook_app_runner, '0.0.0.0', 8000)
+    await site.start()
+    logger.info({"service": "devops", "message": "Internal Webhook Receiver started on 0.0.0.0:8000/callback"})
 
     # Start Aiogram Polling
     use_local_api = os.getenv("USE_LOCAL_TELEGRAM_API", "false").lower() == "true"

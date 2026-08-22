@@ -368,10 +368,24 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
             from app.services.vcta.tts_engine import _get_audio_duration
             tts_duration = await _get_audio_duration(final_tts_wav)
             
+            audit_entry = {
+                "chunk_id": chunk_id,
+                "attempt": retries + 1,
+                "video_slot_duration": round(video_slot_duration, 3),
+                "tts_duration": round(tts_duration, 3),
+                "arabic_text": arabic_text,
+                "word_count": actual_word_count,
+            }
+            
             if tts_duration > 0:
                 scale = tts_duration / max(0.1, video_slot_duration)
+                audit_entry["scale"] = round(scale, 3)
+                
+                print(f"\n🎙️ [PHYSICS AUDIT] Chunk #{chunk_id} (Attempt {retries+1}) | Target: {video_slot_duration:.2f}s | TTS: {tts_duration:.2f}s | Scale: {scale:.3f}x | Words ({actual_word_count}): '{arabic_text}'")
                 
                 if scale < 0.95 or scale > 1.15:
+                    issue = "TOO_SHORT (<0.95x)" if scale < 0.95 else "TOO_LONG (>1.15x)"
+                    print(f"⚠️ [PHYSICS BOUNCE] Chunk #{chunk_id} {issue} -> Scale {scale:.3f}x outside [0.95, 1.15]. Bouncing back to AI for text rewriting!")
                     logger.warning(f"[PHYSICS] Post-TTS validation failed! Scale {scale:.2f} is out of bounds [0.95, 1.15]. Bouncing back to Gemini.")
                     
                     if scale < 0.95:
@@ -385,6 +399,7 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
                         
                         deficit = max(1, dynamic_min_words - actual_word_count)
                         retry_prompt = f"CRITICAL CORRECTION: The generated audio was too short. You MUST ADD EXACTLY {deficit} words to your translation to hit the physical video slot. Expand naturally, do not put filler at the start."
+                        audit_entry["action"] = f"BOUNCE_ADD_{deficit}_WORDS"
                     else:
                         new_target = actual_word_count * (1.0 / scale)
                         dynamic_max_words = max(1, math.ceil(new_target))
@@ -395,14 +410,17 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
                         
                         excess = max(1, actual_word_count - dynamic_max_words)
                         retry_prompt = f"CRITICAL CORRECTION: The generated audio was too long. You MUST DELETE EXACTLY {excess} words from your translation to hit the physical video slot. Strip unnecessary adjectives and filler."
+                        audit_entry["action"] = f"BOUNCE_DELETE_{excess}_WORDS"
                     
                     if retries >= max_retries:
                         logger.warning(f"[PHYSICS] Max retries reached. Forcing audio clamp for chunk {chunk_id}.")
+                        print(f"🛑 [PHYSICS CLAMP] Chunk #{chunk_id} Max retries ({max_retries}) reached. Clamping audio to strict [0.95, 1.15] window.")
                         trace_step(session_id, "PHYSICS_RETRY", chunk_id=chunk_id, status="FAIL",
                                    note="max_retries reached, clamping audio", retries=retries)
                         is_zone_c = True
                         chunk["arabic_text"] = arabic_text
                         chunk["f_pacing"] = f_pacing
+                        audit_entry["result"] = "CLAMPED_AFTER_MAX_RETRIES"
                         break
                     else:
                         trace_step(session_id, "PHYSICS_RETRY", chunk_id=chunk_id, status="RETRY",
@@ -410,11 +428,15 @@ async def _async_process_chunk(chunk: dict, session_id: str, session_state_dict:
                         retries += 1
                         # We must bypass initial bypass check on subsequent retries
                         bypass_initial_translation = False
+                        audit_entry["result"] = "RETRYING_WITH_AI_REWRITE"
                         continue
                 else:
+                    print(f"✅ [PHYSICS PASSED] Chunk #{chunk_id} Scale {scale:.3f}x is PERFECTLY within [0.95, 1.15]. No AI rewrite needed.")
                     logger.info(f"[PHYSICS] Post-TTS validation passed! Scale {scale:.2f} is perfectly within [0.95, 1.15].")
+                    audit_entry["result"] = "PASSED_WITHIN_BOUNDS"
             else:
                 logger.warning("[PHYSICS] TTS duration measurement failed. Proceeding blindly.")
+                audit_entry["result"] = "MEASUREMENT_FAILED"
 
             # Audio passed physics check or max retries reached
             chunk["arabic_text"] = arabic_text

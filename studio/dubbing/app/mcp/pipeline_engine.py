@@ -498,13 +498,17 @@ class DubbingPipelineEngine:
                 active_dur = c.get("active_speech_duration_sec", c["duration_sec"])
                 chunk_dur = c.get("duration_sec", active_dur)
                 target_speech_dur = min(active_dur, max(0.2, chunk_dur - lead_sil))
+                curr_text = trans_by_idx.get(idx, "")
+                curr_words = len(curr_text.split())
+                ratio = round(tts_dur / max(0.1, target_speech_dur), 3)
+                
+                print(f"🎙️ [CHUNK AUDIT #{idx+1}] Active Target: {target_speech_dur:.2f}s | TTS Duration: {tts_dur:.2f}s | Ratio: {ratio:.3f}x | Words ({curr_words}): '{curr_text}'")
                 
                 # If audio is outside the strict [0.95x, 1.15x] window
                 if tts_dur > (target_speech_dur * 1.15) or tts_dur < (target_speech_dur * 0.95):
-                    curr_text = trans_by_idx.get(idx, "")
-                    curr_words = len(curr_text.split())
                     target_words = max(2, int(target_speech_dur * 2.2))
-                    issue = "TOO_LONG" if tts_dur > target_speech_dur else "TOO_SHORT"
+                    issue = "TOO_LONG (>1.15x)" if tts_dur > target_speech_dur else "TOO_SHORT (<0.95x)"
+                    print(f"  ⚠️ [FLAGGED FOR CORRECTION] Chunk #{idx+1} {issue} -> Needs {target_words} words (currently {curr_words})")
                     correction_requests.append({
                         "chunk_index": idx,
                         "chunk_number": c["chunk_number"],
@@ -513,8 +517,10 @@ class DubbingPipelineEngine:
                         "target_duration_sec": round(target_speech_dur, 2),
                         "current_word_count": curr_words,
                         "target_word_count": target_words,
-                        "issue": issue
+                        "issue": "TOO_LONG" if tts_dur > target_speech_dur else "TOO_SHORT"
                     })
+                else:
+                    print(f"  ✅ [PERFECT FIT] Chunk #{idx+1} Ratio {ratio:.3f}x is within [0.95, 1.15].")
 
         if correction_requests:
             corr_req_file = scratch_dir / "CORRECTION_REQUEST.json"

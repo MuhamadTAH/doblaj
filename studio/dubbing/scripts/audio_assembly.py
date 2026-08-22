@@ -154,16 +154,14 @@ class AudioAssembler:
         else:
             speed_ratio = tts_dur / self.target_duration
             
-            # Clamp the minimum speed_ratio so we never slow down more than 0.90x natural speed
-            # The remaining time will be padded with silence and crossfaded to prevent popping
-            if speed_ratio < 0.90:
-                logger.info(f"[AudioAssembler] Clamping extreme slowdown {speed_ratio:.3f} -> 0.90")
-                speed_ratio = 0.90
+            # Clamp speed_ratio strictly between 0.95x and 1.15x
+            if speed_ratio < 0.95:
+                logger.info(f"[AudioAssembler] Clamping slowdown {speed_ratio:.3f} -> 0.95")
+                speed_ratio = 0.95
                 
-            # If speed_ratio is high, stretch audio cleanly to fit without hard truncation
-            if speed_ratio > 1.35:
-                logger.warning(f"[AudioAssembler] High speedup required {speed_ratio:.3f} -> Capping at 1.35x to maintain speech intelligibility")
-                speed_ratio = 1.35
+            if speed_ratio > 1.15:
+                logger.warning(f"[AudioAssembler] Speedup exceeds 1.15x ({speed_ratio:.3f}) -> Capping at 1.15x")
+                speed_ratio = 1.15
                 
             self._apply_atempo_stretch(input_wav, output_wav, speed_ratio)
 

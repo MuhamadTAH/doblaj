@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements and install dependencies
 # Pre-install CPU PyTorch (~180MB) instead of default CUDA wheels (~2.5GB) to speed up Docker build from 35 mins to <1 min
 COPY requirements.txt .
-RUN pip install --no-cache-dir torch>=2.3.0,<2.6.0 torchaudio>=2.3.0,<2.6.0 --index-url https://download.pytorch.org/whl/cpu && \
+RUN pip install --no-cache-dir "torch>=2.3.0,<2.6.0" "torchaudio>=2.3.0,<2.6.0" --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy backend source code
