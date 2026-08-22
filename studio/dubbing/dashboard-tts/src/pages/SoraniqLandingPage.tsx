@@ -685,43 +685,6 @@ export default function SoraniqLandingPage() {
           </p>
         </motion.div>
 
-        {/* 10-Second WhatsApp Action Box */}
-        <motion.div
-          initial={{ opacity: 0, y: 25 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="max-w-2xl mx-auto mb-16"
-        >
-          <form
-            onSubmit={handleWhatsAppSubmit}
-            className="bg-[#0e1017]/95 p-3 rounded-2xl border-2 border-emerald-500/40 shadow-[0_0_50px_rgba(16,185,129,0.25)] backdrop-blur-xl flex flex-col sm:flex-row gap-3 relative group hover:border-emerald-400 transition-colors"
-          >
-            <div className="flex-1 relative flex items-center">
-              <span className="absolute left-4 text-sm font-mono text-emerald-400/90 font-bold pointer-events-none">
-                🇮🇶
-              </span>
-              <input
-                type="text"
-                value={whatsAppNumber}
-                onChange={(e) => setWhatsAppNumber(e.target.value)}
-                placeholder={t.inputPlaceholder}
-                className="w-full bg-[#08090d] border border-white/[0.1] rounded-xl pl-12 pr-5 py-4 text-[#fafafa] placeholder:text-[#52525b] font-mono text-base focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 transition-all"
-              />
-            </div>
-            <button
-              type="submit"
-              className="px-8 py-4 rounded-xl bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500 hover:from-emerald-300 hover:to-teal-400 text-[#040407] font-black text-sm sm:text-base shadow-[0_0_35px_rgba(16,185,129,0.5)] transition-all transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 whitespace-nowrap"
-            >
-              <span>⚡</span>
-              <span>{t.ctaPrimary}</span>
-            </button>
-          </form>
-          <div className="flex items-center justify-center gap-2 mt-3.5 text-xs font-bold text-[#8e8e9c]">
-            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-            <span>{t.ctaSubtext}</span>
-          </div>
-        </motion.div>
-
         {/* LETHAL SPLIT SCREEN COMPARISON (Frozen Store vs Active Tourist Wealth) */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
