@@ -42,13 +42,24 @@ export default {
       },
       fontFamily: {
         sans: [
+          "Alexandria",
+          "Plus Jakarta Sans",
           "Inter",
           "ui-sans-serif",
           "system-ui",
           "-apple-system",
-          "Segoe UI",
-          "Roboto",
           "sans-serif",
+        ],
+        display: [
+          "Alexandria",
+          "Plus Jakarta Sans",
+          "sans-serif",
+        ],
+        mono: [
+          "JetBrains Mono",
+          "ui-monospace",
+          "SFMono-Regular",
+          "monospace",
         ],
       },
       boxShadow: {
