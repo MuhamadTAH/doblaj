@@ -19,9 +19,6 @@ export default function SoraniqLandingPage() {
   const [avgProfitPerCustomer, setAvgProfitPerCustomer] = useState(10000); // 10,000 IQD default
   const [touristCustomers, setTouristCustomers] = useState(10); // 10 customers default
 
-  // FAQ open state
-  const [openFaq, setOpenFaq] = useState<number | null>(0);
-
   // Simulated audio progress timer
   useEffect(() => {
     if (!isPlayingAudio) return;
@@ -138,7 +135,7 @@ export default function SoraniqLandingPage() {
       faq2A:
         "پێویست ناکات ئەندازیاری پرۆگرامسازی بیت—تۆ کاسبکارێکی زیرەکیت. ئەگەر بزانیت چۆن لە وەتسئەپ ڤیدیۆ دەنێریت یان لە ئینستاگرام ستۆری دادەنێیت، لە ١٠ چرکەدا دەتوانیت Doblaj بەکاربهێنیت. تەنها ڤیدیۆکەت باردەکەیت، زیرەکی دەستکرد بە عەرەبی عێراقی قسەی پێدەکات و تۆ بڵاوی دەکەیتەوە. تایبەت بۆ کاسبکارانی سەرقاڵ دروستکراوە.",
 
-      footerLegal: "FIXDAI LLC (d/b/a Doblaj) • ئۆستن، تەکساس، ویلایەتە یەکگرتووەکانی ئەمریکا",
+      footerLegal: "دروستکراوە بە ❤️ لە کوردستان بۆ بازاڕ و کاسبکارە خۆشەویستەکانمان",
       navFeatures: "جیاوازیی دەنگ",
       navCalculator: "ژمێرەری قازانج",
       navMap: "نەخشەی چالاک",
@@ -248,7 +245,7 @@ export default function SoraniqLandingPage() {
       faq2A:
         "ما تحتاج تكون خبير تقني—أنت صاحب عمل ذكي. إذا تعرف تدز فيديو بالواتساب أو تنشر ستوري بالانستغرام، تكدر تستعمل Doblaj بـ ١٠ ثواني. ترفع الفيديو الكردي، الذكاء الاصطناعي يدبلجه باللهجة العراقية، وتنشره. مصمم خصيصاً لأصحاب المحلات المشغولين اللي يريدون مبيعات بدون دوخة رأس.",
 
-      footerLegal: "FIXDAI LLC (d/b/a Doblaj) • أوستن، تكساس، الولايات المتحدة",
+      footerLegal: "صُنع بـ ❤️ في كوردستان من أجل أسواقنا ومحلاتنا المحلية",
       navFeatures: "مقارنة الصوت",
       navCalculator: "حاسبة الأرباح",
       navMap: "الخارطة الحية",
@@ -358,7 +355,7 @@ export default function SoraniqLandingPage() {
       faq2A:
         "You don't need to be a software engineer—you're a smart business owner. If you know how to send a video on WhatsApp or post a story on Instagram, you can use Doblaj in 10 seconds. You simply upload your video, our AI speaks it in natural Iraqi Arabic, and you post it. It was built specifically for busy Kurdish shop owners who want sales, not tech headaches.",
 
-      footerLegal: "FIXDAI LLC (d/b/a Doblaj) • Austin, TX, USA",
+      footerLegal: "Built with ❤️ in Kurdistan for our local retail markets",
       navFeatures: "Voice Demo",
       navCalculator: "ROI Calculator",
       navMap: "Active Map",
@@ -960,63 +957,53 @@ export default function SoraniqLandingPage() {
         </div>
       </section>
 
-      {/* SECTION 6: THE MANDATORY WEAPONIZED FAQs (Interactive Accordions) */}
+      {/* SECTION 5: THE PREEMPTIVE OBJECTION DESTROYERS (Fully Open, High-Alert) */}
       <section id="faq" className="py-24 px-4 sm:px-6 lg:px-10 bg-[#06070a] border-t border-white/[0.08] relative z-10">
         <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-16 space-y-3">
+          <div className="text-center mb-16 space-y-4">
             <div className="inline-block px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
               {t.navFaq}
             </div>
             <h2 className="text-3xl sm:text-5xl font-black text-[#fafafa] tracking-tight">
               {t.faqTitle}
             </h2>
-            <p className="text-sm sm:text-base text-[#a1a1aa] font-medium">
-              {t.faqSubtitle}
+            <p className="text-base sm:text-xl font-bold text-amber-400 max-w-2xl mx-auto leading-relaxed">
+              ⚠️ {t.faqSubtitle}
             </p>
           </div>
 
-          <div className="space-y-5">
+          <div className="space-y-6">
             {/* FAQ 1 */}
-            <div className="bg-[#0e111a] rounded-2xl border border-white/[0.08] overflow-hidden transition-all hover:border-emerald-500/40">
-              <button
-                onClick={() => setOpenFaq(openFaq === 0 ? null : 0)}
-                className="w-full p-6 sm:p-7 text-start flex justify-between items-center gap-4 focus:outline-none"
-              >
-                <h3 className="text-base sm:text-lg font-black text-[#fafafa] flex items-center gap-3">
-                  <span className="text-emerald-400 font-mono">Q1:</span>
-                  <span>{t.faq1Q}</span>
-                </h3>
-                <span className={`w-8 h-8 rounded-full bg-white/[0.05] flex items-center justify-center text-emerald-400 font-bold transition-transform duration-300 ${openFaq === 0 ? "rotate-180 bg-emerald-500/20" : ""}`}>
-                  ↓
-                </span>
-              </button>
-              {openFaq === 0 && (
-                <div className="px-6 pb-7 sm:px-7 sm:pb-7 text-sm sm:text-base text-[#cfcfd3] leading-relaxed font-medium border-t border-white/[0.06] pt-4">
-                  {t.faq1A}
-                </div>
-              )}
+            <div className="bg-[#12141c] rounded-2xl p-6 sm:p-8 border border-white/[0.08] shadow-xl">
+              <h3 className="text-lg sm:text-xl font-bold text-[#fafafa] flex items-start gap-3 mb-4">
+                <span className="text-rose-400 text-xl font-black shrink-0">❓</span>
+                <span className="leading-snug">{t.faq1Q}</span>
+              </h3>
+              <div className="text-[#cfcfd3] text-sm sm:text-base leading-relaxed font-normal border-t border-white/[0.06] pt-4 pr-0 sm:pr-8">
+                {t.faq1A}
+              </div>
             </div>
 
             {/* FAQ 2 */}
-            <div className="bg-[#0e111a] rounded-2xl border border-white/[0.08] overflow-hidden transition-all hover:border-emerald-500/40">
-              <button
-                onClick={() => setOpenFaq(openFaq === 1 ? null : 1)}
-                className="w-full p-6 sm:p-7 text-start flex justify-between items-center gap-4 focus:outline-none"
-              >
-                <h3 className="text-base sm:text-lg font-black text-[#fafafa] flex items-center gap-3">
-                  <span className="text-emerald-400 font-mono">Q2:</span>
-                  <span>{t.faq2Q}</span>
-                </h3>
-                <span className={`w-8 h-8 rounded-full bg-white/[0.05] flex items-center justify-center text-emerald-400 font-bold transition-transform duration-300 ${openFaq === 1 ? "rotate-180 bg-emerald-500/20" : ""}`}>
-                  ↓
-                </span>
-              </button>
-              {openFaq === 1 && (
-                <div className="px-6 pb-7 sm:px-7 sm:pb-7 text-sm sm:text-base text-[#cfcfd3] leading-relaxed font-medium border-t border-white/[0.06] pt-4">
-                  {t.faq2A}
-                </div>
-              )}
+            <div className="bg-[#12141c] rounded-2xl p-6 sm:p-8 border border-white/[0.08] shadow-xl">
+              <h3 className="text-lg sm:text-xl font-bold text-[#fafafa] flex items-start gap-3 mb-4">
+                <span className="text-rose-400 text-xl font-black shrink-0">❓</span>
+                <span className="leading-snug">{t.faq2Q}</span>
+              </h3>
+              <div className="text-[#cfcfd3] text-sm sm:text-base leading-relaxed font-normal border-t border-white/[0.06] pt-4 pr-0 sm:pr-8">
+                {t.faq2A}
+              </div>
             </div>
+          </div>
+
+          {/* Escape Route CTA Button */}
+          <div className="mt-14 text-center">
+            <Link
+              to={isSignedIn ? "/dubbing" : `/sign-up?redirect_url=${encodeURIComponent('/dubbing')}`}
+              className="inline-block w-full max-w-lg py-5 px-8 rounded-2xl bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 hover:from-emerald-300 hover:to-teal-300 text-[#040407] font-black text-lg sm:text-xl shadow-[0_0_35px_rgba(16,185,129,0.55)] transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+            >
+              {isRTL ? "ئێستا دەست پێبکە (لینککردنی وەتسئەپ لە ١٠ چرکەدا)" : "Start Now (Link WhatsApp in 10s)"}
+            </Link>
           </div>
         </div>
       </section>
@@ -1036,10 +1023,10 @@ export default function SoraniqLandingPage() {
             <p className="text-sm text-[#8e8e9c] max-w-sm leading-relaxed font-medium">
               Transforming Kurdish retail videos into Iraqi Arabic tourist magnets with state-of-the-art synthetic voice AI.
             </p>
-            <div className="pt-2 text-xs text-[#71717a]">
-              <p className="font-bold text-white">{t.footerLegal}</p>
+            <div className="pt-2 text-xs text-[#a1a1aa]">
+              <p className="font-bold text-emerald-400">{t.footerLegal}</p>
             </div>
-            <p className="text-xs text-[#52525b] pt-2">© 2026 FIXDAI LLC d/b/a Doblaj. All rights reserved.</p>
+            <p className="text-xs text-[#52525b] pt-1">© 2026 Doblaj AI. All rights reserved.</p>
           </div>
           <div className="col-span-1 space-y-4">
             <h4 className="text-xs font-bold text-[#fafafa] uppercase tracking-wider">Product Features</h4>
