@@ -250,12 +250,22 @@ async def process_node2_separation(
 
     try:
         # Step 1: Headless extraction
+        try:
+            await convex_db.update_job_status(user_client, workspace_id=workspace_id, job_id=job_id, status="EXTRACTING_AUDIO", progress=10)
+        except Exception:
+            pass
+
         source_audio_44k = str(tmp_dir / "source_44k_stereo.wav")
         logger.info("[NODE-2] Generating presigned streaming URL for R2 key: %s", source_r2_key)
         presigned_get_url = r2.signed_url(source_r2_key, ttl_seconds=3600, inline=True)
         await asyncio.to_thread(extract_44k_audio_from_url, presigned_get_url, source_audio_44k)
 
         # Step 2: Demucs Isolation
+        try:
+            await convex_db.update_job_status(user_client, workspace_id=workspace_id, job_id=job_id, status="SEPARATING_AUDIO", progress=15)
+        except Exception:
+            pass
+
         demucs_out_dir = str(tmp_dir / "demucs_out")
         vocals_path, no_vocals_path = await asyncio.to_thread(run_demucs_isolation, source_audio_44k, demucs_out_dir)
 
@@ -267,6 +277,11 @@ async def process_node2_separation(
         await asyncio.to_thread(r2.upload_file, vocals_r2_key, vocals_path, mime="audio/wav")
 
         # Step 3: Silero VAD 16k mono resampling
+        try:
+            await convex_db.update_job_status(user_client, workspace_id=workspace_id, job_id=job_id, status="SEGMENTING_VAD", progress=20)
+        except Exception:
+            pass
+
         vocals_16k_mono = str(tmp_dir / "vocals_16k_mono.wav")
         await asyncio.to_thread(resample_to_16k_mono, vocals_path, vocals_16k_mono)
         segments = await asyncio.to_thread(get_speech_segments_silero, vocals_16k_mono)
