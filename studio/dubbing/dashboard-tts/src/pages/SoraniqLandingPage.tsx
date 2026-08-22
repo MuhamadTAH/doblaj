@@ -460,7 +460,7 @@ export default function SoraniqLandingPage() {
   return (
     <div
       dir={isRTL ? "rtl" : "ltr"}
-      className="min-h-screen bg-[#040407] text-[#cfcfd3] font-sans antialiased selection:bg-emerald-500/25 selection:text-emerald-300 relative overflow-x-hidden"
+      className={`min-h-screen bg-[#040407] text-[#cfcfd3] ${isRTL ? "font-kurdish" : "font-sans"} antialiased selection:bg-emerald-500/25 selection:text-emerald-300 relative overflow-x-hidden`}
     >
       {/* Dynamic Ambient Background Beams & Mesh Glows */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">

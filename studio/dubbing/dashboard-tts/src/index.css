@@ -7,7 +7,29 @@
   body,
   #root {
     height: 100%;
+    font-family: 'Vazirmatn', 'Noto Sans Arabic', 'Plus Jakarta Sans', 'Inter', 'Rabar', 'Speda', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
+
+  /* Kurdish & Arabic typography rules: disable letter-spacing that breaks Arabic/Kurdish cursive ligatures */
+  [dir="rtl"] {
+    font-family: 'Vazirmatn', 'Noto Sans Arabic', 'Rabar', 'Speda', 'Unikurd Web', 'Tahoma', system-ui, sans-serif;
+    letter-spacing: 0 !important;
+  }
+
+  [dir="rtl"] * {
+    letter-spacing: 0;
+  }
+
+  [dir="rtl"] h1,
+  [dir="rtl"] h2,
+  [dir="rtl"] h3,
+  [dir="rtl"] h4 {
+    line-height: 1.35;
+  }
+
   body {
     background-color: #0a0a0b;
     color: #fafafa;
