@@ -102,6 +102,148 @@ export const updateInternal = mutation({
   },
 });
 
+export const claimNextBatchInternal = mutation({
+  args: {
+    jobId: v.string(),
+    batchSize: v.optional(v.number()),
+    __internalApiKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireInternalApiKey(args.__internalApiKey);
+    let realJobId: any = args.jobId;
+    if (args.jobId.length !== 32) {
+      const j = await ctx.db
+        .query("dubbingJobs")
+        .withIndex("by_legacy_id", (q: any) => q.eq("legacyId", args.jobId))
+        .first();
+      if (j) realJobId = j._id;
+    }
+
+    const batchLimit = args.batchSize ?? 5;
+    const now = Date.now();
+    const staleLockThreshold = now - 5 * 60 * 1000; // 5 minutes
+
+    const allChunks = await ctx.db
+      .query("dubbingChunks")
+      .filter((q: any) =>
+        q.or(q.eq(q.field("jobId"), realJobId), q.eq(q.field("jobId"), args.jobId))
+      )
+      .collect();
+
+    // Sort by chunkIndex asc
+    allChunks.sort((a, b) => a.chunkIndex - b.chunkIndex);
+
+    const eligible = allChunks.filter((c: any) => {
+      const s = (c.status || "").toUpperCase();
+      if (s === "PENDING_ASR" || s === "PENDING_TRANSLATION" || s === "PENDING") {
+        return true;
+      }
+      // Re-claim stale locked chunks
+      if ((s === "TRANSLATING" || s === "PROCESSING") && (!c.lockedAt || c.lockedAt < staleLockThreshold)) {
+        return true;
+      }
+      return false;
+    });
+
+    const claimed = eligible.slice(0, batchLimit);
+    const results = [];
+
+    for (const chunk of claimed) {
+      await ctx.db.patch(chunk._id, {
+        status: "TRANSLATING",
+        lockedAt: now,
+        updatedAt: new Date().toISOString(),
+      });
+      const updated = await ctx.db.get(chunk._id);
+      results.push(updated);
+    }
+
+    return results;
+  },
+});
+
+export const completeTranslationInternal = mutation({
+  args: {
+    jobId: v.string(),
+    chunkIndex: v.number(),
+    sourceText: v.optional(v.string()),
+    kurdishText: v.optional(v.string()),
+    isEmptyOrSilence: v.boolean(),
+    error: v.optional(v.string()),
+    __internalApiKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireInternalApiKey(args.__internalApiKey);
+    let realJobId: any = args.jobId;
+    if (args.jobId.length !== 32) {
+      const j = await ctx.db
+        .query("dubbingJobs")
+        .withIndex("by_legacy_id", (q: any) => q.eq("legacyId", args.jobId))
+        .first();
+      if (j) realJobId = j._id;
+    }
+
+    const chunk = await ctx.db
+      .query("dubbingChunks")
+      .filter((q: any) =>
+        q.and(
+          q.or(q.eq(q.field("jobId"), realJobId), q.eq(q.field("jobId"), args.jobId)),
+          q.eq(q.field("chunkIndex"), args.chunkIndex)
+        )
+      )
+      .first();
+
+    if (!chunk) throw new ConvexError("CHUNK_NOT_FOUND");
+
+    const nowIso = new Date().toISOString();
+    const patch: Record<string, any> = {
+      updatedAt: nowIso,
+    };
+
+    if (args.error) {
+      patch.status = "FAILED";
+      patch.error = args.error;
+    } else if (args.isEmptyOrSilence) {
+      patch.status = "SKIPPED";
+      patch.kurdishRaw = "[بێدەنگی]";
+      patch.kurdishText = "[بێدەنگی]";
+      patch.sourceText = args.sourceText || "[بێدەنگی]";
+      patch.transcriptSrc = args.sourceText || "[بێدەنگی]";
+    } else {
+      patch.status = "PENDING_TTS";
+      patch.kurdishRaw = args.kurdishText || "";
+      patch.kurdishText = args.kurdishText || "";
+      patch.sourceText = args.sourceText || "";
+      patch.transcriptSrc = args.sourceText || "";
+    }
+
+    await ctx.db.patch(chunk._id, patch);
+
+    // Parent Job Evaluation
+    const allJobChunks = await ctx.db
+      .query("dubbingChunks")
+      .filter((q: any) =>
+        q.or(q.eq(q.field("jobId"), realJobId), q.eq(q.field("jobId"), args.jobId))
+      )
+      .collect();
+
+    const nonFinished = allJobChunks.filter((c: any) => {
+      const s = (c.status || "").toUpperCase();
+      return !["PENDING_TTS", "SKIPPED", "COMPLETED", "TRANSCRIPTION_COMPLETE", "FAILED"].includes(s);
+    });
+
+    if (allJobChunks.length > 0 && nonFinished.length === 0) {
+      await ctx.db.patch(realJobId, {
+        status: "TRANSLATION_COMPLETE",
+        progress: 50,
+        updatedAt: nowIso,
+      });
+    }
+
+    return await ctx.db.get(chunk._id);
+  },
+});
+
 export const updateChunkByIndexInternal = mutation({
   args: {
     jobId: v.string(),

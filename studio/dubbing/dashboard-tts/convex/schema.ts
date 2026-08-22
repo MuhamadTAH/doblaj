@@ -132,6 +132,11 @@ export default defineSchema({
     speaker: v.optional(v.string()),
     
     status: v.string(),
+    lockedAt: v.optional(v.number()),
+    sourceText: v.optional(v.string()),
+    transcriptSrc: v.optional(v.string()),
+    transcriptTgt: v.optional(v.string()),
+    kurdishText: v.optional(v.string()),
     
     pipelineDetails: v.optional(v.any()),
     error: v.optional(v.string()),

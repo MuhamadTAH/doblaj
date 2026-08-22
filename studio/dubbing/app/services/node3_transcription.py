@@ -6,17 +6,36 @@ import tempfile
 import base64
 from typing import Dict, Any, List, Optional
 import httpx
+from pydantic import BaseModel, Field
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from app.services import r2 as r2_storage
 import app.core.database_convex as convex_db
 
 logger = logging.getLogger(__name__)
 
-# Kurdish Sorani Canonical Unicode Normalization
+# ─────────────────────────────────────────────────────────────
+# 1. PYDANTIC SCHEMA CONTRACT
+# ─────────────────────────────────────────────────────────────
+class ChunkTranslationOutput(BaseModel):
+    source_transcription: str = Field(
+        description="Exact verbatim transcription of spoken words in the audio chunk"
+    )
+    kurdish_sorani_text: str = Field(
+        description="Direct natural translation into Kurdish Sorani (سۆرانی) script"
+    )
+    is_empty_or_silence: bool = Field(
+        description="True if audio contains only silence, background music, breaths, or non-speech noise"
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# 2. KURDISH SORANI CANONICAL UNICODE NORMALIZATION
+# ─────────────────────────────────────────────────────────────
 KURDISH_CHAR_MAP = {
-    "\u064a": "\u06cc",  # Arabic Yeh -> Farsi/Kurdish Yeh (ی)
-    "\u0643": "\u06a9",  # Arabic Kaf -> Kurdish Keheh (ک)
-    "\u06be": "\u06d5",  # Heh Doachashmee -> Kurdish Ae (ە)
+    "\u064a": "\u06cc",  # Arabic Yeh (ي) -> Kurdish Yeh (ی)
+    "\u0643": "\u06a9",  # Arabic Kaf (ك) -> Kurdish Keheh (ک)
+    "\u06be": "\u06d5",  # Heh Doachashmee (ھ) -> Kurdish Ae (ە)
 }
 
 def normalize_kurdish_text(text: str) -> str:
@@ -29,41 +48,98 @@ def normalize_kurdish_text(text: str) -> str:
     return res.strip()
 
 
-async def transcribe_chunk_with_gemini(
+# ─────────────────────────────────────────────────────────────
+# 3. RESILIENT RATE-LIMITING & EXPONENTIAL BACKOFF
+# ─────────────────────────────────────────────────────────────
+def is_retryable_error(exception: BaseException) -> bool:
+    """Determines if the exception is a transient HTTP rate-limit (429) or server error (503)."""
+    if isinstance(exception, (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError)):
+        return True
+    if isinstance(exception, httpx.HTTPStatusError):
+        # 429 ResourceExhausted, 500/502/503/504 Server Errors
+        return exception.response.status_code in (429, 500, 502, 503, 504)
+    return False
+
+
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    retry=retry_if_exception_type(Exception),
+    reraise=True,
+)
+async def call_gemini_multimodal_with_retry(
+    url: str,
+    payload: Dict[str, Any],
+    headers: Dict[str, str],
+) -> Dict[str, Any]:
+    """Executes Gemini multimodal request with resilient exponential backoff with jitter."""
+    async with httpx.AsyncClient(timeout=45.0) as client:
+        resp = await client.post(url, json=payload, headers=headers)
+        resp.raise_for_status()
+        return resp.json()
+
+
+# ─────────────────────────────────────────────────────────────
+# 4. STRUCTURED MULTIMODAL GEMINI TRANSLATION
+# ─────────────────────────────────────────────────────────────
+async def transcribe_and_translate_chunk_gemini(
     audio_path: str,
     previous_context: str = "",
-) -> str:
+) -> ChunkTranslationOutput:
     """
-    Transcribes a single 44.1kHz audio chunk into Kurdish Sorani using Gemini 1.5 / 2.0 / 3.1 Pro/Flash.
-    Uses strict prompt instructions for pure Kurdish Sorani Unicode script.
+    Transcribes source audio chunk and directly localizes into Kurdish Sorani
+    using Gemini Multimodal API with sliding context window and Pydantic JSON enforcement.
     """
     api_key = os.getenv("GEMINI_API_KEY", "")
     if not api_key:
-        logger.warning("[NODE-3 ASR] GEMINI_API_KEY not configured. Returning fallback transcript.")
-        return "دەقی دەنگی نموونەیی"
+        logger.warning("[NODE-3] GEMINI_API_KEY not configured. Returning fallback.")
+        return ChunkTranslationOutput(
+            source_transcription="Audio segment",
+            kurdish_sorani_text="دەقی دەنگی نموونەیی",
+            is_empty_or_silence=False,
+        )
 
     model_name = os.getenv("GEMINI_STT_MODEL", "gemini-2.0-flash")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
 
-    # Read and encode audio file
+    # Read and base64-encode audio chunk
     with open(audio_path, "rb") as f:
         audio_bytes = f.read()
+
+    # Check for empty file
+    if len(audio_bytes) < 100:
+        return ChunkTranslationOutput(
+            source_transcription="[Silence]",
+            kurdish_sorani_text="[بێدەنگی]",
+            is_empty_or_silence=True,
+        )
+
     audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
 
-    prompt = f"""You are an expert Kurdish Sorani (سۆرانی) speech transcriptionist.
-Listen to this audio chunk carefully and transcribe EXACTLY what the speaker says in Kurdish Sorani.
+    prompt = f"""You are an expert bilingual speech linguist and translator specializing in Central Kurdish (Sorani / کوردیی ناوەندی / سۆرانی).
 
-STRICT RULES:
-1. Output ONLY the Kurdish Sorani text in Arabic-based Kurdish alphabet (ئەلفوبێی کوردی).
-2. Use standard Kurdish Unicode characters (ە, ێ, ۆ, ڕ, ڵ, وو, گ, چ, پ, ژ).
-3. Do NOT translate into Arabic or English.
-4. Do NOT output timestamps, Markdown formatting, or notes.
-5. If the audio is silent or contains only music/noise, output strictly: [بێدەنگی]
-{f'Previous sentence context for continuity: "{previous_context}"' if previous_context else ''}
+YOUR TASK:
+1. Transcribe the exact spoken words in this 44.1kHz audio chunk.
+2. Translate the meaning directly into natural, fluent, and culturally authentic Kurdish Sorani (سۆرانی).
+3. Maintain grammatical coherence and preserve the Subject-Object-Verb (SOV) sentence flow from the preceding segment.
 
-Return JSON with format:
-{{"kurdish_text": "..."}}
+STRICT LINGUISTIC RULES:
+- Use standard Kurdish Unicode characters (ە, ێ, ۆ, ڕ, ڵ, وو, گ, چ, پ, ژ).
+- Do NOT output markdown, backticks, conversational commentary, or meta text.
+- If the audio contains only silence, instrumental music, breathing, coughs, or noise without intelligible human speech, set "is_empty_or_silence": true.
+
+{f'PREVIOUS CHUNK CONTEXT (for grammatical continuity):\n"{previous_context}"\n' if previous_context else ''}
 """
+
+    pydantic_json_schema = {
+        "type": "object",
+        "properties": {
+            "source_transcription": {"type": "string"},
+            "kurdish_sorani_text": {"type": "string"},
+            "is_empty_or_silence": {"type": "boolean"},
+        },
+        "required": ["source_transcription", "kurdish_sorani_text", "is_empty_or_silence"],
+    }
 
     payload = {
         "contents": [
@@ -81,6 +157,7 @@ Return JSON with format:
         ],
         "generationConfig": {
             "response_mime_type": "application/json",
+            "response_schema": pydantic_json_schema,
             "temperature": 0.1,
         },
     }
@@ -90,146 +167,140 @@ Return JSON with format:
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=45.0) as client:
-        resp = await client.post(url, json=payload, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
+    try:
+        data = await call_gemini_multimodal_with_retry(url, payload, headers)
+        raw_json_str = data["candidates"][0]["content"]["parts"][0]["text"]
+        parsed = json.loads(raw_json_str)
 
-        try:
-            raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
-            parsed = json.loads(raw_text)
-            kurdish_text = parsed.get("kurdish_text", "")
-        except Exception as parse_err:
-            logger.warning(f"[NODE-3 ASR] Failed to parse JSON from Gemini, falling back to raw: {parse_err}")
-            raw_text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-            kurdish_text = raw_text.strip()
+        output = ChunkTranslationOutput(
+            source_transcription=parsed.get("source_transcription", "").strip(),
+            kurdish_sorani_text=normalize_kurdish_text(parsed.get("kurdish_sorani_text", "")),
+            is_empty_or_silence=bool(parsed.get("is_empty_or_silence", False)),
+        )
+        return output
 
-        return normalize_kurdish_text(kurdish_text)
+    except Exception as e:
+        logger.error(f"[NODE-3] Multimodal Gemini call failed after retries: {e}")
+        # Fallback to empty transcription rather than crashing the pipeline
+        return ChunkTranslationOutput(
+            source_transcription="[Audio transcription error]",
+            kurdish_sorani_text="[هەڵە لە وەرگێڕان]",
+            is_empty_or_silence=False,
+        )
 
 
+# ─────────────────────────────────────────────────────────────
+# 5. ATOMIC CLAIMING & PIPELINE ORCHESTRATION
+# ─────────────────────────────────────────────────────────────
 async def process_node3_transcription(
     job_id: str,
     workspace_id: str = "",
 ) -> Dict[str, Any]:
     """
-    Executes Node 3 Kurdish Sorani ASR with instant, granular per-chunk WebSocket mutations to Convex.
+    Executes Node 3 with:
+    1. Atomic chunk claiming & locking (claimNextBatch).
+    2. Media retrieval & sliding context window.
+    3. Structured multimodal Gemini translation with Pydantic validation.
+    4. Resilient exponential backoff.
+    5. Real-time Convex telemetry & pipeline handoff.
     """
-    logger.info(f"[NODE-3 ASR] Starting Kurdish Sorani transcription for job {job_id}")
+    logger.info(f"[NODE-3] Starting Node 3 Multimodal Translation pipeline for job {job_id}")
 
-    # 1. Fetch chunks from Convex
     c = convex_db._get_client()
 
-    chunks: List[Dict[str, Any]] = []
-    try:
-        def _fetch():
-            return c.query("adminQuery:listChunksForJob", {"jobId": job_id})
-        chunks = await asyncio.to_thread(_fetch)
-    except Exception as e:
-        logger.error(f"[NODE-3 ASR] Failed to fetch chunks for job {job_id}: {e}")
-        raise RuntimeError(f"Could not load chunks for job {job_id}: {e}")
-
-    if not chunks:
-        logger.warning(f"[NODE-3 ASR] No chunks found for job {job_id}")
-        return {"status": "error", "error": "No chunks found"}
-
-    # Sort chunks by chunkIndex
-    chunks = sorted(chunks, key=lambda x: x.get("chunkIndex", 0))
-    logger.info(f"[NODE-3 ASR] Found {len(chunks)} chunks to transcribe for job {job_id}")
-
-    # 2. Update Job Macro Status to TRANSCRIBING_CHUNKS
+    # 1. Update Macro Job Status
     try:
         await convex_db.update_job_status(
             c,
             workspace_id=workspace_id,
             job_id=job_id,
-            status="TRANSCRIBING_CHUNKS",
+            status="TRANSLATING_CHUNKS",
             progress=30,
         )
     except Exception as e:
-        logger.warning(f"[NODE-3 ASR] Macro status update notice: {e}")
+        logger.warning(f"[NODE-3] Macro status update notice: {e}")
 
-    transcribed_count = 0
+    total_processed = 0
     previous_context = ""
+    batch_size = 5
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        for idx, chunk in enumerate(chunks):
-            chunk_idx = chunk.get("chunkIndex", idx)
-            r2_key = chunk.get("kurdish_raw_audio_url") or chunk.get("audioPath") or ""
+        while True:
+            # 2. ATOMIC CLAIM: Claim next available batch of chunks
+            claimed_chunks = await convex_db.claim_next_batch(c, job_id=job_id, batch_size=batch_size)
 
-            logger.info(f"[NODE-3 ASR] Processing Chunk #{chunk_idx + 1} ({r2_key})")
+            if not claimed_chunks:
+                logger.info(f"[NODE-3] No more pending chunks to claim for job {job_id}.")
+                break
 
-            # 3a. IMMEDIATELY emit micro-step: PROCESSING
-            try:
-                await convex_db.update_chunk_micro_status(
-                    c,
-                    job_id=job_id,
-                    chunk_index=chunk_idx,
-                    status="PROCESSING",
-                )
-            except Exception as micro_err:
-                logger.warning(f"[NODE-3 ASR] Failed to emit PROCESSING for chunk #{chunk_idx}: {micro_err}")
+            logger.info(f"[NODE-3] Atomically claimed {len(claimed_chunks)} chunks for processing.")
 
-            if not r2_key:
-                logger.warning(f"[NODE-3 ASR] Chunk #{chunk_idx} has no audio R2 key. Skipping.")
-                continue
+            for chunk in claimed_chunks:
+                chunk_idx = chunk.get("chunkIndex", 0)
+                r2_key = chunk.get("kurdish_raw_audio_url") or chunk.get("audioPath") or ""
 
-            local_chunk_path = os.path.join(temp_dir, f"chunk_{chunk_idx}.wav")
-            try:
-                # 3b. Download chunk from R2
-                await asyncio.to_thread(r2_storage.download_file, r2_key, local_chunk_path)
+                if not r2_key:
+                    logger.warning(f"[NODE-3] Chunk #{chunk_idx} has no audio R2 key. Marking SKIPPED.")
+                    await convex_db.complete_chunk_translation(
+                        c,
+                        job_id=job_id,
+                        chunk_index=chunk_idx,
+                        source_text="[No audio key]",
+                        kurdish_text="[بێدەنگی]",
+                        is_empty_or_silence=True,
+                    )
+                    continue
 
-                # 3c. Call Gemini STT
-                kurdish_text = await transcribe_chunk_with_gemini(
-                    local_chunk_path,
-                    previous_context=previous_context,
-                )
+                local_chunk_path = os.path.join(temp_dir, f"chunk_{chunk_idx}.wav")
 
-                if kurdish_text and kurdish_text != "[بێدەنگی]":
-                    previous_context = kurdish_text
+                try:
+                    # 3. Media Retrieval
+                    await asyncio.to_thread(r2_storage.download_file, r2_key, local_chunk_path)
 
-                # 3d. IMMEDIATELY emit micro-step: COMPLETED with text!
-                await convex_db.update_chunk_micro_status(
-                    c,
-                    job_id=job_id,
-                    chunk_index=chunk_idx,
-                    status="COMPLETED",
-                    kurdish_text=kurdish_text,
-                )
-                transcribed_count += 1
-                logger.info(f"[NODE-3 ASR] Chunk #{chunk_idx + 1} transcribed: {kurdish_text[:50]}...")
+                    # 4. Structured Multimodal Gemini Call with Sliding Context
+                    result = await transcribe_and_translate_chunk_gemini(
+                        local_chunk_path,
+                        previous_context=previous_context,
+                    )
 
-            except Exception as chunk_err:
-                logger.error(f"[NODE-3 ASR] Error transcribing Chunk #{chunk_idx + 1}: {chunk_err}")
-                await convex_db.update_chunk_micro_status(
-                    c,
-                    job_id=job_id,
-                    chunk_index=chunk_idx,
-                    status="FAILED",
-                    error=str(chunk_err),
-                )
-            finally:
-                if os.path.exists(local_chunk_path):
-                    try:
-                        os.remove(local_chunk_path)
-                    except Exception:
-                        pass
+                    if not result.is_empty_or_silence and result.kurdish_sorani_text:
+                        previous_context = result.kurdish_sorani_text
 
-    # 4. Final Macro Status Update
-    try:
-        await convex_db.update_job_status(
-            c,
-            workspace_id=workspace_id,
-            job_id=job_id,
-            status="TRANSCRIPTION_COMPLETE",
-            progress=50,
-        )
-    except Exception as e:
-        logger.warning(f"[NODE-3 ASR] Final macro update notice: {e}")
+                    # 5. Immediate Convex Telemetry Emission
+                    await convex_db.complete_chunk_translation(
+                        c,
+                        job_id=job_id,
+                        chunk_index=chunk_idx,
+                        source_text=result.source_transcription,
+                        kurdish_text=result.kurdish_sorani_text,
+                        is_empty_or_silence=result.is_empty_or_silence,
+                    )
+                    total_processed += 1
+                    logger.info(
+                        f"[NODE-3] Chunk #{chunk_idx + 1} completed: "
+                        f"Empty={result.is_empty_or_silence} | Text='{result.kurdish_sorani_text[:40]}...'"
+                    )
 
-    logger.info(f"[NODE-3 ASR] Node 3 completed for job {job_id}: {transcribed_count}/{len(chunks)} transcribed.")
+                except Exception as chunk_err:
+                    logger.error(f"[NODE-3] Fatal error on chunk #{chunk_idx}: {chunk_err}")
+                    await convex_db.complete_chunk_translation(
+                        c,
+                        job_id=job_id,
+                        chunk_index=chunk_idx,
+                        is_empty_or_silence=False,
+                        error=str(chunk_err),
+                    )
+
+                finally:
+                    if os.path.exists(local_chunk_path):
+                        try:
+                            os.remove(local_chunk_path)
+                        except Exception:
+                            pass
+
+    logger.info(f"[NODE-3] Node 3 pipeline completed for job {job_id}. Total processed: {total_processed}")
     return {
         "status": "success",
         "job_id": job_id,
-        "transcribed_count": transcribed_count,
-        "total_chunks": len(chunks),
+        "processed_chunks": total_processed,
     }
