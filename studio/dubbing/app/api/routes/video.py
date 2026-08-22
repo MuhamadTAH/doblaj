@@ -1022,9 +1022,22 @@ async def create_job(
         background_tasks.add_task(trigger_runpod)
     else:
         # Fallback to local background processing when RunPod is unconfigured.
-        background_tasks.add_task(
-            worker_process_video_job, job_id, str(input_path), user.workspace_id, category, entity
-        )
+        async def run_local_pipeline():
+            from app.services.node2_separation import process_node2_separation
+            try:
+                await process_node2_separation(
+                    job_id=job_id,
+                    workspace_id=user.workspace_id,
+                    source_r2_key=source_r2_key,
+                )
+            except Exception as e:
+                logger.error(f"Local pipeline failed for {job_id}: {e}")
+                try:
+                    await database.update_job_status(user_client, workspace_id=user.workspace_id, job_id=job_id, status="failed", error=str(e))
+                except Exception:
+                    pass
+
+        background_tasks.add_task(run_local_pipeline)
 
     return VideoJobResponse(
         id=job["id"],
